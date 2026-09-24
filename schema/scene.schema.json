@@ -1,0 +1,610 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "http://mograph.render/schema/scene.schema.json",
+  "title": "Scène mograph 1.0",
+  "description": "Format unique de scène : plans 2D (Chromium + GSAP) et plaques 3D (Blender), livrables et QC. Les temps numériques sont des secondes LOCALES au plan ; 'beat:N' et 'marker:id' sont des temps GLOBAUX.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "id", "title", "preset", "format", "outputs", "shots"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": "1.0", "description": "Version du format de scène." },
+    "id": { "$ref": "#/$defs/id", "description": "Identifiant (dossiers build/<id> et out/<id>)." },
+    "title": { "type": "string", "minLength": 1 },
+    "brief": { "type": "string", "description": "Brief créatif d'origine." },
+    "seed": { "type": "integer", "minimum": 0, "maximum": 4294967295, "default": 1, "description": "Graine maîtresse ; chaque plan en dérive la sienne." },
+    "preset": { "$ref": "#/$defs/id", "description": "Nom d'un fichier presets/<preset>.json." },
+    "preset_overrides": { "type": "object", "description": "Fusion profonde appliquée au preset avant validation (mêmes clés que preset.schema.json)." },
+    "format": { "$ref": "#/$defs/format" },
+    "quality": { "$ref": "#/$defs/quality" },
+    "audio": { "$ref": "#/$defs/audio" },
+    "storyboard": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["shot", "intent"],
+        "properties": {
+          "shot": { "$ref": "#/$defs/id" },
+          "intent": { "type": "string", "minLength": 1, "description": "Intention du plan (ce que le spectateur doit ressentir/comprendre)." },
+          "notes": { "type": "string" }
+        }
+      }
+    },
+    "outputs": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/output" }
+    },
+    "qc": { "$ref": "#/$defs/qc" },
+    "shots": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/shot" }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9](?:[a-z0-9-]|_(?!_))*$",
+      "maxLength": 64,
+      "description": "Minuscules, chiffres, '-' et '_' (jamais '__', réservé au nommage des plaques)."
+    },
+    "hexColor": {
+      "type": "string",
+      "pattern": "^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$"
+    },
+    "color": {
+      "type": "string",
+      "pattern": "^(?:#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})|[a-z][A-Za-z0-9_]*)$",
+      "description": "Hexadécimal #RRGGBB(AA) ou nom de couleur de la palette du preset (bg, fg, primary...)."
+    },
+    "paint": {
+      "anyOf": [ { "$ref": "#/$defs/color" }, { "const": "none" } ]
+    },
+    "timeRef": {
+      "description": "Nombre = secondes locales au plan. 'beat:N' (N décimal, 0 = offset audio) ou 'marker:id', avec décalage optionnel '+0.1' / '-0.25' en secondes = temps GLOBAL.",
+      "anyOf": [
+        { "type": "number" },
+        { "type": "string", "pattern": "^(?:beat:\\d+(?:\\.\\d+)?|marker:[A-Za-z_][A-Za-z0-9_]*)(?:[+-]\\d+(?:\\.\\d+)?)?$" }
+      ]
+    },
+    "durationRef": {
+      "description": "Secondes, 'beats:N' (nécessite audio.bpm) ou alias du preset short|medium|long.",
+      "anyOf": [
+        { "type": "number", "exclusiveMinimum": 0 },
+        { "type": "string", "pattern": "^beats:\\d+(?:\\.\\d+)?$" },
+        { "enum": ["short", "medium", "long"] }
+      ]
+    },
+    "position": {
+      "description": "Pixels logiques ; 'N%' du canevas ; 'safe:N%' ou 'action:N%' de la zone sûre titre/action (ex. 'safe:50%' = centre de la zone sûre).",
+      "anyOf": [
+        { "type": "number" },
+        { "type": "string", "pattern": "^(?:(?:safe|action):)?-?\\d+(?:\\.\\d+)?%$" }
+      ]
+    },
+    "vec3": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "ease": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Alias du preset (default, enter, exit, emphasis, anticipate, settle), nom de customEase du preset, ou ease GSAP (power2.out, back.out(1.7), elastic.out(1,0.3), steps(6)...). 'none'/'linear' refusé sauf allowLinear."
+    },
+    "format": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["aspect", "resolution", "fps"],
+      "properties": {
+        "aspect": { "enum": ["16:9", "9:16", "1:1"] },
+        "resolution": { "enum": ["1080p", "4k"] },
+        "fps": { "enum": [24, 25, 30, 50, 60] },
+        "alpha": { "type": "boolean", "default": false, "description": "Fond transparent ; impose un livrable prores_4444." }
+      }
+    },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "plate_scale": { "type": "number", "minimum": 0.25, "maximum": 1, "default": 1, "description": "Échelle de rendu des plaques 3D (0,5 en préversion)." },
+        "blender_samples": { "type": "integer", "minimum": 1, "maximum": 8192, "description": "Remplace blender.samples du preset." },
+        "blender_device": { "enum": ["auto", "CPU", "OPTIX", "CUDA"], "description": "Remplace blender.device du preset." },
+        "motion_blur": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "samples": { "type": "integer", "minimum": 2, "maximum": 64 },
+            "shutter": { "type": "number", "exclusiveMinimum": 0, "maximum": 1, "description": "Fraction d'image d'ouverture (0,5 = 180°)." }
+          }
+        }
+      }
+    },
+    "audio": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "src": { "type": "string", "minLength": 1, "description": "Chemin relatif à la racine du projet (WAV conseillé)." },
+        "bpm": { "type": "number", "exclusiveMinimum": 0, "maximum": 400 },
+        "offset": { "type": "number", "minimum": 0, "default": 0, "description": "Temps global (s) du beat:0." },
+        "beats_per_bar": { "type": "integer", "minimum": 1, "maximum": 16, "default": 4 },
+        "markers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "time"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+              "time": { "type": "number", "minimum": 0, "description": "Temps global en secondes." }
+            }
+          }
+        },
+        "synth": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Si src est absent sur disque, `all` le génère (piste de test déterministe).",
+          "required": ["kind"],
+          "properties": {
+            "kind": { "const": "beat" },
+            "target_lufs": { "type": "number", "minimum": -40, "maximum": -5 }
+          }
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile"],
+      "properties": {
+        "profile": { "enum": ["hevc_main10", "prores_422hq", "prores_4444"] },
+        "crf": { "type": "integer", "minimum": 0, "maximum": 51, "description": "HEVC uniquement (défaut 18)." },
+        "suffix": { "type": "string", "pattern": "^[A-Za-z0-9_-]*$", "default": "" }
+      }
+    },
+    "qc": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "safe_zone": { "enum": ["title", "action", "off"], "default": "title" },
+        "safe_zone_tolerance_s": { "type": "number", "minimum": 0, "default": 0.5 },
+        "allow_black_s": { "type": "number", "minimum": 0, "default": 0 },
+        "determinism_frames": { "type": "integer", "minimum": 1, "maximum": 200, "default": 8 },
+        "loudness_target_lufs": { "type": "number", "minimum": -40, "maximum": -5, "default": -14 }
+      }
+    },
+    "transition": {
+      "anyOf": [
+        { "enum": ["cut", "crossfade"] },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "properties": {
+            "type": { "enum": ["cut", "crossfade"] },
+            "dur": { "$ref": "#/$defs/durationRef", "description": "Durée du fondu (défaut : transitions.crossfade.dur du preset)." }
+          }
+        }
+      ]
+    },
+    "shot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "duration"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "duration": { "$ref": "#/$defs/durationRef", "description": "Durée totale du plan (chevauchement de fondu inclus) ; durée x fps doit être entier." },
+        "background": {
+          "anyOf": [ { "$ref": "#/$defs/color" }, { "const": "transparent" } ],
+          "description": "Défaut : palette.bg du preset (transparent si format.alpha)."
+        },
+        "transition_in": { "$ref": "#/$defs/transition", "default": "cut" },
+        "fx": { "$ref": "#/$defs/fx" },
+        "plates": { "type": "array", "items": { "$ref": "#/$defs/plate" } },
+        "layers": { "type": "array", "items": { "$ref": "#/$defs/layer" } }
+      }
+    },
+    "fx": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Surcharges par plan des textures du preset : false désactive, un nombre fixe 'amount', un objet fusionne.",
+      "properties": {
+        "grain": { "$ref": "#/$defs/textureOverride" },
+        "paper": { "$ref": "#/$defs/textureOverride" },
+        "vignette": { "$ref": "#/$defs/textureOverride" },
+        "scanlines": { "$ref": "#/$defs/textureOverride" },
+        "tracking": { "$ref": "#/$defs/textureOverride" },
+        "glitch": { "$ref": "#/$defs/glitch" }
+      }
+    },
+    "textureOverride": {
+      "anyOf": [
+        { "type": "boolean" },
+        { "type": "number", "minimum": 0, "maximum": 1 },
+        { "type": "object" }
+      ]
+    },
+    "glitch": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "windows": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "prefixItems": [ { "$ref": "#/$defs/timeRef" }, { "$ref": "#/$defs/durationRef" } ],
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "description": "Fenêtres [début, durée]."
+        },
+        "on_beats": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["from", "to"],
+          "properties": {
+            "from": { "type": "number", "minimum": 0, "description": "Premier temps (inclus)." },
+            "to": { "type": "number", "minimum": 0, "description": "Dernier temps (inclus)." },
+            "every": { "type": "number", "exclusiveMinimum": 0, "default": 1 },
+            "length": { "$ref": "#/$defs/durationRef", "description": "Durée de chaque fenêtre (défaut 0,1 s)." }
+          }
+        },
+        "amount": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5 },
+        "colors": { "type": "array", "items": { "$ref": "#/$defs/color" }, "minItems": 2, "maxItems": 2 },
+        "mode": { "enum": ["rgb", "slice", "both"], "default": "both" },
+        "layers": { "type": "array", "items": { "$ref": "#/$defs/id" }, "description": "Calques touchés (défaut : tous)." }
+      }
+    },
+    "animProps": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Propriétés animables. x/y = DÉCALAGES en px logiques ou 'N%' de la boîte de la cible. draw 0..1 (fraction du trait visible), blur en px, reveal 0..1 (fraction masquée, côté donné par revealDir).",
+      "properties": {
+        "x": { "anyOf": [ { "type": "number" }, { "type": "string", "pattern": "^-?\\d+(?:\\.\\d+)?%$" } ] },
+        "y": { "anyOf": [ { "type": "number" }, { "type": "string", "pattern": "^-?\\d+(?:\\.\\d+)?%$" } ] },
+        "scale": { "type": "number" },
+        "scaleX": { "type": "number" },
+        "scaleY": { "type": "number" },
+        "rotation": { "type": "number" },
+        "skewX": { "type": "number" },
+        "skewY": { "type": "number" },
+        "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "draw": { "type": "number", "minimum": 0, "maximum": 1 },
+        "blur": { "type": "number", "minimum": 0 },
+        "reveal": { "type": "number", "minimum": 0, "maximum": 1 },
+        "color": { "$ref": "#/$defs/color" },
+        "fill": { "$ref": "#/$defs/color" },
+        "stroke": { "$ref": "#/$defs/color" }
+      }
+    },
+    "tween": {
+      "type": "object",
+      "additionalProperties": false,
+      "anyOf": [ { "required": ["move"] }, { "required": ["to"] }, { "required": ["from"] } ],
+      "properties": {
+        "move": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$", "description": "Mouvement nommé du preset (motion.moves)." },
+        "at": { "$ref": "#/$defs/timeRef", "default": 0 },
+        "dur": { "$ref": "#/$defs/durationRef", "description": "Tween simple : durée. Avec move : le mouvement est remis à l'échelle pour durer 'dur'." },
+        "from": { "$ref": "#/$defs/animProps" },
+        "to": { "$ref": "#/$defs/animProps" },
+        "ease": { "$ref": "#/$defs/ease" },
+        "stagger": { "type": "number", "minimum": 0 },
+        "target": { "enum": ["self", "chars", "words", "lines", "shape", "bars"] },
+        "revealDir": { "enum": ["left", "right", "up", "down"], "default": "right", "description": "Sens de progression de reveal (right = se découvre de gauche à droite)." },
+        "allowLinear": { "type": "boolean", "default": false },
+        "sync": { "enum": ["start", "end"], "default": "start", "description": "end : la FIN de la première étape tombe sur 'at' (impact sur le temps)." }
+      }
+    },
+    "boil": {
+      "anyOf": [
+        { "type": "boolean" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "amount": { "type": "number", "minimum": 0, "description": "Déplacement max en px logiques." },
+            "freq": { "type": "number", "exclusiveMinimum": 0, "description": "baseFrequency de feTurbulence." },
+            "step": { "type": "integer", "minimum": 1, "description": "Nouvelle graine toutes les 'step' images." }
+          }
+        }
+      ]
+    },
+    "fontStyle": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "style": { "enum": ["display", "body"] },
+        "size": { "type": "number", "exclusiveMinimum": 0 },
+        "weight": { "type": "integer", "minimum": 100, "maximum": 900 },
+        "color": { "$ref": "#/$defs/color" },
+        "tracking": { "type": "number" },
+        "case": { "enum": ["none", "upper", "lower", "title"] }
+      }
+    },
+    "layer": {
+      "type": "object",
+      "required": ["id", "type"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "type": { "enum": ["text", "shape", "image", "sequence", "chart"] },
+        "x": { "$ref": "#/$defs/position", "default": "50%" },
+        "y": { "$ref": "#/$defs/position", "default": "50%" },
+        "anchor": {
+          "anyOf": [
+            { "enum": ["center", "top-left", "top", "top-right", "left", "right", "bottom-left", "bottom", "bottom-right"] },
+            { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 }
+          ],
+          "default": "center",
+          "description": "Point du calque placé en (x, y) ; [ax, ay] en fractions de sa boîte."
+        },
+        "z": { "type": "integer", "default": 0 },
+        "rotation": { "type": "number", "default": 0 },
+        "scale": { "type": "number", "default": 1 },
+        "opacity": { "type": "number", "minimum": 0, "maximum": 1, "default": 1 },
+        "blend": { "enum": ["normal", "multiply", "screen", "overlay", "darken", "lighten", "color-dodge", "color-burn", "hard-light", "soft-light", "difference", "exclusion"], "default": "normal" },
+        "safe": { "type": "boolean", "default": true, "description": "false : texte exclu du contrôle des zones sûres (débord volontaire)." },
+        "boil": { "$ref": "#/$defs/boil" },
+        "anim": { "type": "array", "items": { "$ref": "#/$defs/tween" } }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "text" } } },
+          "then": {
+            "required": ["text"],
+            "properties": {
+              "text": { "type": "string", "minLength": 1 },
+              "style": { "enum": ["display", "body"], "default": "display" },
+              "size": { "type": "number", "exclusiveMinimum": 0 },
+              "weight": { "type": "integer", "minimum": 100, "maximum": 900 },
+              "color": { "$ref": "#/$defs/color" },
+              "align": { "enum": ["left", "center", "right"], "default": "left" },
+              "maxWidth": { "type": "number", "exclusiveMinimum": 0 },
+              "lineHeight": { "type": "number", "exclusiveMinimum": 0 },
+              "tracking": { "type": "number", "description": "Interlettrage en em." },
+              "case": { "enum": ["none", "upper", "lower", "title"] },
+              "split": { "enum": ["none", "chars", "words", "lines"], "description": "Défaut : déduit des cibles des tweens." }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "shape" } } },
+          "then": {
+            "required": ["shape"],
+            "properties": {
+              "shape": { "enum": ["rect", "ellipse", "line", "path", "polygon"] },
+              "w": { "type": "number", "minimum": 0 },
+              "h": { "type": "number", "minimum": 0 },
+              "radius": { "type": "number", "minimum": 0 },
+              "fill": { "$ref": "#/$defs/paint" },
+              "stroke": { "$ref": "#/$defs/paint" },
+              "strokeWidth": { "type": "number", "minimum": 0 },
+              "linecap": { "enum": ["butt", "round", "square"], "default": "round" },
+              "d": { "type": "string", "minLength": 1, "description": "path : données SVG dans le repère 0..w x 0..h." },
+              "points": {
+                "type": "array",
+                "items": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 },
+                "minItems": 2,
+                "description": "polygon / line : sommets dans le repère 0..w x 0..h."
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "image" } } },
+          "then": {
+            "required": ["src", "w", "h"],
+            "properties": {
+              "src": { "type": "string", "minLength": 1, "description": "Chemin relatif à la racine, sous assets/." },
+              "w": { "type": "number", "exclusiveMinimum": 0 },
+              "h": { "type": "number", "exclusiveMinimum": 0 },
+              "fit": { "enum": ["cover", "contain", "fill"], "default": "cover" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "sequence" } } },
+          "then": {
+            "required": ["plate"],
+            "properties": {
+              "plate": { "$ref": "#/$defs/id", "description": "id d'une plaque 3D du même plan." },
+              "w": { "type": "number", "exclusiveMinimum": 0, "description": "Défaut : largeur du canevas." },
+              "h": { "type": "number", "exclusiveMinimum": 0, "description": "Défaut : hauteur du canevas." }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "chart" } } },
+          "then": {
+            "required": ["data", "w", "h"],
+            "properties": {
+              "w": { "type": "number", "exclusiveMinimum": 0 },
+              "h": { "type": "number", "exclusiveMinimum": 0 },
+              "orientation": { "enum": ["vertical", "horizontal"], "default": "vertical" },
+              "data": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["label", "value"],
+                  "properties": {
+                    "label": { "type": "string" },
+                    "value": { "type": "number", "minimum": 0 },
+                    "color": { "$ref": "#/$defs/color" }
+                  }
+                }
+              },
+              "max": { "type": "number", "exclusiveMinimum": 0, "description": "Valeur pleine échelle (défaut : max des données)." },
+              "gap": { "type": "number", "minimum": 0, "description": "Espace entre barres en px logiques." },
+              "barRadius": { "type": "number", "minimum": 0 },
+              "colors": { "type": "array", "items": { "$ref": "#/$defs/color" }, "minItems": 1, "description": "Couleurs cycliques si data[i].color absent." },
+              "valueFormat": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "decimals": { "type": "integer", "minimum": 0, "maximum": 6, "default": 0 },
+                  "prefix": { "type": "string", "default": "" },
+                  "suffix": { "type": "string", "default": "" }
+                }
+              },
+              "labelStyle": { "$ref": "#/$defs/fontStyle" },
+              "valueStyle": { "$ref": "#/$defs/fontStyle" },
+              "grow": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "at": { "$ref": "#/$defs/timeRef", "default": 0 },
+                  "dur": { "$ref": "#/$defs/durationRef" },
+                  "stagger": { "type": "number", "minimum": 0 },
+                  "ease": { "$ref": "#/$defs/ease", "description": "Ne doit pas dépasser 1 (back/elastic/CustomEase en dépassement refusés)." }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "channel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["prop", "keys"],
+      "properties": {
+        "prop": { "enum": ["location", "rotation", "scale", "target"], "description": "target : point visé (caméra et lumières uniquement)." },
+        "keys": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["t", "v"],
+            "properties": {
+              "t": { "$ref": "#/$defs/timeRef" },
+              "v": { "anyOf": [ { "$ref": "#/$defs/vec3" }, { "type": "number" } ], "description": "vec3 (rotation en degrés) ; un nombre pour scale = uniforme." },
+              "ease": { "$ref": "#/$defs/ease", "description": "Easing du segment qui ARRIVE sur cette clé." },
+              "allowLinear": { "type": "boolean", "default": false }
+            }
+          }
+        }
+      }
+    },
+    "material": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "base_color": { "$ref": "#/$defs/color" },
+        "roughness": { "type": "number", "minimum": 0, "maximum": 1 },
+        "metallic": { "type": "number", "minimum": 0, "maximum": 1 },
+        "specular": { "type": "number", "minimum": 0, "maximum": 1 },
+        "sheen": { "type": "number", "minimum": 0, "maximum": 1 },
+        "sheen_roughness": { "type": "number", "minimum": 0, "maximum": 1 },
+        "coat": { "type": "number", "minimum": 0, "maximum": 1 },
+        "coat_roughness": { "type": "number", "minimum": 0, "maximum": 1 },
+        "subsurface": { "type": "number", "minimum": 0, "maximum": 1 },
+        "transmission": { "type": "number", "minimum": 0, "maximum": 1 },
+        "ior": { "type": "number", "minimum": 1, "maximum": 4 },
+        "anisotropic": { "type": "number", "minimum": 0, "maximum": 1 },
+        "emission": { "$ref": "#/$defs/color" },
+        "emission_strength": { "type": "number", "minimum": 0 }
+      }
+    },
+    "world": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "color": { "$ref": "#/$defs/color" },
+        "strength": { "type": "number", "minimum": 0, "default": 1 },
+        "sky": {
+          "anyOf": [
+            { "type": "boolean" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "sun_elevation": { "type": "number", "description": "Degrés." },
+                "sun_rotation": { "type": "number", "description": "Degrés." },
+                "altitude": { "type": "number", "minimum": 0 },
+                "air": { "type": "number", "minimum": 0 },
+                "dust": { "type": "number", "minimum": 0 },
+                "ozone": { "type": "number", "minimum": 0 },
+                "sun_size": { "type": "number", "minimum": 0 },
+                "sun_intensity": { "type": "number", "minimum": 0 }
+              }
+            }
+          ],
+          "description": "Ciel physique (true = réglages du preset)."
+        }
+      }
+    },
+    "light": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "type": { "enum": ["AREA", "SUN", "POINT", "SPOT"] },
+        "shape": { "enum": ["DISK", "SQUARE", "RECTANGLE", "ELLIPSE"], "default": "DISK" },
+        "size": { "type": "number", "minimum": 0 },
+        "size_y": { "type": "number", "minimum": 0 },
+        "energy": { "type": "number", "minimum": 0, "description": "Watts (AREA/POINT/SPOT) ou irradiance (SUN)." },
+        "color": { "$ref": "#/$defs/color" },
+        "location": { "$ref": "#/$defs/vec3" },
+        "target": { "$ref": "#/$defs/vec3" },
+        "spot_size": { "type": "number", "exclusiveMinimum": 0, "maximum": 180 },
+        "angle": { "type": "number", "minimum": 0, "description": "SUN : diamètre angulaire en degrés." },
+        "anim": { "type": "array", "items": { "$ref": "#/$defs/channel" } }
+      }
+    },
+    "plate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "camera", "objects"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "transparent": { "type": "boolean", "default": false },
+        "world": { "$ref": "#/$defs/world" },
+        "camera": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["location", "target"],
+          "properties": {
+            "location": { "$ref": "#/$defs/vec3" },
+            "target": { "$ref": "#/$defs/vec3" },
+            "lens": { "type": "number", "exclusiveMinimum": 0, "description": "Focale en mm." },
+            "fstop": { "anyOf": [ { "type": "number", "exclusiveMinimum": 0 }, { "type": "null" } ], "description": "Active la profondeur de champ (mise au point sur target)." },
+            "anim": { "type": "array", "items": { "$ref": "#/$defs/channel" } }
+          }
+        },
+        "lights": { "type": "array", "items": { "$ref": "#/$defs/light" }, "description": "Défaut : blender.light_rig du preset." },
+        "objects": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "primitive"],
+            "properties": {
+              "id": { "$ref": "#/$defs/id" },
+              "primitive": { "enum": ["sphere", "cube", "rounded_cube", "torus", "cylinder", "cone", "plane", "cyclorama"] },
+              "size": { "type": "number", "exclusiveMinimum": 0, "default": 1, "description": "Encombrement : diamètre (sphère, cylindre, cône, tore), arête (cubes, plan), largeur (cyclorama)." },
+              "minor": { "type": "number", "exclusiveMinimum": 0, "description": "Tore : rayon du tube ; cyclorama : hauteur du mur." },
+              "bevel": { "type": "number", "minimum": 0, "description": "rounded_cube : largeur de biseau ; cyclorama : rayon du congé." },
+              "location": { "$ref": "#/$defs/vec3" },
+              "rotation": { "$ref": "#/$defs/vec3", "description": "Degrés (XYZ)." },
+              "scale": { "anyOf": [ { "$ref": "#/$defs/vec3" }, { "type": "number" } ] },
+              "material": {
+                "anyOf": [ { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$" }, { "$ref": "#/$defs/material" } ],
+                "description": "Nom d'un matériau de blender.materials du preset, ou définition en ligne."
+              },
+              "anim": { "type": "array", "items": { "$ref": "#/$defs/channel" } }
+            }
+          }
+        }
+      }
+    }
+  }
+}

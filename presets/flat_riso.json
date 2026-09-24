@@ -1,0 +1,91 @@
+{
+  "$schema": "../schema/preset.schema.json",
+  "id": "flat_riso",
+  "name": "Flat Riso",
+  "description": "Flat 2D inspiré de l'impression risographique : aplats francs bleu / rose / jaune fluo sur papier bleuté, grain d'encre léger, typographie grotesque très grasse. Mouvements nets qui se posent en douceur (flatSettle), anticipation marquée sur les entrées latérales.",
+  "styles": ["flat 2D", "infographie", "dataviz", "explainer", "interfaces"],
+  "palette": {
+    "bg": "#EEF1F6",
+    "fg": "#1B1F4A",
+    "primary": "#2F5BEA",
+    "secondary": "#FF4F9A",
+    "accent": "#FFC93C",
+    "sky": "#9DB6FF",
+    "blush": "#FFC2DC",
+    "cream": "#FFF1CC",
+    "slate": "#5A6186",
+    "paper": "#F7F4EC"
+  },
+  "typography": {
+    "display": { "family": "Bricolage Grotesque", "weight": 800, "tracking": -0.02, "lineHeight": 0.95, "case": "none", "size": 120 },
+    "body": { "family": "DM Sans", "weight": 500, "tracking": 0, "lineHeight": 1.3, "case": "none", "size": 40 }
+  },
+  "fonts": [
+    { "family": "Bricolage Grotesque", "weight": 800, "style": "normal", "file": "@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-800-normal.woff2" },
+    { "family": "DM Sans", "weight": 500, "style": "normal", "file": "@fontsource/dm-sans/files/dm-sans-latin-500-normal.woff2" },
+    { "family": "DM Sans", "weight": 700, "style": "normal", "file": "@fontsource/dm-sans/files/dm-sans-latin-700-normal.woff2" }
+  ],
+  "motion": {
+    "eases": {
+      "default": "power2.out",
+      "enter": "power3.out",
+      "exit": "power2.in",
+      "emphasis": "back.out(1.7)",
+      "anticipate": "flatAnticipate",
+      "settle": "flatSettle"
+    },
+    "customEases": {
+      "flatSettle": "M0,0 C0.12,0.9 0.24,1 1,1",
+      "flatAnticipate": "M0,0 C0.35,-0.28 0.2,1.12 1,1"
+    },
+    "durations": { "short": 0.3, "medium": 0.6, "long": 1.0 },
+    "stagger": 0.035,
+    "frame_step": 1,
+    "moves": {
+      "rise": [
+        { "offset": 0, "dur": 0.6, "from": { "y": 40, "opacity": 0 }, "to": { "y": 0, "opacity": 1 }, "ease": "settle" }
+      ],
+      "chars_up": [
+        { "offset": 0, "dur": 0.55, "target": "chars", "stagger": 0.03, "from": { "y": "110%", "opacity": 0 }, "to": { "y": 0, "opacity": 1 }, "ease": "enter" }
+      ],
+      "pop": [
+        { "offset": 0, "dur": 0.5, "from": { "scale": 0 }, "to": { "scale": 1 }, "ease": "emphasis" }
+      ],
+      "wipe_in": [
+        { "offset": 0, "dur": 0.7, "from": { "reveal": 1 }, "to": { "reveal": 0 }, "ease": "power3.inOut" }
+      ],
+      "draw": [
+        { "offset": 0, "dur": 0.9, "target": "shape", "from": { "draw": 0 }, "to": { "draw": 1 }, "ease": "power2.inOut" }
+      ],
+      "slide_anticipate": [
+        { "offset": 0, "dur": 0.7, "from": { "x": -220 }, "to": { "x": 0 }, "ease": "anticipate" },
+        { "offset": 0, "dur": 0.25, "from": { "opacity": 0 }, "to": { "opacity": 1 }, "ease": "power1.out" }
+      ],
+      "exit_down": [
+        { "offset": 0, "dur": 0.4, "to": { "y": 60, "opacity": 0 }, "ease": "exit" }
+      ]
+    }
+  },
+  "textures": {
+    "grain": { "amount": 0.07, "size": 1, "blend": "overlay", "monochrome": true },
+    "paper": { "amount": 0.08, "blend": "multiply", "frequency": 0.8, "octaves": 4, "color": "#F4EBD9" },
+    "vignette": null,
+    "scanlines": null,
+    "tracking": null,
+    "boil": { "amount": 1.2, "freq": 0.04, "step": 3 }
+  },
+  "composition": {
+    "grid": 12,
+    "margin": 0.06,
+    "type_scale": [26, 40, 56, 84, 120, 168],
+    "notes": "Grille 12 colonnes, marges de 6 % ; texte ferré à gauche dans la zone sûre titre, formes pop en contrepoint à droite. Deux couleurs d'encre maximum par élément (bleu + rose OU bleu + jaune) comme une vraie impression riso ; le jaune reste un accent (moins de 15 % de la surface). Jamais de dégradé ni d'ombre portée : profondeur par superposition d'aplats et léger décalage de repérage."
+  },
+  "transitions": {
+    "default": "crossfade",
+    "crossfade": { "dur": 0.4 }
+  },
+  "render": {
+    "motion_blur": { "enabled": false, "samples": 8, "shutter": 0.5 }
+  },
+  "color": { "working": "srgb", "output": "rec709" }
+}

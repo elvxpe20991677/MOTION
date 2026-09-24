@@ -1,0 +1,291 @@
+{
+  "$schema": "../schema/scene.schema.json",
+  "version": "1.0",
+  "id": "demo_flat_riso",
+  "title": "Le rapport 2025 — explainer flat",
+  "brief": "Ouverture d'un rapport annuel en style riso plat : un titre qui se compose lettre à lettre, puis un graphique en barres qui raconte la croissance trimestre par trimestre. Ton clair, pédagogique, énergique sans être agressif.",
+  "seed": 2025,
+  "preset": "flat_riso",
+  "format": {
+    "aspect": "16:9",
+    "resolution": "1080p",
+    "fps": 25,
+    "alpha": false
+  },
+  "quality": {
+    "plate_scale": 1
+  },
+  "storyboard": [
+    {
+      "shot": "title",
+      "intent": "Poser le sujet : un titre fort qui se construit, des formes pop qui donnent le ton graphique.",
+      "notes": "Formes en arrière-plan à droite, bloc texte à gauche dans la zone sûre ; soulignement tracé pour guider l'œil vers le sous-titre."
+    },
+    {
+      "shot": "chart",
+      "intent": "Montrer la progression : chaque barre pousse l'une après l'autre, son compteur suit exactement la barre.",
+      "notes": "Fondu enchaîné 0,4 s depuis le titre ; easing sans dépassement pour ne jamais afficher une valeur fausse."
+    }
+  ],
+  "outputs": [
+    {
+      "profile": "hevc_main10",
+      "crf": 18
+    },
+    {
+      "profile": "prores_422hq"
+    }
+  ],
+  "qc": {
+    "safe_zone": "title",
+    "safe_zone_tolerance_s": 0.5,
+    "allow_black_s": 0,
+    "determinism_frames": 8,
+    "loudness_target_lufs": -14
+  },
+  "shots": [
+    {
+      "id": "title",
+      "duration": 3.4,
+      "background": "bg",
+      "layers": [
+        {
+          "id": "blob",
+          "type": "shape",
+          "shape": "ellipse",
+          "w": 540,
+          "h": 540,
+          "fill": "secondary",
+          "x": 1480,
+          "y": 520,
+          "z": 0,
+          "anim": [
+            {
+              "move": "pop",
+              "at": 0.1
+            }
+          ]
+        },
+        {
+          "id": "block",
+          "type": "shape",
+          "shape": "rect",
+          "w": 320,
+          "h": 320,
+          "radius": 40,
+          "fill": "accent",
+          "x": 1660,
+          "y": 800,
+          "rotation": -8,
+          "z": 1,
+          "anim": [
+            {
+              "move": "slide_anticipate",
+              "at": 0.3
+            }
+          ]
+        },
+        {
+          "id": "ring",
+          "type": "shape",
+          "shape": "ellipse",
+          "w": 210,
+          "h": 210,
+          "fill": "none",
+          "stroke": "primary",
+          "strokeWidth": 14,
+          "x": 1250,
+          "y": 250,
+          "z": 2,
+          "anim": [
+            {
+              "move": "draw",
+              "at": 0.5
+            }
+          ]
+        },
+        {
+          "id": "title",
+          "type": "text",
+          "text": "Le rapport",
+          "style": "display",
+          "size": 176,
+          "color": "fg",
+          "x": 150,
+          "y": 380,
+          "anchor": "left",
+          "z": 3,
+          "anim": [
+            {
+              "move": "chars_up",
+              "at": 0.35
+            }
+          ]
+        },
+        {
+          "id": "year",
+          "type": "text",
+          "text": "2025",
+          "style": "display",
+          "size": 176,
+          "color": "primary",
+          "x": 150,
+          "y": 560,
+          "anchor": "left",
+          "z": 3,
+          "anim": [
+            {
+              "move": "chars_up",
+              "at": 0.6
+            }
+          ]
+        },
+        {
+          "id": "underline",
+          "type": "shape",
+          "shape": "line",
+          "w": 420,
+          "h": 14,
+          "stroke": "secondary",
+          "strokeWidth": 12,
+          "x": 156,
+          "y": 668,
+          "anchor": "left",
+          "z": 3,
+          "anim": [
+            {
+              "move": "draw",
+              "at": 1.05
+            }
+          ]
+        },
+        {
+          "id": "subtitle",
+          "type": "text",
+          "text": "Ce que les chiffres racontent",
+          "style": "body",
+          "size": 46,
+          "color": "fg",
+          "x": 156,
+          "y": 740,
+          "anchor": "left",
+          "z": 3,
+          "anim": [
+            {
+              "move": "rise",
+              "at": 1.25
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "chart",
+      "duration": 3.6,
+      "background": "bg",
+      "transition_in": {
+        "type": "crossfade",
+        "dur": 0.4
+      },
+      "layers": [
+        {
+          "id": "heading",
+          "type": "text",
+          "text": "Croissance par trimestre",
+          "style": "display",
+          "size": 76,
+          "color": "fg",
+          "x": 150,
+          "y": 170,
+          "anchor": "left",
+          "z": 2,
+          "anim": [
+            {
+              "move": "rise",
+              "at": 0.15
+            }
+          ]
+        },
+        {
+          "id": "bars",
+          "type": "chart",
+          "w": 1240,
+          "h": 640,
+          "x": 960,
+          "y": 620,
+          "z": 1,
+          "data": [
+            {
+              "label": "T1",
+              "value": 12
+            },
+            {
+              "label": "T2",
+              "value": 19
+            },
+            {
+              "label": "T3",
+              "value": 27
+            },
+            {
+              "label": "T4",
+              "value": 41
+            }
+          ],
+          "max": 45,
+          "gap": 56,
+          "barRadius": 18,
+          "colors": [
+            "primary",
+            "secondary",
+            "accent",
+            "primary"
+          ],
+          "valueFormat": {
+            "decimals": 0,
+            "prefix": "+",
+            "suffix": " %"
+          },
+          "labelStyle": {
+            "style": "body",
+            "size": 40,
+            "color": "fg"
+          },
+          "valueStyle": {
+            "style": "display",
+            "size": 58,
+            "color": "fg"
+          },
+          "grow": {
+            "at": 0.45,
+            "dur": 1.5,
+            "stagger": 0.14,
+            "ease": "settle"
+          }
+        },
+        {
+          "id": "source",
+          "type": "text",
+          "text": "Données fictives de démonstration",
+          "style": "body",
+          "size": 26,
+          "color": "fg",
+          "opacity": 0.6,
+          "x": 150,
+          "y": 1000,
+          "anchor": "left",
+          "z": 2,
+          "anim": [
+            {
+              "move": "rise",
+              "at": 1.9,
+              "to": {
+                "opacity": 0.6
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

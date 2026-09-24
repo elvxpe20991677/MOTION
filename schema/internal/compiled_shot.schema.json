@@ -1,0 +1,268 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "http://mograph.render/schema/internal/compiled_shot.schema.json",
+  "title": "Plan compilé (contrat mograph-shot/1)",
+  "description": "Produit par pipeline/scene.py, injecté tel quel dans la page sous window.__MOGRAPH_SHOT__ et lu par runtime/runtime.js. Tout est RÉSOLU : temps en secondes locales, couleurs en hexadécimal, positions en px logiques, easings en chaînes GSAP ou noms de custom_eases, tweens fromTo complets.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract", "scene_id", "shot_id", "shot_index", "seed", "fps", "frames", "duration", "canvas", "device_scale_factor", "alpha", "background", "frame_step", "motion_blur", "safe_zones", "palette", "fonts", "typography", "custom_eases", "textures", "glitch", "plates", "layers"],
+  "properties": {
+    "contract": { "const": "mograph-shot/1" },
+    "scene_id": { "type": "string" },
+    "shot_id": { "type": "string" },
+    "shot_index": { "type": "integer", "minimum": 0 },
+    "seed": { "type": "integer", "minimum": 0, "maximum": 4294967295, "description": "Graine du plan (uint32), dérivée de scene.seed et shot.id." },
+    "fps": { "enum": [24, 25, 30, 50, 60] },
+    "frames": { "type": "integer", "minimum": 1, "description": "Nombre d'images du plan (images locales 0..frames-1)." },
+    "duration": { "type": "number", "exclusiveMinimum": 0, "description": "= frames / fps." },
+    "canvas": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height"],
+      "properties": { "width": { "type": "integer" }, "height": { "type": "integer" } },
+      "description": "Taille LOGIQUE (px CSS) = viewport Playwright."
+    },
+    "device_scale_factor": { "enum": [1, 2] },
+    "alpha": { "type": "boolean" },
+    "background": { "anyOf": [ { "$ref": "#/$defs/hex" }, { "type": "null" } ], "description": "null = transparent." },
+    "frame_step": { "type": "integer", "minimum": 1, "maximum": 4 },
+    "motion_blur": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "samples", "shutter"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "samples": { "type": "integer", "minimum": 1 },
+        "shutter": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "safe_zones": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "action"],
+      "properties": {
+        "title": { "$ref": "#/$defs/rect" },
+        "action": { "$ref": "#/$defs/rect" }
+      }
+    },
+    "palette": { "type": "object", "additionalProperties": { "$ref": "#/$defs/hex" } },
+    "fonts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["family", "weight", "style", "url", "unicode_range"],
+        "properties": {
+          "family": { "type": "string" },
+          "weight": { "type": "integer" },
+          "style": { "enum": ["normal", "italic"] },
+          "url": { "type": "string", "pattern": "^http://mograph\\.render/node_modules/" },
+          "unicode_range": { "type": "string" }
+        }
+      }
+    },
+    "typography": { "type": "object", "description": "Copie de preset.typography (information ; les calques portent déjà leur police résolue)." },
+    "custom_eases": { "type": "object", "additionalProperties": { "type": "string" }, "description": "nom -> tracé SVG, à enregistrer via CustomEase.create(nom, tracé) AVANT de construire la timeline." },
+    "textures": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["grain", "paper", "vignette", "scanlines", "tracking"],
+      "properties": {
+        "grain": { "anyOf": [ { "type": "null" }, { "type": "object", "required": ["amount", "size", "blend", "monochrome"] } ] },
+        "paper": { "anyOf": [ { "type": "null" }, { "type": "object", "required": ["amount", "blend", "frequency", "octaves"] } ] },
+        "vignette": { "anyOf": [ { "type": "null" }, { "type": "object", "required": ["amount", "softness", "color"] } ] },
+        "scanlines": { "anyOf": [ { "type": "null" }, { "type": "object", "required": ["amount", "spacing", "color"] } ] },
+        "tracking": { "anyOf": [ { "type": "null" }, { "type": "object", "required": ["amount", "height", "period", "shift"] } ] }
+      }
+    },
+    "glitch": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["windows", "amount", "colors", "mode", "layers"],
+          "properties": {
+            "windows": {
+              "type": "array",
+              "items": { "type": "array", "prefixItems": [ { "type": "number" }, { "type": "number", "exclusiveMinimum": 0 } ], "minItems": 2, "maxItems": 2 },
+              "description": "[début, durée] en secondes LOCALES, triées, fusionnées si elles se chevauchent."
+            },
+            "amount": { "type": "number", "minimum": 0, "maximum": 1 },
+            "colors": { "type": "array", "items": { "$ref": "#/$defs/hex" }, "minItems": 2, "maxItems": 2 },
+            "mode": { "enum": ["rgb", "slice", "both"] },
+            "layers": { "anyOf": [ { "type": "null" }, { "type": "array", "items": { "type": "string" } } ], "description": "null = tous les calques." }
+          }
+        }
+      ]
+    },
+    "plates": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["url", "frames", "width", "height"],
+        "properties": {
+          "url": { "type": "string", "pattern": "^http://mograph\\.render/build/.+/$", "description": "Dossier ; image i = url + format('%06d.png', i)." },
+          "frames": { "type": "integer", "minimum": 1 },
+          "width": { "type": "integer", "description": "Pixels réels de la plaque (peut être < w*dsf si plate_scale < 1)." },
+          "height": { "type": "integer" }
+        }
+      }
+    },
+    "layers": {
+      "type": "array",
+      "description": "Triés par z croissant puis ordre de déclaration (le DOM suit cet ordre).",
+      "items": { "$ref": "#/$defs/layer" }
+    }
+  },
+  "$defs": {
+    "hex": { "type": "string", "pattern": "^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$" },
+    "rect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["left", "top", "right", "bottom"],
+      "properties": {
+        "left": { "type": "number" }, "top": { "type": "number" },
+        "right": { "type": "number" }, "bottom": { "type": "number" }
+      },
+      "description": "Rectangle en px logiques (bords absolus, pas des marges)."
+    },
+    "font": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["family", "weight", "size", "line_height", "tracking", "color"],
+      "properties": {
+        "family": { "type": "string" },
+        "weight": { "type": "integer" },
+        "size": { "type": "number", "description": "px logiques" },
+        "line_height": { "type": "number", "description": "multiplicateur" },
+        "tracking": { "type": "number", "description": "em (CSS letter-spacing)" },
+        "color": { "$ref": "#/$defs/hex" }
+      }
+    },
+    "props": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "scale est TOUJOURS normalisé en scaleX + scaleY. x/y : nombre (px logiques) ou 'N%' (de la boîte de chaque cible, à convertir en px au montage).",
+      "properties": {
+        "x": { "anyOf": [ { "type": "number" }, { "type": "string", "pattern": "^-?\\d+(?:\\.\\d+)?%$" } ] },
+        "y": { "anyOf": [ { "type": "number" }, { "type": "string", "pattern": "^-?\\d+(?:\\.\\d+)?%$" } ] },
+        "scaleX": { "type": "number" },
+        "scaleY": { "type": "number" },
+        "rotation": { "type": "number" },
+        "skewX": { "type": "number" },
+        "skewY": { "type": "number" },
+        "opacity": { "type": "number" },
+        "draw": { "type": "number", "description": "0..1 fraction du trait visible -> strokeDashoffset = 1 - draw (pathLength=1)." },
+        "blur": { "type": "number", "description": "px logiques -> filter: blur()." },
+        "reveal": { "type": "number", "description": "0..1 fraction masquée -> clip-path inset() du côté opposé à reveal_dir." },
+        "color": { "$ref": "#/$defs/hex" },
+        "fill": { "$ref": "#/$defs/hex" },
+        "stroke": { "$ref": "#/$defs/hex" }
+      }
+    },
+    "tween": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target", "start", "dur", "ease", "stagger", "from", "to", "reveal_dir"],
+      "properties": {
+        "target": { "enum": ["self", "chars", "words", "lines", "shape", "bars"] },
+        "start": { "type": "number", "minimum": 0, "description": "Secondes locales (position dans la timeline maître)." },
+        "dur": { "type": "number", "exclusiveMinimum": 0 },
+        "ease": { "type": "string", "description": "Chaîne GSAP ('power2.out', 'back.out(1.7)', 'steps(6)', 'none' si allowLinear) ou nom enregistré dans custom_eases." },
+        "stagger": { "type": "number", "minimum": 0, "description": "Secondes entre éléments (0 si target=self|shape)." },
+        "from": { "$ref": "#/$defs/props" },
+        "to": { "$ref": "#/$defs/props", "description": "Mêmes clés exactement que from." },
+        "reveal_dir": { "enum": ["left", "right", "up", "down"] }
+      }
+    },
+    "layer": {
+      "type": "object",
+      "required": ["id", "type", "x", "y", "anchor", "z", "rotation", "scale", "opacity", "blend", "safe", "boil", "initial", "tweens"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "enum": ["text", "shape", "image", "sequence", "chart"] },
+        "x": { "type": "number", "description": "px logiques (CSS left du point d'ancrage)." },
+        "y": { "type": "number", "description": "px logiques (CSS top du point d'ancrage)." },
+        "anchor": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2, "description": "[ax, ay] -> xPercent = -ax*100, yPercent = -ay*100." },
+        "z": { "type": "integer" },
+        "rotation": { "type": "number" },
+        "scale": { "type": "number" },
+        "opacity": { "type": "number" },
+        "blend": { "type": "string" },
+        "safe": { "type": "boolean" },
+        "boil": { "anyOf": [ { "type": "null" }, { "type": "object", "required": ["amount", "freq", "step"] } ] },
+        "initial": {
+          "type": "object",
+          "description": "État AVANT toute animation, par cible : {'self': {...}, 'chars': {...}} = 'from' de la première tween de chaque (cible, propriété). Le runtime l'applique par gsap.set au montage ; toutes les tweens sont créées avec immediateRender:false.",
+          "additionalProperties": { "$ref": "#/$defs/props" }
+        },
+        "tweens": { "type": "array", "items": { "$ref": "#/$defs/tween" }, "description": "Triées par start. Pour une même (cible, propriété), from == to de la tween précédente (continuité) et jamais de chevauchement." },
+        "text": { "type": "string", "description": "text : casse déjà appliquée." },
+        "font": { "$ref": "#/$defs/font" },
+        "align": { "enum": ["left", "center", "right"] },
+        "max_width": { "anyOf": [ { "type": "number" }, { "type": "null" } ], "description": "null => white-space: pre (jamais de retour à la ligne automatique)." },
+        "split": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["chars", "words", "lines"],
+          "properties": { "chars": { "type": "boolean" }, "words": { "type": "boolean" }, "lines": { "type": "boolean" } }
+        },
+        "shape": { "enum": ["rect", "ellipse", "line", "path", "polygon"] },
+        "w": { "type": "number" },
+        "h": { "type": "number" },
+        "radius": { "type": "number" },
+        "fill": { "anyOf": [ { "$ref": "#/$defs/hex" }, { "const": "none" } ] },
+        "stroke": { "anyOf": [ { "$ref": "#/$defs/hex" }, { "const": "none" } ] },
+        "stroke_width": { "type": "number" },
+        "linecap": { "enum": ["butt", "round", "square"] },
+        "d": { "anyOf": [ { "type": "string" }, { "type": "null" } ] },
+        "points": { "anyOf": [ { "type": "array" }, { "type": "null" } ] },
+        "src": { "type": "string", "description": "image : URL http://mograph.render/assets/..." },
+        "fit": { "enum": ["cover", "contain", "fill"] },
+        "plate": { "type": "string", "description": "sequence : clé dans plates." },
+        "orientation": { "enum": ["vertical", "horizontal"] },
+        "data": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["label", "value", "color"],
+            "properties": { "label": { "type": "string" }, "value": { "type": "number" }, "color": { "$ref": "#/$defs/hex" } }
+          }
+        },
+        "max": { "type": "number" },
+        "gap": { "type": "number" },
+        "bar_radius": { "type": "number" },
+        "value_format": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["decimals", "prefix", "suffix"],
+          "properties": { "decimals": { "type": "integer" }, "prefix": { "type": "string" }, "suffix": { "type": "string" } }
+        },
+        "label_font": { "$ref": "#/$defs/font" },
+        "value_font": { "$ref": "#/$defs/font" },
+        "grow": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["start", "dur", "stagger", "ease"],
+          "properties": {
+            "start": { "type": "number", "minimum": 0 },
+            "dur": { "type": "number", "exclusiveMinimum": 0 },
+            "stagger": { "type": "number", "minimum": 0 },
+            "ease": { "type": "string", "description": "Garanti sans dépassement par le compilateur ; le runtime borne quand même la progression à [0, 1]." }
+          }
+        }
+      },
+      "allOf": [
+        { "if": { "properties": { "type": { "const": "text" } } }, "then": { "required": ["text", "font", "align", "max_width", "split"] } },
+        { "if": { "properties": { "type": { "const": "shape" } } }, "then": { "required": ["shape", "w", "h", "radius", "fill", "stroke", "stroke_width", "linecap", "d", "points"] } },
+        { "if": { "properties": { "type": { "const": "image" } } }, "then": { "required": ["src", "w", "h", "fit"] } },
+        { "if": { "properties": { "type": { "const": "sequence" } } }, "then": { "required": ["plate", "w", "h"] } },
+        { "if": { "properties": { "type": { "const": "chart" } } }, "then": { "required": ["w", "h", "orientation", "data", "max", "gap", "bar_radius", "value_format", "label_font", "value_font", "grow"] } }
+      ]
+    }
+  }
+}

@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<!--
+  player.html — page hôte du runtime mograph.
+  Chargée par le pilote à l'adresse config.PLAYER_URL (origine fictive http://mograph.render) :
+  toutes les ressources sont même-origine et servies UNIQUEMENT par la route Playwright.
+  Ordre imposé (CONTRACT §5) : runtime.css, gsap.min.js, CustomEase.min.js, runtime.js.
+  Les scripts sont en fin de <body>, synchrones et dans cet ordre : chacun trouve le précédent
+  chargé et le DOM déjà construit (pas besoin de DOMContentLoaded).
+-->
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>mograph player</title>
+  <link rel="stylesheet" href="http://mograph.render/runtime/runtime.css">
+</head>
+<body>
+  <div id="mg-root"></div>
+  <script src="http://mograph.render/node_modules/gsap/dist/gsap.min.js"></script>
+  <script src="http://mograph.render/node_modules/gsap/dist/CustomEase.min.js"></script>
+  <script src="http://mograph.render/runtime/runtime.js"></script>
+</body>
+</html>

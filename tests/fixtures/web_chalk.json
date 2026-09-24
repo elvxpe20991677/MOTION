@@ -1,0 +1,23 @@
+{
+  "$schema": "../../schema/scene.schema.json",
+  "version": "1.0",
+  "id": "web_chalk",
+  "title": "Fixture étape 12 : craie, on twos, boil, papier en screen",
+  "seed": 5,
+  "preset": "handmade_chalk",
+  "format": { "aspect": "16:9", "resolution": "1080p", "fps": 25, "alpha": false },
+  "outputs": [ { "profile": "hevc_main10" } ],
+  "qc": { "determinism_frames": 6 },
+  "shots": [
+    {
+      "id": "c",
+      "duration": 0.8,
+      "layers": [
+        { "id": "word", "type": "text", "text": "À la craie", "style": "display", "size": 170, "x": 960, "y": 470, "boil": true,
+          "anim": [ { "move": "wobble_in", "at": 0.0 } ] },
+        { "id": "line", "type": "shape", "shape": "line", "w": 700, "h": 20, "stroke": "primary", "strokeWidth": 10, "x": 960, "y": 610, "boil": true,
+          "anim": [ { "move": "draw", "at": 0.1 } ] }
+      ]
+    }
+  ]
+}

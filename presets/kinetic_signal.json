@@ -1,0 +1,81 @@
+{
+  "$schema": "../schema/preset.schema.json",
+  "id": "kinetic_signal",
+  "name": "Kinetic Signal",
+  "description": "Typographie cinétique brutale : capitales condensées Anton sur bleu électrique, orange signal pour l'impact. Chaque mot frappe (slam) avec écrasement élastique ; coupes franches, flou de mouvement réel pour les déplacements rapides.",
+  "styles": ["typo cinétique", "lyric video", "annonce", "réseaux sociaux"],
+  "palette": {
+    "bg": "#2A1FE6",
+    "fg": "#FFFFFF",
+    "primary": "#FF4B23",
+    "secondary": "#140E6B",
+    "accent": "#C8FF3D",
+    "ink": "#0A0833",
+    "flare": "#FF8A5C",
+    "haze": "#8F88FF"
+  },
+  "typography": {
+    "display": { "family": "Anton", "weight": 400, "tracking": 0.01, "lineHeight": 0.88, "case": "upper", "size": 220 },
+    "body": { "family": "Inter Tight", "weight": 600, "tracking": -0.01, "lineHeight": 1.2, "case": "none", "size": 38 }
+  },
+  "fonts": [
+    { "family": "Anton", "weight": 400, "style": "normal", "file": "@fontsource/anton/files/anton-latin-400-normal.woff2" },
+    { "family": "Inter Tight", "weight": 600, "style": "normal", "file": "@fontsource/inter-tight/files/inter-tight-latin-600-normal.woff2" }
+  ],
+  "motion": {
+    "eases": {
+      "default": "power3.out",
+      "enter": "signalWhip",
+      "exit": "power4.in",
+      "emphasis": "back.out(2.2)",
+      "anticipate": "back.inOut(1.7)",
+      "settle": "elastic.out(1,0.45)"
+    },
+    "customEases": {
+      "signalWhip": "M0,0 C0.7,0 0.12,1 1,1"
+    },
+    "durations": { "short": 0.18, "medium": 0.4, "long": 0.8 },
+    "stagger": 0.04,
+    "frame_step": 1,
+    "moves": {
+      "slam": [
+        { "offset": 0, "dur": 0.2, "from": { "scale": 2.4, "opacity": 0 }, "to": { "scale": 1, "opacity": 1 }, "ease": "power4.in" },
+        { "offset": 0.2, "dur": 0.06, "to": { "scaleX": 1.14, "scaleY": 0.82 }, "ease": "power2.out" },
+        { "offset": 0.26, "dur": 0.32, "to": { "scaleX": 1, "scaleY": 1 }, "ease": "back.out(3)" }
+      ],
+      "chars_drop": [
+        { "offset": 0, "dur": 0.42, "target": "chars", "stagger": 0.035, "from": { "y": "-120%", "opacity": 0, "rotation": -10 }, "to": { "y": 0, "opacity": 1, "rotation": 0 }, "ease": "back.out(2.2)" }
+      ],
+      "slide_anticipate": [
+        { "offset": 0, "dur": 0.5, "from": { "x": -260 }, "to": { "x": 0 }, "ease": "anticipate" },
+        { "offset": 0, "dur": 0.14, "from": { "opacity": 0 }, "to": { "opacity": 1 }, "ease": "power2.out" }
+      ],
+      "punch_out": [
+        { "offset": 0, "dur": 0.08, "to": { "scale": 1.12 }, "ease": "power2.out" },
+        { "offset": 0.08, "dur": 0.2, "to": { "scale": 0.2, "opacity": 0 }, "ease": "exit" }
+      ]
+    }
+  },
+  "textures": {
+    "grain": { "amount": 0.05, "size": 1.2, "blend": "overlay", "monochrome": true },
+    "paper": null,
+    "vignette": null,
+    "scanlines": null,
+    "tracking": null,
+    "boil": null
+  },
+  "composition": {
+    "grid": 6,
+    "margin": 0.05,
+    "type_scale": [38, 64, 110, 160, 220, 300],
+    "notes": "Un mot = un temps : un seul mot géant à l'écran, centré sur la zone sûre, qui occupe 60 à 80 % de la largeur. Blanc pour le texte courant, orange signal réservé au mot d'impact, lime en ponctuation rarissime. Pas de fondu : coupe franche au temps, l'impact visuel tombe EXACTEMENT sur la frappe (sync: end)."
+  },
+  "transitions": {
+    "default": "cut",
+    "crossfade": { "dur": 0.2 }
+  },
+  "render": {
+    "motion_blur": { "enabled": true, "samples": 8, "shutter": 0.5 }
+  },
+  "color": { "working": "srgb", "output": "rec709" }
+}

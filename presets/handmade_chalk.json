@@ -1,0 +1,82 @@
+{
+  "$schema": "../schema/preset.schema.json",
+  "id": "handmade_chalk",
+  "name": "Handmade Chalk",
+  "description": "Tableau noir d'école : ardoise vert-de-gris, craie blanche et craies de couleur pastel, écriture manuscrite Caveat. Animation tenue deux images (on twos), traits qui bouillent (boil) et poussière de craie en mode screen : le fait-main assumé.",
+  "styles": ["fait main", "pédagogie", "explainer", "storytelling"],
+  "palette": {
+    "bg": "#26352C",
+    "fg": "#F1EEE4",
+    "primary": "#F4D35E",
+    "secondary": "#F28FAD",
+    "accent": "#8FC9EA",
+    "dust": "#A9B3A5",
+    "moss": "#3A4B40",
+    "sage": "#B5D6A7"
+  },
+  "typography": {
+    "display": { "family": "Caveat", "weight": 700, "tracking": 0, "lineHeight": 1.0, "case": "none", "size": 140 },
+    "body": { "family": "Patrick Hand", "weight": 400, "tracking": 0.01, "lineHeight": 1.25, "case": "none", "size": 42 }
+  },
+  "fonts": [
+    { "family": "Caveat", "weight": 700, "style": "normal", "file": "@fontsource/caveat/files/caveat-latin-700-normal.woff2" },
+    { "family": "Patrick Hand", "weight": 400, "style": "normal", "file": "@fontsource/patrick-hand/files/patrick-hand-latin-400-normal.woff2" }
+  ],
+  "motion": {
+    "eases": {
+      "default": "sine.inOut",
+      "enter": "power2.out",
+      "exit": "power2.in",
+      "emphasis": "back.out(1.4)",
+      "anticipate": "chalkNudge",
+      "settle": "chalkWobble"
+    },
+    "customEases": {
+      "chalkWobble": "M0,0 C0.18,0.7 0.3,1.12 0.5,1.04 0.7,0.96 0.82,1.01 1,1",
+      "chalkNudge": "M0,0 C0.3,-0.12 0.42,1 1,1"
+    },
+    "durations": { "short": 0.3, "medium": 0.7, "long": 1.2 },
+    "stagger": 0.06,
+    "frame_step": 2,
+    "moves": {
+      "draw": [
+        { "offset": 0, "dur": 1.1, "target": "shape", "from": { "draw": 0 }, "to": { "draw": 1 }, "ease": "sine.inOut" }
+      ],
+      "write_on": [
+        { "offset": 0, "dur": 1.0, "from": { "reveal": 1 }, "to": { "reveal": 0 }, "ease": "power1.inOut" }
+      ],
+      "wobble_in": [
+        { "offset": 0, "dur": 0.7, "from": { "rotation": -7, "scale": 0.86 }, "to": { "rotation": 0, "scale": 1 }, "ease": "settle" },
+        { "offset": 0, "dur": 0.3, "from": { "opacity": 0 }, "to": { "opacity": 1 }, "ease": "sine.out" }
+      ],
+      "pop": [
+        { "offset": 0, "dur": 0.5, "from": { "scale": 0 }, "to": { "scale": 1 }, "ease": "emphasis" }
+      ],
+      "exit_down": [
+        { "offset": 0, "dur": 0.5, "to": { "y": 50, "opacity": 0 }, "ease": "exit" }
+      ]
+    }
+  },
+  "textures": {
+    "grain": { "amount": 0.06, "size": 1.4, "blend": "overlay", "monochrome": true },
+    "paper": { "amount": 0.12, "blend": "screen", "frequency": 0.9, "octaves": 5, "color": "#F1EEE4" },
+    "vignette": { "amount": 0.3, "softness": 0.7, "color": "#0E1612" },
+    "scanlines": null,
+    "tracking": null,
+    "boil": { "amount": 2, "freq": 0.03, "step": 2 }
+  },
+  "composition": {
+    "grid": 8,
+    "margin": 0.07,
+    "type_scale": [32, 42, 64, 96, 140, 190],
+    "notes": "Composition de tableau d'école : titre manuscrit en haut à gauche, schémas tracés au trait (draw) qui s'enchaînent comme si on les dessinait devant l'élève. Craie blanche pour le texte, craies jaune / rose / bleue pour souligner, entourer, flécher. Rien de parfaitement droit : légères rotations (-3° à 3°), boil sur les traits, animation tenue deux images."
+  },
+  "transitions": {
+    "default": "crossfade",
+    "crossfade": { "dur": 0.5 }
+  },
+  "render": {
+    "motion_blur": { "enabled": false, "samples": 8, "shutter": 0.5 }
+  },
+  "color": { "working": "srgb", "output": "rec709" }
+}

@@ -1,0 +1,16 @@
+# Environnements et dépendances (reproductibles depuis requirements.txt / package-lock.json)
+.venv/
+.venv-blender/
+node_modules/
+__pycache__/
+*.pyc
+
+# Rendus : lourds et régénérables
+build/
+out/**/*.mov
+out/**/*.mp4
+out/**/*.png
+assets/audio/*.wav
+
+# Dépôt d’un outil tiers, étranger au projet
+archive-*/

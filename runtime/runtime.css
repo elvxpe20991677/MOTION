@@ -1,0 +1,141 @@
+/*
+ * runtime.css — styles statiques du runtime mograph.
+ * Tout ce qui dépend du plan (tailles, couleurs, polices) est posé par runtime.js ; ce fichier ne
+ * fixe que ce qui doit être identique pour tous les plans.
+ */
+
+/* html/body transparents : le fond (ou la transparence en mode alpha) est porté par la scène,
+   et la capture omit_background=True conserve ainsi un vrai canal alpha. */
+html,
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+/* Rendu des glyphes par contours exacts : pas d'ajustement de taille lié au hinting,
+   la mise en page 4K (devicePixelRatio 2) est alors exactement celle du 1080p. */
+body {
+  text-rendering: geometricPrecision;
+  font-kerning: normal;
+  font-synthesis: none;              /* jamais de faux gras/italique : la police doit exister */
+  -webkit-font-smoothing: antialiased;
+}
+
+#mg-root {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+/* Scène : canevas logique, découpe et isolation des modes de fusion (posés par runtime.js). */
+.mg-stage {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* Contenu (fond + calques) : groupe isolé pour que mix-blend-mode des calques se mélange au fond
+   du plan, et que le filtre de bande de tracking s'applique à l'ensemble. */
+.mg-scene {
+  position: absolute;
+  left: 0;
+  top: 0;
+  isolation: isolate;
+}
+
+/* Calque : ancré par left/top, transformations et opacité pilotées par GSAP. */
+.mg-layer {
+  position: absolute;
+  width: max-content;
+  box-sizing: border-box;
+}
+
+/* Enveloppes d'effets (glitch, boil) : blocs neutres qui ne changent pas la taille du calque. */
+.mg-glitch,
+.mg-boil {
+  display: block;
+  position: relative;
+}
+
+/* Texte : une seule famille (aucune police de repli), largeur intrinsèque bornée par max-width. */
+.mg-text {
+  display: block;
+  width: max-content;
+  margin: 0;
+  padding: 0;
+  white-space: pre;
+}
+
+/* Découpes : inline-block pour que les transformations GSAP s'appliquent aux mots et caractères ;
+   un mot ne se coupe jamais en interne. */
+.mg-word,
+.mg-char {
+  display: inline-block;
+  white-space: pre;
+}
+
+.mg-line {
+  display: block;
+}
+
+/* Formes : le trait peut déborder de la boîte w x h (épaisseur centrée sur le contour). */
+.mg-shape {
+  display: block;
+  overflow: visible;
+}
+
+.mg-media {
+  display: block;
+}
+
+/* Graphique en barres : repère local absolu. */
+.mg-chart {
+  position: relative;
+}
+
+.mg-bar {
+  position: absolute;
+  box-sizing: border-box;
+}
+
+/* Libellés et valeurs : centrage par flex (reste centré même si le texte déborde la colonne). */
+.mg-chart-label,
+.mg-chart-value {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  white-space: pre;
+}
+
+.mg-chart-value {
+  font-variant-numeric: tabular-nums;   /* chiffres à chasse fixe : le compteur ne « tremble » pas */
+}
+
+/* Superpositions de texture : au-dessus de la scène, jamais interactives. */
+.mg-overlay {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+}
+
+/* Tuiles de grain : texels nets (pas de lissage si l'échelle n'est pas exactement 1:1). */
+.mg-grain {
+  position: absolute;
+  pointer-events: none;
+  background-repeat: repeat;
+  image-rendering: pixelated;
+  visibility: hidden;
+}
+
+/* Définitions SVG (filtres) : présentes dans le DOM mais sans surface affichée. */
+.mg-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}

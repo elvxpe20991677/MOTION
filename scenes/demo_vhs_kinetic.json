@@ -1,0 +1,334 @@
+{
+  "$schema": "../schema/scene.schema.json",
+  "version": "1.0",
+  "id": "demo_vhs_kinetic",
+  "title": "Tout se rejoue — typo cinétique VHS",
+  "brief": "Format vertical pour les réseaux : une phrase martelée mot à mot sur une boucle à 120 BPM, chaque mot frappe exactement sur le temps, avec un accroc de bande VHS à chaque impact.",
+  "seed": 120,
+  "preset": "vhs_glitch",
+  "format": {
+    "aspect": "9:16",
+    "resolution": "1080p",
+    "fps": 30,
+    "alpha": false
+  },
+  "audio": {
+    "src": "assets/audio/beat_120.wav",
+    "bpm": 120,
+    "offset": 0,
+    "beats_per_bar": 4,
+    "synth": {
+      "kind": "beat"
+    }
+  },
+  "storyboard": [
+    {
+      "shot": "phrase",
+      "intent": "Faire sentir le tempo : l'œil reçoit un mot par temps, l'impact visuel coïncide avec la grosse caisse.",
+      "notes": "Mots centrés sur la zone sûre titre (et non sur le cadre) pour rester lisibles sous l'interface des réseaux ; glitch bref sur chaque temps."
+    }
+  ],
+  "outputs": [
+    {
+      "profile": "hevc_main10",
+      "crf": 18
+    },
+    {
+      "profile": "prores_422hq"
+    }
+  ],
+  "qc": {
+    "safe_zone": "title",
+    "safe_zone_tolerance_s": 0.5,
+    "allow_black_s": 0,
+    "determinism_frames": 8,
+    "loudness_target_lufs": -14
+  },
+  "shots": [
+    {
+      "id": "phrase",
+      "duration": "beats:10",
+      "background": "bg",
+      "fx": {
+        "glitch": {
+          "on_beats": {
+            "from": 1,
+            "to": 9,
+            "every": 1,
+            "length": 0.1
+          },
+          "amount": 0.7,
+          "mode": "both",
+          "colors": [
+            "primary",
+            "secondary"
+          ]
+        }
+      },
+      "layers": [
+        {
+          "id": "counter",
+          "type": "text",
+          "text": "LECTURE  00:00:00",
+          "style": "body",
+          "size": 40,
+          "color": "accent",
+          "x": "safe:0%",
+          "y": "safe:0%",
+          "anchor": "top-left",
+          "z": 5,
+          "anim": [
+            {
+              "move": "flicker_in",
+              "at": 0
+            }
+          ]
+        },
+        {
+          "id": "w1",
+          "type": "text",
+          "text": "TOUT",
+          "style": "display",
+          "size": 384,
+          "color": "primary",
+          "align": "center",
+          "x": "safe:50%",
+          "y": "safe:50%",
+          "anchor": "center",
+          "z": 1,
+          "anim": [
+            {
+              "move": "slam_step",
+              "at": "beat:1",
+              "sync": "end"
+            },
+            {
+              "at": "beat:2-0.2",
+              "dur": 0.1,
+              "to": {
+                "opacity": 0
+              },
+              "ease": "steps(2)"
+            }
+          ]
+        },
+        {
+          "id": "w2",
+          "type": "text",
+          "text": "SE",
+          "style": "display",
+          "size": 480,
+          "color": "secondary",
+          "align": "center",
+          "x": "safe:50%",
+          "y": "safe:50%",
+          "anchor": "center",
+          "z": 1,
+          "anim": [
+            {
+              "move": "slam_step",
+              "at": "beat:2",
+              "sync": "end"
+            },
+            {
+              "at": "beat:3-0.2",
+              "dur": 0.1,
+              "to": {
+                "opacity": 0
+              },
+              "ease": "steps(2)"
+            }
+          ]
+        },
+        {
+          "id": "w3",
+          "type": "text",
+          "text": "REJOUE",
+          "style": "display",
+          "size": 256,
+          "color": "accent",
+          "align": "center",
+          "x": "safe:50%",
+          "y": "safe:50%",
+          "anchor": "center",
+          "z": 1,
+          "anim": [
+            {
+              "move": "slam_step",
+              "at": "beat:3",
+              "sync": "end"
+            },
+            {
+              "at": "beat:4-0.2",
+              "dur": 0.1,
+              "to": {
+                "opacity": 0
+              },
+              "ease": "steps(2)"
+            }
+          ]
+        },
+        {
+          "id": "w4",
+          "type": "text",
+          "text": "SUR",
+          "style": "display",
+          "size": 480,
+          "color": "primary",
+          "align": "center",
+          "x": "safe:50%",
+          "y": "safe:50%",
+          "anchor": "center",
+          "z": 1,
+          "anim": [
+            {
+              "move": "slam_step",
+              "at": "beat:4",
+              "sync": "end"
+            },
+            {
+              "at": "beat:5-0.2",
+              "dur": 0.1,
+              "to": {
+                "opacity": 0
+              },
+              "ease": "steps(2)"
+            }
+          ]
+        },
+        {
+          "id": "w5",
+          "type": "text",
+          "text": "LA",
+          "style": "display",
+          "size": 480,
+          "color": "secondary",
+          "align": "center",
+          "x": "safe:50%",
+          "y": "safe:50%",
+          "anchor": "center",
+          "z": 1,
+          "anim": [
+            {
+              "move": "slam_step",
+              "at": "beat:5",
+              "sync": "end"
+            },
+            {
+              "at": "beat:6-0.2",
+              "dur": 0.1,
+              "to": {
+                "opacity": 0
+              },
+              "ease": "steps(2)"
+            }
+          ]
+        },
+        {
+          "id": "w6",
+          "type": "text",
+          "text": "BANDE",
+          "style": "display",
+          "size": 307,
+          "color": "accent",
+          "align": "center",
+          "x": "safe:50%",
+          "y": "safe:50%",
+          "anchor": "center",
+          "z": 1,
+          "anim": [
+            {
+              "move": "slam_step",
+              "at": "beat:6",
+              "sync": "end"
+            },
+            {
+              "at": "beat:7-0.2",
+              "dur": 0.1,
+              "to": {
+                "opacity": 0
+              },
+              "ease": "steps(2)"
+            }
+          ]
+        },
+        {
+          "id": "w7",
+          "type": "text",
+          "text": "À",
+          "style": "display",
+          "size": 480,
+          "color": "primary",
+          "align": "center",
+          "x": "safe:50%",
+          "y": "safe:50%",
+          "anchor": "center",
+          "z": 1,
+          "anim": [
+            {
+              "move": "slam_step",
+              "at": "beat:7",
+              "sync": "end"
+            },
+            {
+              "at": "beat:8-0.2",
+              "dur": 0.1,
+              "to": {
+                "opacity": 0
+              },
+              "ease": "steps(2)"
+            }
+          ]
+        },
+        {
+          "id": "w8",
+          "type": "text",
+          "text": "CHAQUE",
+          "style": "display",
+          "size": 256,
+          "color": "secondary",
+          "align": "center",
+          "x": "safe:50%",
+          "y": "safe:50%",
+          "anchor": "center",
+          "z": 1,
+          "anim": [
+            {
+              "move": "slam_step",
+              "at": "beat:8",
+              "sync": "end"
+            },
+            {
+              "at": "beat:9-0.2",
+              "dur": 0.1,
+              "to": {
+                "opacity": 0
+              },
+              "ease": "steps(2)"
+            }
+          ]
+        },
+        {
+          "id": "w9",
+          "type": "text",
+          "text": "TEMPS",
+          "style": "display",
+          "size": 307,
+          "color": "accent",
+          "align": "center",
+          "x": "safe:50%",
+          "y": "safe:50%",
+          "anchor": "center",
+          "z": 1,
+          "anim": [
+            {
+              "move": "slam_step",
+              "at": "beat:9",
+              "sync": "end"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

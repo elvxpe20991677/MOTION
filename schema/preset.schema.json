@@ -1,0 +1,792 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "http://mograph.render/schema/preset.schema.json",
+  "title": "Preset mograph",
+  "description": "Direction artistique complète : palette, typographie, polices embarquées, grammaire de mouvement, textures, composition, transitions, rendu et (optionnel) look 3D Blender.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "name",
+    "styles",
+    "palette",
+    "typography",
+    "fonts",
+    "motion",
+    "textures",
+    "composition",
+    "transitions",
+    "render",
+    "color"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_]*$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string"
+    },
+    "styles": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1,
+      "description": "Usages visés (infographie, typo cinétique...)."
+    },
+    "palette": {
+      "type": "object",
+      "required": [
+        "bg",
+        "fg",
+        "primary",
+        "secondary",
+        "accent"
+      ],
+      "propertyNames": {
+        "pattern": "^[a-z][A-Za-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/hexColor"
+      },
+      "properties": {
+        "bg": {
+          "$ref": "#/$defs/hexColor"
+        },
+        "fg": {
+          "$ref": "#/$defs/hexColor"
+        },
+        "primary": {
+          "$ref": "#/$defs/hexColor"
+        },
+        "secondary": {
+          "$ref": "#/$defs/hexColor"
+        },
+        "accent": {
+          "$ref": "#/$defs/hexColor"
+        }
+      }
+    },
+    "typography": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "display",
+        "body"
+      ],
+      "properties": {
+        "display": {
+          "$ref": "#/$defs/typeStyle"
+        },
+        "body": {
+          "$ref": "#/$defs/typeStyle"
+        }
+      }
+    },
+    "fonts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "family",
+          "weight",
+          "file"
+        ],
+        "properties": {
+          "family": {
+            "type": "string",
+            "minLength": 1
+          },
+          "weight": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 900
+          },
+          "style": {
+            "enum": [
+              "normal",
+              "italic"
+            ],
+            "default": "normal"
+          },
+          "file": {
+            "type": "string",
+            "pattern": "^@fontsource/[a-z0-9-]+/files/[a-z0-9-]+\\.woff2$",
+            "description": "Chemin relatif à node_modules."
+          },
+          "unicodeRange": {
+            "type": "string",
+            "description": "Défaut : lu dans le CSS @fontsource du sous-ensemble."
+          }
+        }
+      }
+    },
+    "motion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eases",
+        "customEases",
+        "durations",
+        "stagger",
+        "frame_step",
+        "moves"
+      ],
+      "properties": {
+        "eases": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "default",
+            "enter",
+            "exit",
+            "emphasis",
+            "anticipate",
+            "settle"
+          ],
+          "properties": {
+            "default": {
+              "$ref": "#/$defs/easeString"
+            },
+            "enter": {
+              "$ref": "#/$defs/easeString"
+            },
+            "exit": {
+              "$ref": "#/$defs/easeString"
+            },
+            "emphasis": {
+              "$ref": "#/$defs/easeString"
+            },
+            "anticipate": {
+              "$ref": "#/$defs/easeString"
+            },
+            "settle": {
+              "$ref": "#/$defs/easeString"
+            }
+          }
+        },
+        "customEases": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^M\\s*-?[0-9.]+\\s*,\\s*-?[0-9.]+\\s*C[-0-9., ]+$",
+            "description": "Tracé SVG CustomEase normalisé 0..1."
+          }
+        },
+        "durations": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "short",
+            "medium",
+            "long"
+          ],
+          "properties": {
+            "short": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "medium": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "long": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          }
+        },
+        "stagger": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Décalage par défaut entre éléments (s)."
+        },
+        "frame_step": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4,
+          "description": "2 = animation tenue deux images (on twos)."
+        },
+        "moves": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/$defs/moveStep"
+            }
+          }
+        }
+      }
+    },
+    "textures": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "grain": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "amount"
+              ],
+              "properties": {
+                "amount": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "size": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "default": 1,
+                  "description": "Taille du grain en px logiques."
+                },
+                "blend": {
+                  "$ref": "#/$defs/blendMode"
+                },
+                "monochrome": {
+                  "type": "boolean",
+                  "default": true
+                }
+              }
+            }
+          ]
+        },
+        "paper": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "amount"
+              ],
+              "properties": {
+                "amount": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "blend": {
+                  "$ref": "#/$defs/blendMode"
+                },
+                "frequency": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "description": "baseFrequency de feTurbulence."
+                },
+                "octaves": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 8
+                },
+                "color": {
+                  "$ref": "#/$defs/hexColor"
+                }
+              }
+            }
+          ]
+        },
+        "vignette": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "amount"
+              ],
+              "properties": {
+                "amount": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "softness": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "color": {
+                  "$ref": "#/$defs/hexColor"
+                }
+              }
+            }
+          ]
+        },
+        "scanlines": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "amount"
+              ],
+              "properties": {
+                "amount": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "spacing": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "description": "Pas en px logiques."
+                },
+                "color": {
+                  "$ref": "#/$defs/hexColor"
+                }
+              }
+            }
+          ]
+        },
+        "tracking": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "amount"
+              ],
+              "properties": {
+                "amount": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "height": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "description": "Hauteur de la bande en fraction du canevas."
+                },
+                "period": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "description": "Secondes pour traverser le cadre."
+                },
+                "shift": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Décalage horizontal max en px logiques."
+                }
+              }
+            }
+          ]
+        },
+        "boil": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "amount": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "freq": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "step": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "composition": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "grid",
+        "notes"
+      ],
+      "properties": {
+        "grid": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Nombre de colonnes de la grille de mise en page."
+        },
+        "margin": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Marge conseillée en fraction du canevas."
+        },
+        "type_scale": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "description": "Échelle typographique conseillée (px logiques)."
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "transitions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "default"
+      ],
+      "properties": {
+        "default": {
+          "enum": [
+            "cut",
+            "crossfade"
+          ]
+        },
+        "crossfade": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "dur"
+          ],
+          "properties": {
+            "dur": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          }
+        }
+      }
+    },
+    "render": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "motion_blur"
+      ],
+      "properties": {
+        "motion_blur": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled"
+          ],
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "samples": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 64
+            },
+            "shutter": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1
+            }
+          }
+        }
+      }
+    },
+    "color": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "working",
+        "output"
+      ],
+      "properties": {
+        "working": {
+          "const": "srgb"
+        },
+        "output": {
+          "const": "rec709"
+        }
+      }
+    },
+    "blender": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "device": {
+          "enum": [
+            "auto",
+            "CPU",
+            "OPTIX",
+            "CUDA"
+          ],
+          "default": "auto"
+        },
+        "samples": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8192
+        },
+        "adaptive_threshold": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        },
+        "denoise": {
+          "type": "boolean"
+        },
+        "view_transform": {
+          "type": "string",
+          "minLength": 1
+        },
+        "look": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Nom court (ex. 'Base Contrast') ; le backend essaie aussi 'AgX - <nom>'."
+        },
+        "exposure": {
+          "type": "number"
+        },
+        "bounces": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "total": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "diffuse": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "glossy": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "transmission": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "transparent": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "volume": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "caustics": {
+          "type": "boolean",
+          "default": false
+        },
+        "motion_blur_shutter": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2,
+          "description": "0 = pas de flou de mouvement Cycles."
+        },
+        "lens": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "fstop": {
+          "anyOf": [
+            {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "world": {
+          "$ref": "http://mograph.render/schema/scene.schema.json#/$defs/world"
+        },
+        "materials": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "$ref": "http://mograph.render/schema/scene.schema.json#/$defs/material"
+          }
+        },
+        "light_rig": {
+          "type": "array",
+          "items": {
+            "$ref": "http://mograph.render/schema/scene.schema.json#/$defs/light"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "hexColor": {
+      "type": "string",
+      "pattern": "^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$"
+    },
+    "blendMode": {
+      "enum": [
+        "normal",
+        "multiply",
+        "screen",
+        "overlay",
+        "darken",
+        "lighten",
+        "color-dodge",
+        "color-burn",
+        "hard-light",
+        "soft-light",
+        "difference",
+        "exclusion"
+      ]
+    },
+    "easeString": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Ease GSAP ou nom de customEases."
+    },
+    "typeStyle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "family",
+        "weight",
+        "tracking",
+        "lineHeight",
+        "case"
+      ],
+      "properties": {
+        "family": {
+          "type": "string",
+          "minLength": 1
+        },
+        "weight": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 900
+        },
+        "tracking": {
+          "type": "number",
+          "description": "em"
+        },
+        "lineHeight": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "case": {
+          "enum": [
+            "none",
+            "upper",
+            "lower",
+            "title"
+          ]
+        },
+        "size": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Taille par défaut en px logiques (canevas 1080 de haut de référence)."
+        }
+      }
+    },
+    "moveStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dur"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "to"
+          ]
+        },
+        {
+          "required": [
+            "from"
+          ]
+        }
+      ],
+      "properties": {
+        "offset": {
+          "type": "number",
+          "minimum": 0,
+          "default": 0,
+          "description": "Départ relatif au début du mouvement (s)."
+        },
+        "dur": {
+          "anyOf": [
+            {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            {
+              "enum": [
+                "short",
+                "medium",
+                "long"
+              ]
+            }
+          ]
+        },
+        "from": {
+          "$ref": "http://mograph.render/schema/scene.schema.json#/$defs/animProps"
+        },
+        "to": {
+          "$ref": "http://mograph.render/schema/scene.schema.json#/$defs/animProps"
+        },
+        "ease": {
+          "$ref": "#/$defs/easeString"
+        },
+        "stagger": {
+          "type": "number",
+          "minimum": 0
+        },
+        "target": {
+          "enum": [
+            "self",
+            "chars",
+            "words",
+            "lines",
+            "shape",
+            "bars"
+          ],
+          "default": "self"
+        }
+      }
+    }
+  }
+}

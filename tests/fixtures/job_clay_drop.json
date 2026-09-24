@@ -1,0 +1,124 @@
+{
+  "contract": "mograph-blender-job/1",
+  "scene_id": "clay_drop",
+  "shot_id": "drop",
+  "plate_id": "clay",
+  "out_dir": "C:/Users/perro/Desktop/MOTION/build/_tests/step13/fixture_clay_drop",
+  "frames": 24,
+  "fps": 24,
+  "width": 540,
+  "height": 540,
+  "transparent": false,
+  "seed": 1504417803,
+  "render": {
+    "device": "auto",
+    "samples": 24,
+    "adaptive_threshold": 0.01,
+    "denoise": true,
+    "view_transform": "AgX",
+    "look": "Base Contrast",
+    "exposure": 0,
+    "bounces": { "total": 8, "diffuse": 4, "glossy": 4, "transmission": 4, "transparent": 8, "volume": 0 },
+    "caustics": false,
+    "motion_blur_shutter": 0.5
+  },
+  "world": { "color": "#E9E4FF", "strength": 0.5, "sky": null },
+  "camera": {
+    "location": [1.2, -6.9, 2.4],
+    "target": [0, 0, 0.8],
+    "lens": 32,
+    "fstop": null,
+    "sensor_width": 36,
+    "channels": [
+      {
+        "prop": "location",
+        "keys": [
+          { "frame": 0, "value": [1.2, -6.9, 2.4], "out": { "interpolation": "SINE", "easing": "EASE_IN_OUT" } },
+          { "frame": 23, "value": [-0.9, -6.4, 2.0], "out": null }
+        ]
+      }
+    ]
+  },
+  "lights": [
+    {
+      "id": "key", "type": "AREA", "shape": "DISK", "size": 3.0, "size_y": 3.0, "energy": 900, "color": "#FFF3E6",
+      "location": [4.5, -4.0, 6.0], "target": [0, 0, 0.5], "spot_size": 45, "angle": 0.526, "channels": []
+    },
+    {
+      "id": "fill", "type": "AREA", "shape": "DISK", "size": 5.0, "size_y": 5.0, "energy": 300, "color": "#E8EEFF",
+      "location": [-6.0, -3.0, 3.0], "target": [0, 0, 0.8], "spot_size": 45, "angle": 0.526, "channels": []
+    },
+    {
+      "id": "rim", "type": "AREA", "shape": "DISK", "size": 2.0, "size_y": 2.0, "energy": 700, "color": "#FFFFFF",
+      "location": [-1.0, 5.0, 4.5], "target": [0, 0, 0.8], "spot_size": 45, "angle": 0.526, "channels": []
+    }
+  ],
+  "objects": [
+    {
+      "id": "studio", "primitive": "cyclorama", "size": 30, "minor": 12, "bevel": 4,
+      "location": [0, 3, 0], "rotation": [0, 0, 0], "scale": [2.5, 1, 1],
+      "material": {
+        "name": "studio_lilac", "base_color": "#E9E4FF", "roughness": 0.85, "metallic": 0, "specular": 0.5,
+        "sheen": 0, "sheen_roughness": 0.5, "coat": 0, "coat_roughness": 0.03, "subsurface": 0, "transmission": 0,
+        "ior": 1.45, "anisotropic": 0, "emission": "#000000", "emission_strength": 0
+      },
+      "channels": []
+    },
+    {
+      "id": "ball", "primitive": "sphere", "size": 1, "minor": 0.25, "bevel": 0,
+      "location": [0, 0, 3.9], "rotation": [0, 0, 0], "scale": [1, 1, 1],
+      "material": {
+        "name": "clay_coral", "base_color": "#FF7A6B", "roughness": 0.55, "metallic": 0, "specular": 0.5,
+        "sheen": 0.35, "sheen_roughness": 0.5, "coat": 0, "coat_roughness": 0.03, "subsurface": 0, "transmission": 0,
+        "ior": 1.45, "anisotropic": 0, "emission": "#000000", "emission_strength": 0
+      },
+      "channels": [
+        {
+          "prop": "location",
+          "keys": [
+            { "frame": 0, "value": [0, 0, 3.9], "out": { "interpolation": "CUBIC", "easing": "EASE_IN" } },
+            { "frame": 12, "value": [0, 0, 0.5], "out": { "interpolation": "CUBIC", "easing": "EASE_OUT" } },
+            { "frame": 15, "value": [0, 0, 0.36], "out": { "interpolation": "BACK", "easing": "EASE_OUT", "back": 1.70158 } },
+            { "frame": 20, "value": [0, 0, 0.5], "out": null }
+          ]
+        },
+        {
+          "prop": "scale",
+          "keys": [
+            { "frame": 12, "value": [1, 1, 1], "out": { "interpolation": "CUBIC", "easing": "EASE_OUT" } },
+            { "frame": 15, "value": [1.18, 1.18, 0.72], "out": { "interpolation": "BACK", "easing": "EASE_OUT", "back": 1.70158 } },
+            { "frame": 20, "value": [1, 1, 1], "out": null }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "block", "primitive": "rounded_cube", "size": 0.9, "minor": 0.25, "bevel": 0.12,
+      "location": [1.35, 0.35, 0.45], "rotation": [0, 0, -18], "scale": [1, 1, 1],
+      "material": {
+        "name": "clay_indigo", "base_color": "#6C7BFF", "roughness": 0.6, "metallic": 0, "specular": 0.5,
+        "sheen": 0.2, "sheen_roughness": 0.5, "coat": 0, "coat_roughness": 0.03, "subsurface": 0, "transmission": 0,
+        "ior": 1.45, "anisotropic": 0, "emission": "#000000", "emission_strength": 0
+      },
+      "channels": []
+    },
+    {
+      "id": "ring", "primitive": "torus", "size": 1.1, "minor": 0.14, "bevel": 0,
+      "location": [-1.4, 0.4, 0.55], "rotation": [90, 0, 35], "scale": [1, 1, 1],
+      "material": {
+        "name": "clay_butter", "base_color": "#FFD166", "roughness": 0.45, "metallic": 0, "specular": 0.5,
+        "sheen": 0, "sheen_roughness": 0.5, "coat": 0.3, "coat_roughness": 0.1, "subsurface": 0, "transmission": 0,
+        "ior": 1.45, "anisotropic": 0, "emission": "#000000", "emission_strength": 0
+      },
+      "channels": [
+        {
+          "prop": "rotation",
+          "keys": [
+            { "frame": 2.5, "value": [90, 0, 35], "out": { "interpolation": "QUART", "easing": "EASE_IN_OUT" } },
+            { "frame": 21.5, "value": [90, 0, 125], "out": null }
+          ]
+        }
+      ]
+    }
+  ]
+}

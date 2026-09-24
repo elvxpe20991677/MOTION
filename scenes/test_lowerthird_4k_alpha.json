@@ -1,0 +1,156 @@
+{
+  "$schema": "../schema/scene.schema.json",
+  "version": "1.0",
+  "id": "test_lowerthird_4k_alpha",
+  "title": "Bandeau nominatif 4K à couche alpha",
+  "brief": "Test de livraison : bandeau nominatif incrustable (ProRes 4444 à alpha) en 4K, entrée et sortie rapides avec flou de mouvement, plus une version HEVC aplatie sur noir.",
+  "seed": 44,
+  "preset": "kinetic_signal",
+  "format": {
+    "aspect": "16:9",
+    "resolution": "4k",
+    "fps": 25,
+    "alpha": true
+  },
+  "quality": {
+    "motion_blur": {
+      "enabled": true,
+      "samples": 4,
+      "shutter": 0.5
+    }
+  },
+  "storyboard": [
+    {
+      "shot": "lower",
+      "intent": "Identifier l'intervenante sans masquer l'image : entrée nerveuse, lecture confortable, sortie franche.",
+      "notes": "Tout dans la zone sûre titre, en bas à gauche ; mouvements horizontaux rapides pour éprouver le flou de mouvement et l'alpha des bords."
+    }
+  ],
+  "outputs": [
+    {
+      "profile": "prores_4444"
+    },
+    {
+      "profile": "hevc_main10",
+      "crf": 18,
+      "suffix": "_flat"
+    }
+  ],
+  "qc": {
+    "safe_zone": "title",
+    "safe_zone_tolerance_s": 0.5,
+    "allow_black_s": 0,
+    "determinism_frames": 8,
+    "loudness_target_lufs": -14
+  },
+  "shots": [
+    {
+      "id": "lower",
+      "duration": 2.0,
+      "layers": [
+        {
+          "id": "bar",
+          "type": "shape",
+          "shape": "rect",
+          "w": 780,
+          "h": 150,
+          "fill": "primary",
+          "x": 96,
+          "y": 895,
+          "anchor": "left",
+          "z": 0,
+          "anim": [
+            {
+              "move": "slide_anticipate",
+              "at": 0.04,
+              "from": {
+                "x": -900
+              }
+            },
+            {
+              "at": 1.5,
+              "dur": 0.3,
+              "to": {
+                "x": -1000
+              },
+              "ease": "exit"
+            }
+          ]
+        },
+        {
+          "id": "plate",
+          "type": "shape",
+          "shape": "rect",
+          "w": 560,
+          "h": 58,
+          "fill": "bg",
+          "x": 96,
+          "y": 990,
+          "anchor": "left",
+          "z": 1,
+          "anim": [
+            {
+              "move": "slide_anticipate",
+              "at": 0.16,
+              "from": {
+                "x": -700
+              }
+            },
+            {
+              "at": 1.45,
+              "dur": 0.3,
+              "to": {
+                "x": -800
+              },
+              "ease": "exit"
+            }
+          ]
+        },
+        {
+          "id": "name",
+          "type": "text",
+          "text": "Camille Martin",
+          "style": "display",
+          "size": 104,
+          "color": "fg",
+          "x": 130,
+          "y": 895,
+          "anchor": "left",
+          "z": 2,
+          "anim": [
+            {
+              "move": "chars_drop",
+              "at": 0.3
+            },
+            {
+              "move": "punch_out",
+              "at": 1.35
+            }
+          ]
+        },
+        {
+          "id": "role",
+          "type": "text",
+          "text": "Directrice artistique",
+          "style": "body",
+          "size": 36,
+          "color": "fg",
+          "x": 118,
+          "y": 990,
+          "anchor": "left",
+          "z": 2,
+          "anim": [
+            {
+              "move": "slide_anticipate",
+              "at": 0.62
+            },
+            {
+              "move": "punch_out",
+              "at": 1.4
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

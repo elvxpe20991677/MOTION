@@ -1,0 +1,87 @@
+{
+  "$schema": "../schema/preset.schema.json",
+  "id": "vhs_glitch",
+  "name": "VHS Glitch",
+  "description": "Esthétique cassette des années 90 : nuit violette, phosphores cyan / magenta / ambre, police d'écran VT323, lignes de balayage, bande de tracking qui dérive, vignette de tube cathodique. Tout bouge en escalier (steps) comme un magnétoscope qui saute des images ; pas de flou de mouvement.",
+  "styles": ["VHS", "glitch", "rétro", "typo cinétique", "réseaux sociaux"],
+  "palette": {
+    "bg": "#0D0A1C",
+    "fg": "#ECE9FF",
+    "primary": "#37F2FF",
+    "secondary": "#FF2BD1",
+    "accent": "#FFB21C",
+    "phosphor": "#B6FFE0",
+    "static": "#6B6590",
+    "night": "#1C1538"
+  },
+  "typography": {
+    "display": { "family": "VT323", "weight": 400, "tracking": 0.04, "lineHeight": 0.9, "case": "upper", "size": 180 },
+    "body": { "family": "Space Mono", "weight": 400, "tracking": 0.02, "lineHeight": 1.35, "case": "none", "size": 32 }
+  },
+  "fonts": [
+    { "family": "VT323", "weight": 400, "style": "normal", "file": "@fontsource/vt323/files/vt323-latin-400-normal.woff2" },
+    { "family": "Space Mono", "weight": 400, "style": "normal", "file": "@fontsource/space-mono/files/space-mono-latin-400-normal.woff2" },
+    { "family": "Space Mono", "weight": 700, "style": "normal", "file": "@fontsource/space-mono/files/space-mono-latin-700-normal.woff2" }
+  ],
+  "motion": {
+    "eases": {
+      "default": "steps(6)",
+      "enter": "steps(8)",
+      "exit": "steps(5)",
+      "emphasis": "steps(3)",
+      "anticipate": "steps(4)",
+      "settle": "steps(10)"
+    },
+    "customEases": {},
+    "durations": { "short": 0.2, "medium": 0.5, "long": 1.0 },
+    "stagger": 0.05,
+    "frame_step": 1,
+    "moves": {
+      "type_on": [
+        { "offset": 0, "dur": 0.04, "target": "chars", "stagger": 0.06, "from": { "opacity": 0 }, "to": { "opacity": 1 }, "ease": "steps(1)" }
+      ],
+      "flicker_in": [
+        { "offset": 0, "dur": 0.1, "from": { "opacity": 0 }, "to": { "opacity": 1 }, "ease": "steps(2)" },
+        { "offset": 0.1, "dur": 0.06, "to": { "opacity": 0.25 }, "ease": "steps(1)" },
+        { "offset": 0.16, "dur": 0.12, "to": { "opacity": 1 }, "ease": "steps(3)" },
+        { "offset": 0, "dur": 0.28, "from": { "skewX": -14 }, "to": { "skewX": 0 }, "ease": "steps(4)" }
+      ],
+      "slam_step": [
+        { "offset": 0, "dur": 0.16, "from": { "scale": 1.8, "opacity": 0 }, "to": { "scale": 1, "opacity": 1 }, "ease": "steps(4)" },
+        { "offset": 0.16, "dur": 0.1, "to": { "skewX": -12, "x": 10 }, "ease": "steps(2)" },
+        { "offset": 0.26, "dur": 0.12, "to": { "skewX": 0, "x": 0 }, "ease": "steps(3)" }
+      ],
+      "jitter_out": [
+        { "offset": 0, "dur": 0.08, "to": { "x": 16 }, "ease": "steps(2)" },
+        { "offset": 0.08, "dur": 0.08, "to": { "x": -12 }, "ease": "steps(2)" },
+        { "offset": 0.16, "dur": 0.12, "to": { "x": 24 }, "ease": "steps(3)" },
+        { "offset": 0, "dur": 0.28, "to": { "opacity": 0 }, "ease": "steps(4)" }
+      ],
+      "rise": [
+        { "offset": 0, "dur": 0.5, "from": { "y": 36, "opacity": 0 }, "to": { "y": 0, "opacity": 1 }, "ease": "enter" }
+      ]
+    }
+  },
+  "textures": {
+    "grain": { "amount": 0.16, "size": 1.5, "blend": "overlay", "monochrome": false },
+    "paper": null,
+    "vignette": { "amount": 0.45, "softness": 0.55, "color": "#000000" },
+    "scanlines": { "amount": 0.35, "spacing": 3, "color": "#000000" },
+    "tracking": { "amount": 0.6, "height": 0.06, "period": 2.5, "shift": 18 },
+    "boil": null
+  },
+  "composition": {
+    "grid": 4,
+    "margin": 0.06,
+    "type_scale": [28, 34, 56, 120, 180, 250],
+    "notes": "Écran de magnétoscope : horodatage / compteur en Space Mono dans un coin de la zone sûre, un mot géant VT323 centré par temps. Cyan et magenta alternent d'un mot à l'autre, l'ambre sert aux indications d'interface (LECTURE, REC). Le glitch tombe sur les temps (on_beats) et reste bref (0,1 s) : c'est un accroc, pas un état."
+  },
+  "transitions": {
+    "default": "cut",
+    "crossfade": { "dur": 0.2 }
+  },
+  "render": {
+    "motion_blur": { "enabled": false, "samples": 8, "shutter": 0.5 }
+  },
+  "color": { "working": "srgb", "output": "rec709" }
+}

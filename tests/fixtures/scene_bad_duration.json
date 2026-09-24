@@ -1,0 +1,16 @@
+{
+  "$schema": "../../schema/scene.schema.json",
+  "version": "1.0",
+  "id": "test_bad_duration",
+  "title": "Fixture invalide — 1,01 s à 25 i/s n'est pas un nombre entier d'images",
+  "preset": "flat_riso",
+  "format": { "aspect": "16:9", "resolution": "1080p", "fps": 25 },
+  "outputs": [ { "profile": "hevc_main10" } ],
+  "shots": [
+    {
+      "id": "court",
+      "duration": 1.01,
+      "layers": [ { "id": "titre", "type": "text", "text": "Trop court", "anim": [ { "move": "rise" } ] } ]
+    }
+  ]
+}

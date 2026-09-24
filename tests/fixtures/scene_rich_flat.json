@@ -1,0 +1,165 @@
+{
+  "$schema": "../../schema/scene.schema.json",
+  "version": "1.0",
+  "id": "test_rich_flat",
+  "title": "Fixture riche — compilateur (flat_riso)",
+  "brief": "Scène de test du compilateur : deux plans en fondu, texte par caractères, tracés, graphique, glitch sur les temps, synchro musicale, plaque 3D avec rebond.",
+  "seed": 42,
+  "preset": "flat_riso",
+  "format": { "aspect": "16:9", "resolution": "1080p", "fps": 25, "alpha": false },
+  "quality": { "plate_scale": 0.5, "blender_samples": 16 },
+  "audio": {
+    "bpm": 120,
+    "offset": 0,
+    "beats_per_bar": 4,
+    "markers": [ { "id": "drop", "time": 4.2 } ],
+    "synth": { "kind": "beat", "target_lufs": -14 }
+  },
+  "storyboard": [
+    { "shot": "intro", "intent": "Poser le sujet avec un titre qui se compose lettre à lettre." },
+    { "shot": "chiffres", "intent": "Montrer la progression chiffrée, l'impact tombe sur le marqueur « drop »." }
+  ],
+  "outputs": [
+    { "profile": "hevc_main10" },
+    { "profile": "prores_422hq", "suffix": "_master" }
+  ],
+  "qc": { "determinism_frames": 6 },
+  "shots": [
+    {
+      "id": "intro",
+      "duration": 3.0,
+      "background": "bg",
+      "fx": { "grain": 0.1 },
+      "layers": [
+        {
+          "id": "titre", "type": "text", "text": "Des chiffres qui parlent", "style": "display", "size": 132,
+          "x": "safe:0%", "y": "safe:30%", "anchor": "left", "z": 2,
+          "anim": [ { "move": "chars_up", "at": 0.2 }, { "move": "exit_down", "at": 2.4 } ]
+        },
+        {
+          "id": "soulignement", "type": "shape", "shape": "line", "w": 640, "h": 12, "stroke": "secondary", "strokeWidth": 10,
+          "x": "safe:0%", "y": "safe:45%", "anchor": "left", "z": 1,
+          "anim": [ { "move": "draw", "at": 0.8 } ]
+        },
+        {
+          "id": "cadre", "type": "shape", "shape": "rect", "w": 420, "h": 240, "radius": 24, "fill": "none", "stroke": "primary", "strokeWidth": 6,
+          "x": "safe:80%", "y": "safe:70%", "z": 0,
+          "anim": [
+            { "move": "draw", "at": 1.0, "dur": 1.2 },
+            { "target": "shape", "to": { "stroke": "secondary" }, "at": 2.3, "dur": 0.4 }
+          ]
+        },
+        {
+          "id": "pastille", "type": "shape", "shape": "ellipse", "w": 160, "h": 160, "fill": "accent",
+          "x": "safe:88%", "y": "safe:18%", "z": 3,
+          "anim": [
+            { "move": "pop", "at": "beat:2", "sync": "end" },
+            { "to": { "rotation": 90 }, "at": 1.2, "dur": 0.6, "ease": "elastic.out(1, 0.4)" }
+          ]
+        },
+        {
+          "id": "sous_titre", "type": "text", "text": "Édition 2026 — données réelles", "style": "body",
+          "x": "safe:0%", "y": "safe:55%", "anchor": "left", "z": 2,
+          "anim": [
+            { "move": "rise", "at": 0.9 },
+            { "to": { "color": "primary" }, "at": 1.8, "dur": 0.5, "ease": "sine.inOut" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "chiffres",
+      "duration": 3.6,
+      "transition_in": { "type": "crossfade", "dur": 0.4 },
+      "fx": {
+        "grain": false,
+        "glitch": {
+          "on_beats": { "from": 6, "to": 14, "every": 2, "length": 0.12 },
+          "windows": [ [ "marker:drop", 0.2 ], [ 1.45, 0.1 ] ],
+          "amount": 0.6,
+          "layers": [ "barres", "impact" ]
+        }
+      },
+      "plates": [
+        {
+          "id": "balle",
+          "camera": {
+            "location": [0, -8, 2.2], "target": [0, 0, 0.8], "lens": 40,
+            "anim": [
+              { "prop": "location", "keys": [ { "t": 0, "v": [0, -8, 2.2] }, { "t": 3.6, "v": [0, -6.5, 1.8], "ease": "sine.inOut" } ] }
+            ]
+          },
+          "lights": [
+            { "id": "key", "type": "AREA", "size": 3, "energy": 900, "location": [-3, -4, 5], "target": [0, 0, 0.5] },
+            { "id": "sun", "type": "SUN", "energy": 2, "angle": 1.5 }
+          ],
+          "objects": [
+            { "id": "sol", "primitive": "plane", "size": 20, "material": { "base_color": "paper", "roughness": 0.8 } },
+            {
+              "id": "balle", "primitive": "sphere", "size": 1, "location": [0, 0, 3.9],
+              "material": { "base_color": "secondary", "roughness": 0.45, "sheen": 0.3 },
+              "anim": [
+                {
+                  "prop": "location",
+                  "keys": [
+                    { "t": 0, "v": [0, 0, 3.9] },
+                    { "t": 0.5, "v": [0, 0, 0.5], "ease": "power2.in" },
+                    { "t": 0.58, "v": [0, 0, 0.36], "ease": "back.out(2.5)" },
+                    { "t": 0.9, "v": [0, 0, 0.5], "ease": "elastic.out(1, 0.35)" }
+                  ]
+                },
+                {
+                  "prop": "scale",
+                  "keys": [
+                    { "t": 0.5, "v": 1 },
+                    { "t": 0.58, "v": [1.25, 1.25, 0.72], "ease": "flatSettle" },
+                    { "t": 0.9, "v": 1, "ease": "settle" }
+                  ]
+                },
+                {
+                  "prop": "rotation",
+                  "keys": [ { "t": 0, "v": [0, 0, 0] }, { "t": "beat:8", "v": [0, 0, 180], "ease": "power1.inOut" } ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "layers": [
+        { "id": "fond3d", "type": "sequence", "plate": "balle", "w": 1920, "h": 1080, "x": "50%", "y": "50%", "z": -1 },
+        {
+          "id": "barres", "type": "chart", "w": 900, "h": 480, "x": "safe:50%", "y": "safe:62%", "z": 1,
+          "data": [
+            { "label": "T1", "value": 12 },
+            { "label": "T2", "value": 19 },
+            { "label": "T3", "value": 27, "color": "accent" },
+            { "label": "T4", "value": 41 }
+          ],
+          "colors": [ "primary", "secondary" ],
+          "valueFormat": { "suffix": " %" },
+          "labelStyle": { "case": "upper" },
+          "grow": { "at": 0.3, "ease": "power3.out" },
+          "anim": [ { "target": "bars", "from": { "opacity": 0 }, "to": { "opacity": 1 }, "at": 0.2, "dur": 0.3 } ]
+        },
+        {
+          "id": "impact", "type": "text", "text": "+42 %", "style": "display", "size": 180, "color": "secondary",
+          "x": "safe:80%", "y": "safe:20%", "z": 2,
+          "anim": [
+            { "move": "slide_anticipate", "at": "marker:drop", "sync": "end" },
+            { "move": "exit_down", "at": 3.0 }
+          ]
+        },
+        {
+          "id": "accroche", "type": "text", "text": "Trois ans de croissance", "style": "body", "split": "words",
+          "x": "safe:0%", "y": "safe:8%", "anchor": "left", "z": 2,
+          "anim": [ { "move": "rise", "target": "words", "stagger": 0.08, "at": 0.6 } ]
+        },
+        {
+          "id": "defilement", "type": "shape", "shape": "rect", "w": 40, "h": 40, "fill": "slate",
+          "x": "safe:5%", "y": "safe:95%", "z": 0,
+          "anim": [ { "to": { "x": 200 }, "at": 0.5, "dur": 1, "ease": "none", "allowLinear": true } ]
+        }
+      ]
+    }
+  ]
+}

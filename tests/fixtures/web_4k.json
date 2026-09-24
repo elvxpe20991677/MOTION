@@ -1,0 +1,20 @@
+{
+  "$schema": "../../schema/scene.schema.json",
+  "version": "1.0",
+  "id": "web_4k",
+  "title": "Fixture étape 12 : vraie 4K (devicePixelRatio 2)",
+  "seed": 4,
+  "preset": "flat_riso",
+  "format": { "aspect": "16:9", "resolution": "4k", "fps": 25, "alpha": false },
+  "outputs": [ { "profile": "hevc_main10" } ],
+  "shots": [
+    {
+      "id": "k",
+      "duration": 0.4,
+      "layers": [
+        { "id": "t", "type": "text", "text": "Netteté 4K réelle", "style": "display", "size": 150, "x": 960, "y": 520,
+          "anim": [ { "move": "rise", "at": 0.0, "dur": 0.2 } ] }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "$schema": "../../schema/scene.schema.json",
+  "version": "1.0",
+  "id": "web_det",
+  "title": "Fixture étape 12 : déterminisme multi-effets",
+  "brief": "Texte découpé, formes, graphique, discontinuité volontaire de from, glitch, fondu, plaque en séquence, boil, grain et papier.",
+  "seed": 11,
+  "preset": "flat_riso",
+  "format": { "aspect": "16:9", "resolution": "1080p", "fps": 25, "alpha": false },
+  "outputs": [ { "profile": "hevc_main10" } ],
+  "qc": { "determinism_frames": 10 },
+  "shots": [
+    {
+      "id": "a",
+      "duration": 1.0,
+      "fx": { "glitch": { "windows": [[0.5, 0.2]], "amount": 0.8, "mode": "both" } },
+      "layers": [
+        { "id": "title", "type": "text", "text": "Déterminisme", "style": "display", "size": 150, "x": 150, "y": 300, "anchor": "left",
+          "anim": [ { "move": "chars_up", "at": 0.05 } ] },
+        { "id": "dot", "type": "shape", "shape": "ellipse", "w": 300, "h": 300, "fill": "secondary", "x": 1500, "y": 330,
+          "anim": [ { "move": "pop", "at": 0.1 } ] },
+        { "id": "jump", "type": "shape", "shape": "rect", "w": 200, "h": 120, "radius": 20, "fill": "accent", "x": 300, "y": 560,
+          "anim": [ { "at": 0, "dur": 0.3, "from": { "x": 0 }, "to": { "x": 200 }, "ease": "power2.out" },
+                    { "at": 0.5, "dur": 0.3, "from": { "x": -100 }, "to": { "x": 0 }, "ease": "power2.out" } ] },
+        { "id": "bars", "type": "chart", "w": 900, "h": 380, "x": 1320, "y": 760,
+          "data": [ { "label": "A", "value": 3 }, { "label": "B", "value": 7 }, { "label": "C", "value": 5 } ],
+          "valueFormat": { "decimals": 1, "suffix": " €" },
+          "grow": { "at": 0.2, "dur": 0.6, "stagger": 0.08 } }
+      ]
+    },
+    {
+      "id": "b",
+      "duration": 1.0,
+      "transition_in": { "type": "crossfade", "dur": 0.2 },
+      "plates": [
+        { "id": "p", "camera": { "location": [0, -5, 2], "target": [0, 0, 0] },
+          "objects": [ { "id": "s", "primitive": "sphere" } ] }
+      ],
+      "layers": [
+        { "id": "plate", "type": "sequence", "plate": "p", "w": 960, "h": 540, "x": 960, "y": 540 },
+        { "id": "word", "type": "text", "text": "Plaque + boil", "style": "display", "size": 110, "x": 960, "y": 900, "boil": true,
+          "anim": [ { "move": "rise", "at": 0.1 } ] }
+      ]
+    }
+  ]
+}

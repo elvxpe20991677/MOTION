@@ -1,0 +1,21 @@
+{
+  "$schema": "../../schema/scene.schema.json",
+  "version": "1.0",
+  "id": "test_bad_linear",
+  "title": "Fixture invalide — easing linéaire sans allowLinear",
+  "preset": "flat_riso",
+  "format": { "aspect": "16:9", "resolution": "1080p", "fps": 25 },
+  "outputs": [ { "profile": "hevc_main10" } ],
+  "shots": [
+    {
+      "id": "plan",
+      "duration": 2.0,
+      "layers": [
+        {
+          "id": "bloc", "type": "shape", "shape": "rect", "w": 200, "h": 200,
+          "anim": [ { "to": { "x": 300 }, "at": 0.2, "dur": 1.0, "ease": "none" } ]
+        }
+      ]
+    }
+  ]
+}

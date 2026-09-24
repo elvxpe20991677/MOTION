@@ -1,0 +1,108 @@
+{
+  "$schema": "../schema/preset.schema.json",
+  "id": "photoreal_3d",
+  "name": "Photoreal 3D",
+  "description": "Rendu produit premium : graphite profond, aluminium brossé anisotrope, laiton, céramique laquée. Ciel physique, 512 échantillons, AgX Medium High Contrast, profondeur de champ f/2.8 au 85 mm. Typographie Inter Tight fine en titre, capitales espacées en légende ; mouvements lents et feutrés.",
+  "styles": ["photoréaliste", "produit", "luxe", "tech"],
+  "palette": {
+    "bg": "#1E2024",
+    "fg": "#F3F4F6",
+    "primary": "#C9CED6",
+    "secondary": "#D4A373",
+    "accent": "#8FB8DE",
+    "graphite": "#1E2024",
+    "ceramic": "#F2EFEA",
+    "shadow": "#0E0F12",
+    "smoke": "#6E737C"
+  },
+  "typography": {
+    "display": { "family": "Inter Tight", "weight": 300, "tracking": -0.035, "lineHeight": 1.0, "case": "none", "size": 112 },
+    "body": { "family": "Inter Tight", "weight": 600, "tracking": 0.14, "lineHeight": 1.3, "case": "upper", "size": 26 }
+  },
+  "fonts": [
+    { "family": "Inter Tight", "weight": 300, "style": "normal", "file": "@fontsource/inter-tight/files/inter-tight-latin-300-normal.woff2" },
+    { "family": "Inter Tight", "weight": 600, "style": "normal", "file": "@fontsource/inter-tight/files/inter-tight-latin-600-normal.woff2" }
+  ],
+  "motion": {
+    "eases": {
+      "default": "power2.out",
+      "enter": "silk",
+      "exit": "power2.in",
+      "emphasis": "power4.out",
+      "anticipate": "power2.inOut",
+      "settle": "sine.out"
+    },
+    "customEases": {
+      "silk": "M0,0 C0.22,0.6 0.18,1 1,1"
+    },
+    "durations": { "short": 0.4, "medium": 0.9, "long": 1.6 },
+    "stagger": 0.025,
+    "frame_step": 1,
+    "moves": {
+      "fade_up": [
+        { "offset": 0, "dur": 0.9, "from": { "y": 24, "opacity": 0, "blur": 6 }, "to": { "y": 0, "opacity": 1, "blur": 0 }, "ease": "enter" }
+      ],
+      "wipe_in": [
+        { "offset": 0, "dur": 1.0, "from": { "reveal": 1 }, "to": { "reveal": 0 }, "ease": "power3.inOut" }
+      ],
+      "chars_fade": [
+        { "offset": 0, "dur": 0.8, "target": "chars", "stagger": 0.025, "from": { "y": "30%", "opacity": 0 }, "to": { "y": 0, "opacity": 1 }, "ease": "enter" }
+      ],
+      "exit_fade": [
+        { "offset": 0, "dur": 0.6, "to": { "opacity": 0, "blur": 4 }, "ease": "exit" }
+      ]
+    }
+  },
+  "textures": {
+    "grain": { "amount": 0.03, "size": 1, "blend": "overlay", "monochrome": true },
+    "paper": null,
+    "vignette": { "amount": 0.35, "softness": 0.7, "color": "#000000" },
+    "scanlines": null,
+    "tracking": null,
+    "boil": null
+  },
+  "composition": {
+    "grid": 12,
+    "margin": 0.08,
+    "type_scale": [22, 26, 40, 72, 112, 160],
+    "notes": "Beaucoup de vide : produit au tiers, titre fin aligné sur la grille 12 colonnes, légende en capitales espacées. Reflets et arêtes lumineuses (rim) font la forme, jamais de couleur saturée hors du laiton. Mouvements lents (0,9 à 1,6 s), aucun rebond ; profondeur de champ courte pour isoler le sujet."
+  },
+  "transitions": {
+    "default": "crossfade",
+    "crossfade": { "dur": 0.6 }
+  },
+  "render": {
+    "motion_blur": { "enabled": true, "samples": 8, "shutter": 0.5 }
+  },
+  "color": { "working": "srgb", "output": "rec709" },
+  "blender": {
+    "device": "auto",
+    "samples": 512,
+    "adaptive_threshold": 0.01,
+    "denoise": true,
+    "view_transform": "AgX",
+    "look": "Medium High Contrast",
+    "exposure": 0,
+    "bounces": { "total": 12, "diffuse": 4, "glossy": 8, "transmission": 8, "transparent": 8, "volume": 0 },
+    "caustics": false,
+    "motion_blur_shutter": 0.5,
+    "lens": 85,
+    "fstop": 2.8,
+    "world": {
+      "color": "#1E2024",
+      "strength": 0.6,
+      "sky": { "sun_elevation": 28, "sun_rotation": 135, "altitude": 0, "air": 1, "dust": 0.6, "ozone": 1, "sun_size": 0.545, "sun_intensity": 0.8 }
+    },
+    "materials": {
+      "aluminium": { "base_color": "#C9CED6", "metallic": 1, "roughness": 0.28, "anisotropic": 0.65, "specular": 0.5, "coat": 0 },
+      "brass": { "base_color": "#D4A373", "metallic": 1, "roughness": 0.22, "anisotropic": 0, "specular": 0.5, "coat": 0 },
+      "ceramic": { "base_color": "#F2EFEA", "metallic": 0, "roughness": 0.35, "specular": 0.5, "coat": 1, "coat_roughness": 0.04, "subsurface": 0.06, "ior": 1.5 },
+      "graphite": { "base_color": "#2A2D33", "metallic": 0.15, "roughness": 0.55, "specular": 0.45, "coat": 0 }
+    },
+    "light_rig": [
+      { "id": "key", "type": "AREA", "shape": "RECTANGLE", "size": 1.2, "size_y": 2.4, "energy": 700, "color": "#FFF6EC", "location": [-3.5, -4.0, 4.5], "target": [0, 0, 0.6] },
+      { "id": "rim", "type": "AREA", "shape": "RECTANGLE", "size": 0.4, "size_y": 3.0, "energy": 500, "color": "#E8F0FF", "location": [3.2, 3.5, 3.0], "target": [0, 0, 0.8] },
+      { "id": "fill", "type": "AREA", "shape": "DISK", "size": 4, "energy": 120, "color": "#DDE6F2", "location": [4.5, -5.0, 2.0], "target": [0, 0, 0.5] }
+    ]
+  }
+}

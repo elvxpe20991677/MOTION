@@ -1,0 +1,108 @@
+{
+  "$schema": "../schema/preset.schema.json",
+  "id": "clay_3d",
+  "name": "Clay 3D",
+  "description": "Pâte à modeler douce rendue en Cycles : couleurs pastel lilas / pêche / menthe / beurre, matière mate veloutée (sheen), grandes sources en disque très diffuses, AgX Base Contrast. Titres Fraunces très gras composités par le web, mouvements rebondis qui s'écrasent à l'arrivée.",
+  "styles": ["3D clay", "produit ludique", "réseaux sociaux", "explainer doux"],
+  "palette": {
+    "bg": "#E9E4FF",
+    "fg": "#2B2150",
+    "primary": "#8C7BFF",
+    "secondary": "#FF9F7A",
+    "accent": "#62D2B4",
+    "butter": "#FFD66B",
+    "floor": "#F3F0FF",
+    "plum": "#4B3B8F"
+  },
+  "typography": {
+    "display": { "family": "Fraunces", "weight": 800, "tracking": -0.03, "lineHeight": 0.95, "case": "none", "size": 128 },
+    "body": { "family": "DM Sans", "weight": 500, "tracking": 0, "lineHeight": 1.3, "case": "none", "size": 40 }
+  },
+  "fonts": [
+    { "family": "Fraunces", "weight": 800, "style": "normal", "file": "@fontsource/fraunces/files/fraunces-latin-800-normal.woff2" },
+    { "family": "DM Sans", "weight": 500, "style": "normal", "file": "@fontsource/dm-sans/files/dm-sans-latin-500-normal.woff2" }
+  ],
+  "motion": {
+    "eases": {
+      "default": "power3.out",
+      "enter": "power3.out",
+      "exit": "power2.in",
+      "emphasis": "back.out(2)",
+      "anticipate": "back.in(1.6)",
+      "settle": "claySquish"
+    },
+    "customEases": {
+      "claySquish": "M0,0 C0.2,0.9 0.32,1.12 0.52,1.05 0.72,0.98 0.84,1 1,1"
+    },
+    "durations": { "short": 0.3, "medium": 0.6, "long": 1.1 },
+    "stagger": 0.04,
+    "frame_step": 1,
+    "moves": {
+      "rise": [
+        { "offset": 0, "dur": 0.7, "from": { "y": 50, "opacity": 0 }, "to": { "y": 0, "opacity": 1 }, "ease": "enter" }
+      ],
+      "chars_up": [
+        { "offset": 0, "dur": 0.6, "target": "chars", "stagger": 0.04, "from": { "y": "100%", "opacity": 0, "scaleY": 0.6 }, "to": { "y": 0, "opacity": 1, "scaleY": 1 }, "ease": "settle" }
+      ],
+      "pop": [
+        { "offset": 0, "dur": 0.55, "from": { "scale": 0 }, "to": { "scale": 1 }, "ease": "emphasis" }
+      ],
+      "settle_in": [
+        { "offset": 0, "dur": 0.9, "from": { "y": -60, "scaleX": 0.9, "scaleY": 1.12 }, "to": { "y": 0, "scaleX": 1, "scaleY": 1 }, "ease": "settle" },
+        { "offset": 0, "dur": 0.25, "from": { "opacity": 0 }, "to": { "opacity": 1 }, "ease": "power1.out" }
+      ],
+      "exit_down": [
+        { "offset": 0, "dur": 0.45, "to": { "y": 50, "opacity": 0 }, "ease": "exit" }
+      ]
+    }
+  },
+  "textures": {
+    "grain": { "amount": 0.04, "size": 1, "blend": "soft-light", "monochrome": true },
+    "paper": null,
+    "vignette": { "amount": 0.18, "softness": 0.8, "color": "#4B3B8F" },
+    "scanlines": null,
+    "tracking": null,
+    "boil": null
+  },
+  "composition": {
+    "grid": 6,
+    "margin": 0.06,
+    "type_scale": [30, 40, 60, 90, 128, 170],
+    "notes": "Plateau 3D en cyclorama pastel, objets posés au sol avec ombres de contact douces ; caméra 50 mm légèrement plongeante, travelling lent. Titre web en Fraunces 800 aubergine sous l'action, jamais sur l'objet principal. Une couleur par objet, fond et sol dans la même famille lilas pour que les objets se détachent par la valeur."
+  },
+  "transitions": {
+    "default": "crossfade",
+    "crossfade": { "dur": 0.5 }
+  },
+  "render": {
+    "motion_blur": { "enabled": false, "samples": 8, "shutter": 0.5 }
+  },
+  "color": { "working": "srgb", "output": "rec709" },
+  "blender": {
+    "device": "auto",
+    "samples": 128,
+    "adaptive_threshold": 0.02,
+    "denoise": true,
+    "view_transform": "AgX",
+    "look": "Base Contrast",
+    "exposure": 0,
+    "bounces": { "total": 6, "diffuse": 3, "glossy": 2, "transmission": 0, "transparent": 4, "volume": 0 },
+    "caustics": false,
+    "motion_blur_shutter": 0.5,
+    "lens": 50,
+    "fstop": 5.6,
+    "world": { "color": "#E9E4FF", "strength": 1.0, "sky": false },
+    "materials": {
+      "lilac": { "base_color": "#8C7BFF", "roughness": 0.5, "metallic": 0, "specular": 0.4, "sheen": 0.35, "sheen_roughness": 0.45, "coat": 0, "subsurface": 0.04 },
+      "peach": { "base_color": "#FF9F7A", "roughness": 0.5, "metallic": 0, "specular": 0.4, "sheen": 0.35, "sheen_roughness": 0.45, "coat": 0, "subsurface": 0.04 },
+      "mint": { "base_color": "#62D2B4", "roughness": 0.5, "metallic": 0, "specular": 0.4, "sheen": 0.35, "sheen_roughness": 0.45, "coat": 0, "subsurface": 0.04 },
+      "butter": { "base_color": "#FFD66B", "roughness": 0.5, "metallic": 0, "specular": 0.4, "sheen": 0.35, "sheen_roughness": 0.45, "coat": 0, "subsurface": 0.04 },
+      "floor": { "base_color": "#F3F0FF", "roughness": 0.62, "metallic": 0, "specular": 0.3, "sheen": 0.2, "sheen_roughness": 0.6, "coat": 0, "subsurface": 0 }
+    },
+    "light_rig": [
+      { "id": "key", "type": "AREA", "shape": "DISK", "size": 4, "energy": 1200, "color": "#FFF3E8", "location": [-4.5, -5.5, 6.5], "target": [0, 0, 0.8] },
+      { "id": "fill", "type": "AREA", "shape": "DISK", "size": 5, "energy": 350, "color": "#E4E6FF", "location": [5.5, -4.0, 3.0], "target": [0, 0, 0.8] },
+      { "id": "rim", "type": "AREA", "shape": "DISK", "size": 2.2, "energy": 800, "color": "#FFFFFF", "location": [2.5, 3.5, 5.0], "target": [0, 0, 1.0] }
+    ]
+  }
+}

@@ -1,0 +1,97 @@
+{
+  "$schema": "../schema/scene.schema.json",
+  "version": "1.0",
+  "id": "demo_clay_3d",
+  "title": "Doux rebond — plaque 3D clay",
+  "brief": "Carré pour les réseaux : une balle de pâte à modeler tombe, s'écrase, rebondit et se pose pendant que la caméra avance doucement ; le titre se compose juste après l'impact.",
+  "seed": 3,
+  "preset": "clay_3d",
+  "format": { "aspect": "1:1", "resolution": "1080p", "fps": 24, "alpha": false },
+  "quality": { "plate_scale": 1, "blender_samples": 96 },
+  "storyboard": [
+    { "shot": "bounce", "intent": "Rendre la matière tangible : poids à la chute, écrasement franc à l'impact, rebond amorti, puis le titre répond à l'impact.", "notes": "Travelling avant lent sur toute la durée ; plate_scale 0,5 pour une préversion, 1 en production." }
+  ],
+  "outputs": [
+    { "profile": "hevc_main10", "crf": 18 },
+    { "profile": "prores_422hq" }
+  ],
+  "qc": { "safe_zone": "title", "safe_zone_tolerance_s": 0.5, "allow_black_s": 0, "determinism_frames": 8, "loudness_target_lufs": -14 },
+  "shots": [
+    {
+      "id": "bounce",
+      "duration": 3.0,
+      "background": "bg",
+      "plates": [
+        {
+          "id": "set",
+          "transparent": false,
+          "world": { "color": "bg", "strength": 1.0 },
+          "camera": {
+            "location": [0, -10, 3.6],
+            "target": [0, 0, 1.2],
+            "lens": 50,
+            "fstop": 5.6,
+            "anim": [
+              { "prop": "location", "keys": [ { "t": 0, "v": [0, -10, 3.6] }, { "t": 3.0, "v": [1.2, -7.6, 2.7], "ease": "sine.inOut" } ] },
+              { "prop": "target", "keys": [ { "t": 0, "v": [0, 0, 1.2] }, { "t": 3.0, "v": [0, 0, 0.9], "ease": "sine.inOut" } ] }
+            ]
+          },
+          "objects": [
+            { "id": "cyc", "primitive": "cyclorama", "size": 30, "minor": 10, "bevel": 3, "location": [0, 6, 0], "material": "floor" },
+            { "id": "block", "primitive": "rounded_cube", "size": 1.2, "bevel": 0.2, "location": [-2.3, 1.2, 0.6], "rotation": [0, 0, -22], "material": "peach" },
+            {
+              "id": "ring", "primitive": "torus", "size": 1.8, "minor": 0.24, "location": [2.4, 1.0, 0.9], "rotation": [90, 0, 25], "material": "mint",
+              "anim": [ { "prop": "rotation", "keys": [ { "t": 0, "v": [90, 0, 25] }, { "t": 3.0, "v": [90, 0, 70], "ease": "sine.inOut" } ] } ]
+            },
+            { "id": "pill", "primitive": "cylinder", "size": 0.9, "location": [0.9, 2.8, 0.45], "material": "butter" },
+            {
+              "id": "ball", "primitive": "sphere", "size": 1.2, "location": [0, 0, 4.2], "material": "lilac",
+              "anim": [
+                {
+                  "prop": "location",
+                  "keys": [
+                    { "t": 0, "v": [0, 0, 4.2] },
+                    { "t": 0.5, "v": [0, 0, 0.6], "ease": "power2.in" },
+                    { "t": 0.625, "v": [0, 0, 0.432], "ease": "power2.out" },
+                    { "t": 0.75, "v": [0, 0, 0.68], "ease": "power2.out" },
+                    { "t": 1.1, "v": [0, 0, 1.7], "ease": "power2.out" },
+                    { "t": 1.45, "v": [0, 0, 0.6], "ease": "power2.in" },
+                    { "t": 1.5417, "v": [0, 0, 0.504], "ease": "power2.out" },
+                    { "t": 1.75, "v": [0, 0, 0.6], "ease": "back.out(2)" }
+                  ]
+                },
+                {
+                  "prop": "scale",
+                  "keys": [
+                    { "t": 0, "v": [1, 1, 1] },
+                    { "t": 0.4, "v": [0.93, 0.93, 1.12], "ease": "sine.in" },
+                    { "t": 0.5, "v": [1.04, 1.04, 0.95], "ease": "power2.in" },
+                    { "t": 0.625, "v": [1.2, 1.2, 0.72], "ease": "power2.out" },
+                    { "t": 0.75, "v": [0.95, 0.95, 1.08], "ease": "power2.out" },
+                    { "t": 0.95, "v": [1, 1, 1], "ease": "sine.inOut" },
+                    { "t": 1.45, "v": [1, 1, 1], "ease": "sine.inOut" },
+                    { "t": 1.5417, "v": [1.1, 1.1, 0.84], "ease": "power2.out" },
+                    { "t": 1.75, "v": [1, 1, 1], "ease": "back.out(2)" }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "layers": [
+        { "id": "plate", "type": "sequence", "plate": "set", "w": 1080, "h": 1080, "x": 540, "y": 540, "z": 0 },
+        {
+          "id": "title", "type": "text", "text": "Doux rebond", "style": "display", "size": 124, "color": "fg", "align": "center",
+          "x": 540, "y": 880, "anchor": "center", "z": 2,
+          "anim": [ { "move": "chars_up", "at": 0.55 } ]
+        },
+        {
+          "id": "subtitle", "type": "text", "text": "Plaque Cycles, titre web", "style": "body", "size": 38, "color": "fg", "align": "center",
+          "x": 540, "y": 975, "anchor": "center", "z": 2,
+          "anim": [ { "move": "rise", "at": 0.95 } ]
+        }
+      ]
+    }
+  ]
+}

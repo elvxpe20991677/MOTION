@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "http://mograph.render/schema/internal/manifests.schema.json",
+  "title": "Manifestes du pipeline",
+  "description": "Contrats de fichiers entre web_render (écrit shot_manifest et determinism), compose (lit shot_manifest, écrit master_manifest) et qc (lit master_manifest et determinism). Valider un fichier : Draft202012Validator({'$ref': '<id>#/$defs/<nom>'}, registry=...).",
+  "$defs": {
+    "layoutRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "text", "box", "opacity"],
+      "properties": {
+        "id": { "type": "string", "description": "id du calque (ou '<chart>.label.<i>' / '<chart>.value.<i>')." },
+        "text": { "type": "string", "description": "Texte (tronqué à 80 caractères)." },
+        "box": { "type": "array", "items": { "type": "number" }, "minItems": 4, "maxItems": 4, "description": "[x, y, largeur, hauteur] en px LOGIQUES, union des boîtes de glyphes (transformations incluses)." },
+        "opacity": { "type": "number", "description": "Opacité effective (produit des ancêtres), >= 0.9 par construction." },
+        "shot_id": { "type": "string", "description": "Présent dans master_manifest uniquement." }
+      }
+    },
+    "shot_manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract", "scene_id", "shot_id", "spec_sha256", "fps", "frames", "width", "height", "depth", "motion_blur_samples", "frames_done", "layout_every", "layout", "timing"],
+      "properties": {
+        "contract": { "const": "mograph-shot-manifest/1" },
+        "scene_id": { "type": "string" },
+        "shot_id": { "type": "string" },
+        "spec_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "SHA-256 du plan compilé canonique (json.dumps sort_keys, separators compacts). S'il change, la reprise repart de zéro." },
+        "fps": { "type": "integer" },
+        "frames": { "type": "integer", "minimum": 1 },
+        "width": { "type": "integer", "description": "Pixels RÉELS (canevas x device_scale_factor)." },
+        "height": { "type": "integer" },
+        "depth": { "enum": [8, 16], "description": "8 = RGBA 8 bits ; 16 = RGBA 16 bits (flou de mouvement)." },
+        "motion_blur_samples": { "type": "integer", "minimum": 1 },
+        "frames_done": {
+          "type": "object",
+          "propertyNames": { "pattern": "^[0-9]+$" },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["file", "sha256"],
+            "properties": {
+              "file": { "type": "string", "pattern": "^[0-9]{6}\\.png$" },
+              "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "SHA-256 des PIXELS décodés (tableau numpy BGRA contigu, dtype uint8 ou uint16 little-endian), pas des octets PNG." }
+            }
+          },
+          "description": "Clé = index d'image local en décimal ('0', '1', ...)."
+        },
+        "layout_every": { "type": "integer", "minimum": 1, "description": "= config.layout_every(fps)." },
+        "layout": {
+          "type": "object",
+          "propertyNames": { "pattern": "^[0-9]+$" },
+          "additionalProperties": { "type": "array", "items": { "$ref": "#/$defs/layoutRecord" } },
+          "description": "Relevés __layout() aux images locales multiples de layout_every (et à la dernière image)."
+        },
+        "timing": {
+          "type": "object",
+          "properties": {
+            "seconds_per_frame": { "type": "number" },
+            "workers": { "type": "integer" },
+            "total_seconds": { "type": "number" }
+          }
+        }
+      }
+    },
+    "master_manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract", "scene_id", "fps", "frames", "width", "height", "depth", "alpha", "segments", "frame_map", "layout_every", "layout"],
+      "properties": {
+        "contract": { "const": "mograph-master/1" },
+        "scene_id": { "type": "string" },
+        "fps": { "type": "integer" },
+        "frames": { "type": "integer", "minimum": 1 },
+        "width": { "type": "integer" },
+        "height": { "type": "integer" },
+        "depth": { "enum": [8, 16] },
+        "alpha": { "type": "boolean" },
+        "segments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["shot_id", "global_start", "frames", "fade_in_frames"],
+            "properties": {
+              "shot_id": { "type": "string" },
+              "global_start": { "type": "integer", "minimum": 0 },
+              "frames": { "type": "integer", "minimum": 1 },
+              "fade_in_frames": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "frame_map": {
+          "type": "array",
+          "description": "Une entrée par image maître, dans l'ordre.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["g", "mode", "src"],
+            "properties": {
+              "g": { "type": "integer", "minimum": 0 },
+              "mode": { "enum": ["link", "convert", "blend"], "description": "link = lien physique ; convert = copie convertie en 16 bits ; blend = fondu." },
+              "src": {
+                "type": "array",
+                "items": { "type": "array", "prefixItems": [ { "type": "string" }, { "type": "integer" }, { "type": "number" } ], "minItems": 3, "maxItems": 3 },
+                "description": "[[shot_id, image_locale, poids], ...] ; poids du plan entrant = smoothstep((k+1)/(F+1))."
+              }
+            }
+          }
+        },
+        "layout_every": { "type": "integer", "minimum": 1 },
+        "layout": {
+          "type": "object",
+          "propertyNames": { "pattern": "^[0-9]+$" },
+          "additionalProperties": { "type": "array", "items": { "$ref": "#/$defs/layoutRecord" } },
+          "description": "Clé = image GLOBALE ; relevés des plans ramenés en temps global (records avec shot_id)."
+        }
+      }
+    },
+    "determinism": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract", "scene_id", "fresh_browser", "order", "checked", "total", "matches", "ok"],
+      "properties": {
+        "contract": { "const": "mograph-determinism/1" },
+        "scene_id": { "type": "string" },
+        "fresh_browser": { "const": true },
+        "order": { "type": "array", "items": { "type": "string" }, "description": "Ordre réel de rendu des témoins ('shot:image'), volontairement mélangé." },
+        "checked": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["shot_id", "frame", "expected", "actual", "match"],
+            "properties": {
+              "shot_id": { "type": "string" },
+              "frame": { "type": "integer", "minimum": 0 },
+              "expected": { "type": "string" },
+              "actual": { "type": "string" },
+              "match": { "type": "boolean" },
+              "diff": {
+                "type": "object",
+                "description": "Si match=false : pixels différents, boîte englobante [x0,y0,x1,y1], écart max, chemin de l'image de différence.",
+                "properties": {
+                  "pixels": { "type": "integer" },
+                  "bbox": { "type": "array", "items": { "type": "integer" } },
+                  "max_abs": { "type": "number" },
+                  "diff_png": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "total": { "type": "integer", "minimum": 1 },
+        "matches": { "type": "integer", "minimum": 0 },
+        "ok": { "type": "boolean", "description": "true si et seulement si matches == total." }
+      }
+    }
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "$schema": "../../schema/scene.schema.json",
+  "version": "1.0",
+  "id": "test_clay_plate",
+  "title": "Fixture — plaques 3D avec matériaux et éclairage du preset (clay_3d)",
+  "seed": 3,
+  "preset": "clay_3d",
+  "format": { "aspect": "1:1", "resolution": "1080p", "fps": 24 },
+  "quality": { "plate_scale": 0.5 },
+  "outputs": [ { "profile": "hevc_main10" } ],
+  "shots": [
+    {
+      "id": "plateau",
+      "duration": 2.0,
+      "plates": [
+        {
+          "id": "set",
+          "camera": { "location": [0, -10, 3.6], "target": [0, 0, 1.2] },
+          "objects": [
+            { "id": "cyc", "primitive": "cyclorama", "size": 30, "minor": 10, "bevel": 3, "location": [0, 6, 0], "material": "floor" },
+            { "id": "bloc", "primitive": "rounded_cube", "size": 1.2, "location": [-2, 1, 0.6], "material": "peach" },
+            { "id": "anneau", "primitive": "torus", "size": 1.8, "location": [2, 1, 0.9], "rotation": [90, 0, 25], "material": "mint", "scale": 0.9 },
+            { "id": "balle", "primitive": "sphere", "size": 1.2, "location": [0, 0, 0.6], "material": "lilac" }
+          ]
+        }
+      ],
+      "layers": [
+        { "id": "plaque", "type": "sequence", "plate": "set", "w": 1080, "h": 1080 },
+        {
+          "id": "titre", "type": "text", "text": "Pâte douce", "x": "safe:50%", "y": "safe:85%", "align": "center",
+          "anim": [ { "move": "chars_up", "at": 0.3 }, { "move": "settle_in", "at": 0.1, "target": "self" } ]
+        }
+      ]
+    },
+    {
+      "id": "ciel",
+      "duration": 1.5,
+      "plates": [
+        {
+          "id": "horizon",
+          "world": { "sky": { "sun_elevation": 20 } },
+          "camera": { "location": [0, -6, 1.5], "target": [0, 0, 1], "fstop": null },
+          "lights": [ { "type": "SUN", "energy": 3, "angle": 2 } ],
+          "objects": [ { "id": "pilule", "primitive": "cylinder", "size": 0.8, "material": { "base_color": "butter", "sheen": 0.35 } } ]
+        }
+      ],
+      "layers": [ { "id": "plaque2", "type": "sequence", "plate": "horizon", "w": 540, "h": 540 } ]
+    }
+  ]
+}

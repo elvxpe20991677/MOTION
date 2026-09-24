@@ -1,0 +1,18 @@
+{
+  "$schema": "../../schema/scene.schema.json",
+  "version": "1.0",
+  "id": "test_bad_beat_nobpm",
+  "title": "Fixture invalide — référence beat: sans audio.bpm",
+  "preset": "kinetic_signal",
+  "format": { "aspect": "9:16", "resolution": "1080p", "fps": 30 },
+  "outputs": [ { "profile": "hevc_main10" } ],
+  "shots": [
+    {
+      "id": "plan",
+      "duration": 2.0,
+      "layers": [
+        { "id": "mot", "type": "text", "text": "Frappe", "anim": [ { "move": "slam", "at": "beat:2", "sync": "end" } ] }
+      ]
+    }
+  ]
+}

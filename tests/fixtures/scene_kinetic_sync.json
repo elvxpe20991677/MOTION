@@ -1,0 +1,38 @@
+{
+  "$schema": "../../schema/scene.schema.json",
+  "version": "1.0",
+  "id": "test_kinetic_sync",
+  "title": "Fixture — slam synchronisé sur les temps (kinetic_signal)",
+  "seed": 7,
+  "preset": "kinetic_signal",
+  "format": { "aspect": "9:16", "resolution": "1080p", "fps": 30 },
+  "audio": { "bpm": 120, "offset": 0.25 },
+  "outputs": [ { "profile": "hevc_main10", "crf": 20 } ],
+  "shots": [
+    {
+      "id": "mots",
+      "duration": "beats:4",
+      "layers": [
+        {
+          "id": "w1", "type": "text", "text": "signal", "x": "safe:50%", "y": "safe:50%",
+          "anim": [ { "move": "slam", "at": "beat:1", "sync": "end" } ]
+        },
+        {
+          "id": "w2", "type": "text", "text": "fort", "x": "safe:50%", "y": "safe:50%", "color": "primary",
+          "anim": [ { "move": "slam", "at": "beat:2", "sync": "end", "dur": 0.87 } ]
+        }
+      ]
+    },
+    {
+      "id": "fin",
+      "duration": 1.0,
+      "layers": [
+        {
+          "id": "legende", "type": "text", "text": "Bientôt", "style": "body", "case": "upper",
+          "x": "safe:50%", "y": "safe:80%",
+          "anim": [ { "move": "chars_drop", "at": "beat:4.5" } ]
+        }
+      ]
+    }
+  ]
+}
