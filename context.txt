@@ -532,3 +532,4 @@ npm ls, et la version de bpy, puis committer scène + preset dans git.
 
 
 Le travail est déja commencer, reprends la ou il c'est coupé et reprends le sans tout recommencer.
+IMPORTANT : Agis uniquement comme développeur. Écris tous les scripts Python, l'architecture, le runtime JS et les schémas JSON, mais n'exécute aucune commande système (pas d'apt, pas de rendu, pas de test ffmpeg). Contente-toi de générer les fichiers.
