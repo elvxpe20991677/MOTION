@@ -1,0 +1,11 @@
+1
+00:00:00,500 --> 00:00:02,000
+Bienvenue dans le test vidéo de mograph.
+
+2
+00:00:02,300 --> 00:00:03,800
+La mire est une vraie vidéo, extraite image par image.
+
+3
+00:00:04,100 --> 00:00:05,600
+Les sous-titres viennent d'un fichier <i>SRT</i>.

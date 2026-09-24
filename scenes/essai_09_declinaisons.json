@@ -1,0 +1,126 @@
+{
+  "$schema": "../schema/scene.schema.json",
+  "version": "1.0",
+  "id": "essai_09_declinaisons",
+  "title": "Essai 9 — déclinaisons {{nom}}",
+  "brief": "Test lot : une carte par ligne du CSV (nom, ville, score), rendue par batch --data.",
+  "seed": 11,
+  "preset": "flat_riso",
+  "format": {
+    "aspect": "1:1",
+    "resolution": "1080p",
+    "fps": 25,
+    "alpha": false
+  },
+  "storyboard": [
+    {
+      "shot": "carte",
+      "intent": "Une carte personnalisée par ligne.",
+      "notes": "Valeurs du CSV scenes/essai_09_declinaisons.csv."
+    }
+  ],
+  "outputs": [
+    {
+      "profile": "hevc_main10",
+      "crf": 18
+    },
+    {
+      "profile": "prores_422hq"
+    }
+  ],
+  "qc": {
+    "safe_zone": "title",
+    "safe_zone_tolerance_s": 0.5,
+    "allow_black_s": 0,
+    "determinism_frames": 8,
+    "loudness_target_lufs": -14
+  },
+  "shots": [
+    {
+      "id": "carte",
+      "duration": 2.8,
+      "background": "bg",
+      "layers": [
+        {
+          "id": "nom",
+          "type": "text",
+          "text": "{{nom}}",
+          "style": "display",
+          "size": 110,
+          "color": "fg",
+          "align": "center",
+          "x": "50%",
+          "y": "safe:18%",
+          "anim": [
+            {
+              "move": "chars_up",
+              "at": 0.2
+            }
+          ]
+        },
+        {
+          "id": "ville",
+          "type": "text",
+          "text": "{{ville}}",
+          "style": "body",
+          "size": 44,
+          "color": "primary",
+          "align": "center",
+          "x": "50%",
+          "y": "safe:32%",
+          "anim": [
+            {
+              "move": "rise",
+              "at": 0.6
+            }
+          ]
+        },
+        {
+          "id": "score",
+          "type": "chart",
+          "w": 700,
+          "h": 440,
+          "x": 540,
+          "y": 700,
+          "data": [
+            {
+              "label": "Objectif",
+              "value": 100
+            },
+            {
+              "label": "Réalisé",
+              "value": "{{score}}"
+            }
+          ],
+          "max": 130,
+          "gap": 80,
+          "barRadius": 16,
+          "colors": [
+            "sky",
+            "secondary"
+          ],
+          "valueFormat": {
+            "decimals": 0,
+            "suffix": " %"
+          },
+          "labelStyle": {
+            "style": "body",
+            "size": 34,
+            "color": "fg"
+          },
+          "valueStyle": {
+            "style": "display",
+            "size": 50,
+            "color": "fg"
+          },
+          "grow": {
+            "at": 0.8,
+            "dur": 1.2,
+            "stagger": 0.15,
+            "ease": "settle"
+          }
+        }
+      ]
+    }
+  ]
+}
