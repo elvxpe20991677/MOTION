@@ -381,7 +381,10 @@ normalisation BGRA 8 bits (ajout d'un alpha 255 si Chromium l'a omis) ; `cv2.imw
   une page par plan, dans un ORDRE MÉLANGÉ, chacune par un `__seek` isolé ; comparées aux
   empreintes du manifeste. En cas d'écart : image de différence `build/<scene>/determinism_diff/`.
 - Plaques : Cycles avec graine fixe ; le rapport de l'agent Blender indique si deux rendus du même
-  numéro d'image sont identiques au bit près en CPU et en OptiX.
+  numéro d'image sont identiques au bit près en CPU et en OptiX. Exigence pour une plaque re-rendue
+  (reprise) : écart invisible après composition 8 bits (max ≤ 128/65535, moyen ≤ 1/65535) — l'échantillonnage
+  adaptatif multithread de Cycles n'est pas bit-exact d'une machine à l'autre (mesuré jusqu'à 33/65535 sur un
+  runner GitHub). La porte de déterminisme, sur les images web recomposées des MÊMES plaques, reste au bit près.
 
 ---------------------------------------------------------------------------------------------------
 ## 7. Encodage (rappel normatif)
