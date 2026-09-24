@@ -231,6 +231,25 @@ def probe(path, *, timeout: float | None = None) -> dict:
     return info
 
 
+def _first_frame_color(path: Path, keys, timeout: float) -> dict:
+    """Champs couleur de la PREMIÈRE image décodée (ffprobe -show_entries frame=…) ; {} si illisible.
+
+    FFmpeg < 7 : le décodeur ProRes pose la plage « tv » sur chaque image mais pas sur le flux
+    (vérifié dans proresdec2.c de la 6.1.1 ; FFmpeg ≥ 7 la pose aussi sur le flux), et l'atome MOV
+    « colr nclc » n'a pas de drapeau de plage : c'est donc l'image décodée qui fait foi.
+    """
+    argv = [config.FFPROBE, "-v", "error", "-select_streams", "v:0", "-read_intervals", "%+#1",
+            "-show_entries", "frame=" + ",".join(keys), "-of", "json", str(path)]
+    res = _run(argv, timeout=timeout)
+    if res.returncode != 0:
+        return {}
+    try:
+        frames = json.loads(_text(res.stdout)).get("frames") or []
+    except json.JSONDecodeError:
+        return {}
+    return frames[0] if frames else {}
+
+
 def _alpha_stats(path: Path, frame_index: int, fps: int, width: int, height: int,
                  start_time: float, timeout: float) -> dict:
     """Extrait le plan alpha d'UNE image (alphaextract) et renvoie min et part de pixels < 255."""
@@ -264,6 +283,33 @@ def _alpha_stats(path: Path, frame_index: int, fps: int, width: int, height: int
 
 
 _BLACK_RE = re.compile(r"black_start:\s*([-\d.eE+]+)\s+black_end:\s*([-\d.eE+]+)\s+black_duration:\s*([-\d.eE+]+)")
+
+
+def _levels(path: Path, bits: int, timeout: float) -> dict:
+    """Min/max Y, U, V sur TOUTES les images (signalstats), ramenés à l'échelle 10 bits, et nombre
+    d'images dont la luminance sort de la plage EBU R103 (config.LEVELS_R103_Y)."""
+    argv = [config.FFMPEG, "-hide_banner", "-nostats", "-v", "error", "-i", str(path), "-map", "0:v:0",
+            "-vf", "signalstats,metadata=mode=print:file=-", "-f", "null", "-"]
+    res = _run(argv, timeout=timeout)
+    if res.returncode != 0:
+        raise QCError(f"signalstats impossible : {_tail(_text(res.stderr))}")
+    scale = 2 ** (10 - bits)
+    stats: dict[str, list[float]] = {k: [] for k in ("YMIN", "YMAX", "UMIN", "UMAX", "VMIN", "VMAX")}
+    for line in _text(res.stdout).splitlines():
+        if line.startswith("lavfi.signalstats."):
+            key, _, val = line[len("lavfi.signalstats."):].partition("=")
+            if key in stats:
+                stats[key].append(float(val) * scale)
+    if not stats["YMIN"]:
+        raise QCError("signalstats n'a produit aucune mesure (flux vidéo vide ?)")
+    lo, hi = config.LEVELS_R103_Y
+    out_frames = sum(1 for a, b in zip(stats["YMIN"], stats["YMAX"]) if a < lo or b > hi)
+    return {
+        "y_min": round(min(stats["YMIN"]), 1), "y_max": round(max(stats["YMAX"]), 1),
+        "c_min": round(min(min(stats["UMIN"]), min(stats["VMIN"])), 1),
+        "c_max": round(max(max(stats["UMAX"]), max(stats["VMAX"])), 1),
+        "frames_outside_r103": out_frames, "frames": len(stats["YMIN"]),
+    }
 
 
 def _blackdetect(path: Path, fps: int, video_duration: float, timeout: float) -> list[dict]:
@@ -380,6 +426,8 @@ def expected_for_output(compiled: dict, output: dict) -> dict:
         "timecode": prof["codec"] == "prores",
         "timecode_value": config.TIMECODE_START,
         "color": dict(_COLOR_EXPECTED),
+        # Niveaux vidéo (signalstats) : codes réservés interdits, plage EBU R103 recommandée.
+        "levels": True,
         # Alpha réel exigé pour tout format de pixel avec plan alpha (prores_4444).
         "alpha": prof["pix_fmt"].startswith("yuva"),
         "black": {
@@ -508,11 +556,50 @@ def check_output(path, expected: dict) -> list[dict]:
     # --- Métadonnées couleur ---------------------------------------------------------------------
     if expected.get("color"):
         act = {k: v.get(k) for k in expected["color"]}
+        # Champ absent du flux : repli sur l'image décodée (plage ProRes sous FFmpeg < 7), mentionné
+        # dans le détail pour que le rapport dise d'où vient chaque valeur.
+        missing = [k for k in expected["color"] if act.get(k) is None]
+        from_frame = []
+        if missing:
+            frame = _first_frame_color(p, list(expected["color"]), timeout)
+            for k in missing:
+                if frame.get(k) is not None:
+                    act[k] = frame[k]
+                    from_frame.append(k)
         bad = [k for k, want in expected["color"].items() if act.get(k) != want]
+        note = (f"{', '.join(from_frame)} lu(s) sur la 1re image décodée (absent(s) du flux : conteneur MOV "
+                "« colr nclc » sans drapeau de plage, FFmpeg < 7)." if from_frame else "")
         add("color", "métadonnées couleur (bt709 x3, plage tv)", "FAIL" if bad else "PASS", expected["color"], act,
-            True, "" if not bad else
+            True, note if not bad else
             f"Champs non conformes : {', '.join(bad)}. Ajoutez « -color_primaries bt709 -color_trc bt709 "
-            "-colorspace bt709 -color_range tv » (et +write_colr dans -movflags).")
+            "-colorspace bt709 -color_range tv » (et +write_colr dans -movflags). " + note)
+
+    # --- Niveaux vidéo (scopes automatiques) -------------------------------------------------------
+    if expected.get("levels"):
+        pix = str(v.get("pix_fmt") or "")
+        bits = 12 if "12" in pix else (10 if "10" in pix else 8)
+        lo, hi = config.LEVELS_R103_Y
+        exp_lv = {"reserved_codes": "aucun (4..1019)", "luma_r103": [lo, hi]}
+        try:
+            lv = _levels(p, bits, timeout)
+        except QCError as exc:
+            add("levels", "niveaux vidéo (signalstats)", "WARN", exp_lv, None, False, str(exc))
+        else:
+            reserved = min(lv["y_min"], lv["c_min"]) < 4 or max(lv["y_max"], lv["c_max"]) > 1019
+            # Informatif (jamais bloquant) : un dépassement ponctuel de compression aux arêtes vives ne
+            # doit pas bloquer une livraison web ; la diffusion broadcast se valide aux scopes (Resolve).
+            if reserved:
+                add("levels", "niveaux vidéo (signalstats)", "WARN", exp_lv, lv, False,
+                    "Codes réservés atteints (< 4 ou > 1019 en 10 bits) : à corriger pour la DIFFUSION (légaliseur "
+                    "ou étalonnage) ; si toute l'image est concernée, la source n'a pas été convertie en plage "
+                    "limitée (config.ZSCALE).")
+            elif lv["frames_outside_r103"]:
+                add("levels", "niveaux vidéo (signalstats)", "WARN", exp_lv, lv, False,
+                    f"{lv['frames_outside_r103']} image(s) hors plage EBU R103 (Y {lo}..{hi}) : acceptable sur le web, "
+                    "à corriger pour la diffusion (dépassements de compression ou couleurs saturées).")
+            else:
+                add("levels", "niveaux vidéo (signalstats)", "PASS", exp_lv, lv, False,
+                    f"Y {lv['y_min']:g}..{lv['y_max']:g}, chroma {lv['c_min']:g}..{lv['c_max']:g} (10 bits)")
 
     # --- Piste timecode tmcd (ProRes) ------------------------------------------------------------
     if expected.get("timecode"):
@@ -820,6 +907,58 @@ def check_safe_zones(compiled: dict) -> dict:
                       "Aucun relevé de texte (aucun calque safe: true visible) : rien à contrôler.")
     return _check(cid, label, "PASS", exp, actual, True,
                   "" if not excursions else "Dépassements brefs tolérés : " + "; ".join(describe(e) for e in excursions[:4]))
+
+
+def preflight_layout(compiled: dict, *, margin_px: float | None = None) -> dict:
+    """Contrôle ANTICIPÉ des zones sûres d'après les relevés des plans (build/<scène>/shots/*/manifest.json).
+
+    Même analyse que le QC final (analyse_safe_zones) sur un manifeste assemblé à partir des plans,
+    plus une alerte « trop près du bord » : marge < margin_px (défaut 1 % du petit côté du canevas).
+    Renvoie {zone, rect, excursions (> tolérance = bloquantes), near (calques trop près du bord),
+    records, ok}. Les relevés doivent exister (mograph validate --layout les rend d'abord).
+    """
+    qc = compiled["qc"]
+    zone = qc["safe_zone"]
+    aspect = compiled["format"]["aspect"]
+    canvas = config.LOGICAL_CANVAS[aspect]
+    if margin_px is None:
+        margin_px = 0.01 * min(canvas)
+    fps = int(compiled["format"]["fps"])
+    layout: dict[str, list] = {}
+    for s in compiled["shots"]:
+        man, err = _load_json(config.shot_frames_dir(compiled["scene_id"], s["id"]) / "manifest.json")
+        if err:
+            raise QCError(f"Relevés du plan « {s['id']} » absents ({err}) : lancez « mograph.py validate --layout ».")
+        for key, records in (man.get("layout") or {}).items():
+            g = int(s["global_start"]) + int(key)
+            layout.setdefault(str(g), []).extend({**r, "shot_id": s["id"]} for r in records)
+    manifest = {"fps": fps, "frames": int(compiled["frames"]), "layout_every": config.layout_every(fps),
+                "layout": layout,
+                "segments": [{"shot_id": s["id"], "global_start": s["global_start"], "frames": s["frames"],
+                              "fade_in_frames": s["fade_in_frames"]} for s in compiled["shots"]]}
+    records = sum(len(v) for v in layout.values())
+    if zone == "off":
+        return {"zone": "off", "rect": None, "excursions": [], "blocking": [], "near": [], "records": records, "ok": True}
+    rect = config.safe_rect(aspect, zone)
+    excursions = analyse_safe_zones(manifest, rect, canvas=canvas)
+    tol = float(qc["safe_zone_tolerance_s"])
+    blocking = [e for e in excursions if e["seconds"] > tol + _FLOAT_EPS]
+    # Marge minimale par (plan, calque) pour les boîtes visibles et DANS la zone.
+    margins: dict[tuple[str, str], dict] = {}
+    for g, recs in layout.items():
+        for r in recs:
+            box = r.get("box") or [0, 0, 0, 0]
+            if not _visible(box, canvas):
+                continue
+            ov = _overflow(box, rect)
+            key = (r["shot_id"], str(r.get("id")))
+            if ov <= config.SAFE_ZONE_EPSILON_PX and (key not in margins or -ov < margins[key]["margin_px"]):
+                margins[key] = {"shot_id": r["shot_id"], "id": str(r.get("id")), "text": str(r.get("text", ""))[:80],
+                                "margin_px": round(-ov, 2), "frame": int(g)}
+    near = sorted((m for m in margins.values() if m["margin_px"] < margin_px), key=lambda m: m["margin_px"])
+    return {"zone": zone, "rect": [round(rect[k], 2) for k in ("left", "top", "right", "bottom")],
+            "excursions": excursions, "blocking": blocking, "near": near, "margin_px": round(margin_px, 2),
+            "records": records, "ok": not blocking}
 
 
 def check_determinism(compiled: dict) -> dict:

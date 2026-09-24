@@ -23,16 +23,52 @@ from pipeline import config
 _COMMON = ["-y", "-hide_banner", "-nostdin"]
 # Étiquettes couleur Rec.709 plage limitée : identiques pour tous les profils (QC : bt709 ×3 + tv).
 _COLOR_TAGS = ["-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", "-color_range", "tv"]
-# Aplatissement d'une source à alpha pour un livrable opaque (préfixe du contrat) : passage en
-# 16 bits puis multiplication RVB × alpha = composition sur noir.
-_FLATTEN = "format=rgba64le,premultiply=inplace=1"
-# Expansion 16 bits EXACTE placée avant le préfixe : la conversion automatique de swscale
-# rgba -> rgba64le est inexacte (mesuré : 255 -> 65283, alpha 255 -> 65532, soit un blanc aplati
-# à Y = 937 au lieu de 940) ; zscale en plage pleine -> pleine donne exactement v × 257 (alpha
-# compris) sur un maître 8 bits et l'identité sur un maître 16 bits (mesuré, écart 0), la chaîne
-# est donc juste quelle que soit la profondeur du maître.
-_EXPAND_16 = "zscale=rangein=full:range=full,format=gbrap16le"
 _PIX_FMT = {"hevc_main10": "yuv420p10le", "prores_422hq": "yuv422p10le", "prores_4444": "yuva444p10le"}
+
+# Le plan ALPHA ne passe jamais par les convertisseurs de FFmpeg 6.1 (Ubuntu 24.04), mesurés
+# inexacts : swscale rgba -> gbrap décale l'alpha ≥ 128 de +1, rgba -> rgba64le donne 65532 pour
+# 255 ; vf_zscale traite l'alpha comme une plage limitée (255 -> 1020 en 10 bits). Seul le chemin
+# COULEUR de zscale est exact (v × 257, v × 1023 / 255 arrondi). On extrait donc l'alpha tel quel
+# (extractplanes, lecture directe du PNG), on le recopie dans R = G = B (mergeplanes) et on le
+# convertit par ce chemin couleur. Exact au bit près sur 6.1.1 comme sur 8.x, en 8 et 16 bits.
+# Formats par profondeur du maître : sortie du décodeur PNG, plans RVB natifs, alpha recopié
+# (même boutisme que la sortie d'extractplanes, exigé par mergeplanes).
+_MASTER_FMT = {8: ("rgba", "gbrp", "gbrp"), 16: ("rgba64be", "gbrp16le", "gbrp16be")}
+_FULL = "zscale=rangein=full:range=full"
+# Recopie des maps par défaut de mergeplanes (tous les plans <- plan 0 de l'entrée 0) : l'option
+# « mapping » est dépréciée depuis FFmpeg 6.
+_ALPHA_AS_RGB = "format={packed},extractplanes=a,mergeplanes=format={alpha},format={planar}"
+
+
+def _alpha_as_rgb(depth: int) -> str:
+    packed, planar, alpha = _MASTER_FMT[depth]
+    return _ALPHA_AS_RGB.format(packed=packed, planar=planar, alpha=alpha)
+
+
+def _flatten_graph(depth: int, tail: str) -> str:
+    """Aplatissement sur noir (livrable opaque d'une scène à alpha) puis `tail` (ZSCALE, format).
+
+    Équivalent exact du préfixe du contrat « format=rgba64le,premultiply=inplace=1 » : RVB et
+    alpha étendus en 16 bits (v × 257, identité sur un maître 16 bits), puis premultiply à deux
+    entrées (RVB × alpha / 65535, plan 0 du 2e flux = alpha).
+    """
+    planar = _MASTER_FMT[depth][1]
+    return (f"split[c][a];[c]format={planar},{_FULL},format=gbrp16le[c16];"
+            f"[a]{_alpha_as_rgb(depth)},{_FULL},format=gbrp16le[a16];"
+            f"[c16][a16]premultiply=inplace=0,{tail}")
+
+
+def _alpha_graph(depth: int) -> str:
+    """ProRes 4444 : couleur par config.ZSCALE, alpha plein 10 bits exact, fusionnés en yuva444p10le.
+
+    Alpha dans R = G = B puis matrice 709 en plage pleine : Y = alpha (Kr + Kg + Kb = 1).
+    mergeplanes impose le même format à ses deux entrées : yuv444p10le.
+    """
+    planar = _MASTER_FMT[depth][1]
+    return (f"split[c][a];[c]format={planar},{config.ZSCALE},format=yuv444p10le[yuv];"
+            f"[a]{_alpha_as_rgb(depth)},{_FULL}:matrix=709,format=yuv444p10le[a10];"
+            f"[yuv][a10]mergeplanes=map0s=0:map0p=0:map1s=0:map1p=1:map2s=0:map2p=2:"
+            f"map3s=1:map3p=0:format=yuva444p10le")
 
 
 class EncodeError(RuntimeError):
@@ -104,9 +140,27 @@ def _video_codec_args(profile: str, fps: int, crf: int) -> list[str]:
                       f"{', '.join(config.PROFILES)}.")
 
 
-def _audio_args(profile: str, duration: str) -> list[str]:
+def loudnorm_prefix(src: Path, duration: str, target_lufs: float) -> str:
+    """Normalisation EBU R128 en 2 passes (audio.normalize) : mesure de la source coupée à D, puis
+    loudnorm LINÉAIRE (gain constant, aucune compression) vers la cible, true peak ≤ -1,5 dBTP.
+    Déterministe : mêmes mesures -> même gain. Renvoie le début de la chaîne -af."""
+    base = f"atrim=end={duration},loudnorm=I={target_lufs:g}:TP=-1.5:LRA=11"
+    argv = [config.FFMPEG, *_COMMON[1:], "-v", "info", "-i", _rel(src), "-vn", "-af",
+            f"{base}:print_format=json", "-f", "null", "-"]
+    r = subprocess.run(argv, cwd=config.ROOT, capture_output=True, text=True, errors="replace")
+    text = r.stderr
+    start = text.rfind("{")
+    if r.returncode != 0 or start < 0:
+        raise EncodeError(f"Mesure de loudness impossible pour {src} : {text.strip()[-300:]}")
+    m = json.loads(text[start:text.rfind("}") + 1])
+    return (f"{base}:measured_I={m['input_i']}:measured_TP={m['input_tp']}:measured_LRA={m['input_lra']}:"
+            f"measured_thresh={m['input_thresh']}:offset={m['target_offset']}:linear=true:print_format=none,"
+            f"aresample={config.AUDIO_RATE}")
+
+
+def _audio_args(profile: str, duration: str, prefix: str | None = None) -> list[str]:
     # apad complète le silence, atrim coupe l'excédent : la piste dure exactement D (= vidéo).
-    af = ["-af", f"apad=whole_dur={duration},atrim=end={duration}"]
+    af = ["-af", (f"{prefix}," if prefix else "") + f"apad=whole_dur={duration},atrim=end={duration}"]
     if profile == "hevc_main10":
         return af + ["-c:a", "aac", "-b:a", "320k", "-ar", str(config.AUDIO_RATE)]
     # ProRes : PCM 24 bits, le format de travail des logiciels de montage (aucune perte).
@@ -128,10 +182,17 @@ def build_commands(compiled: dict) -> list[dict]:
     scene_id = compiled["scene_id"]
     fps = int(compiled["format"]["fps"])
     frames = int(compiled["frames"])
+    # Profondeur UNIQUE du maître (compose.py) : elle fixe les formats des chaînes alpha.
+    depth = int(compiled["depth"])
+    if depth not in _MASTER_FMT:
+        raise EncodeError(f"Profondeur maître invalide ({depth}) : 8 ou 16 attendus (recompilez la scène).")
     duration = duration_text(frames, fps)
     pattern = config.master_dir(scene_id) / config.FRAME_PATTERN_FFMPEG
     audio = compiled.get("audio")
     audio_src = Path(audio["src"]) if audio and audio.get("src") else None
+    # Mesure faite UNE fois (même gain pour tous les livrables) et seulement si demandée.
+    norm = (loudnorm_prefix(audio_src, duration, float(audio["target_lufs"]))
+            if audio_src is not None and audio.get("normalize") else None)
 
     commands = []
     for out in compiled["outputs"]:
@@ -144,7 +205,9 @@ def build_commands(compiled: dict) -> list[dict]:
         crf = config.HEVC_CRF_DEFAULT if crf is None else int(crf)
         vf = f"{config.ZSCALE},format={_PIX_FMT[profile]}"
         if out.get("alpha_flatten"):
-            vf = f"{_EXPAND_16},{_FLATTEN},{vf}"
+            vf = _flatten_graph(depth, vf)
+        elif profile == "prores_4444":
+            vf = _alpha_graph(depth)
         argv = [config.FFMPEG, *_COMMON,
                 # -framerate (option d'entrée image2) fixe la cadence exacte, sans conversion ;
                 # -start_number 0 : la séquence maître commence à 000000.png.
@@ -158,7 +221,7 @@ def build_commands(compiled: dict) -> list[dict]:
         argv += ["-frames:v", str(frames), "-vf", vf]
         argv += _video_codec_args(profile, fps, crf)
         if audio_src is not None:
-            argv += _audio_args(profile, duration)
+            argv += _audio_args(profile, duration, norm)
         argv.append(_rel(output))
         commands.append({"profile": profile, "output": str(output), "argv": argv})
     return commands
@@ -291,8 +354,9 @@ def encode_scene(compiled: dict, *, log=print) -> list[Path]:
                 # FileNotFoundError / PermissionError de CreateProcess : exécutable absent ou bloqué.
                 raise EncodeError(
                     f"FFmpeg introuvable ou impossible à lancer ({config.FFMPEG} : {exc}). Installez FFmpeg "
-                    "8.x build complet (libx265, prores_ks, zscale) dans le PATH, ou définissez la variable "
-                    "d'environnement MOGRAPH_FFMPEG avec le chemin de ffmpeg.exe, puis relancez l'encodage."
+                    "≥ 6.1 compilé avec libx265, prores_ks et libzimg (zscale) dans le PATH, ou définissez la "
+                    "variable d'environnement MOGRAPH_FFMPEG avec le chemin de l'exécutable ffmpeg, puis "
+                    "relancez l'encodage."
                 ) from exc
             try:
                 code = proc.wait()

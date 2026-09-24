@@ -1,0 +1,290 @@
+{
+  "$schema": "../schema/scene.schema.json",
+  "version": "1.0",
+  "id": "essai_03_mixte",
+  "title": "Essai 3 — mixte 3D + 2D",
+  "brief": "Test mixte : balle en pâte à modeler qui tombe et rebondit, titre composité, puis carte 2D en fondu.",
+  "seed": 11,
+  "preset": "clay_3d",
+  "format": {
+    "aspect": "1:1",
+    "resolution": "1080p",
+    "fps": 24,
+    "alpha": false
+  },
+  "quality": {
+    "plate_scale": 1,
+    "blender_samples": 96
+  },
+  "storyboard": [
+    {
+      "shot": "rebond",
+      "intent": "Montrer la 3D intégrée.",
+      "notes": "Chute, écrasement, rebond ; titre après l'impact."
+    },
+    {
+      "shot": "carte",
+      "intent": "Enchaîner en 2D.",
+      "notes": "Fondu 0,5 s depuis la plaque."
+    }
+  ],
+  "outputs": [
+    {
+      "profile": "hevc_main10",
+      "crf": 18
+    },
+    {
+      "profile": "prores_422hq"
+    }
+  ],
+  "qc": {
+    "safe_zone": "title",
+    "safe_zone_tolerance_s": 0.5,
+    "allow_black_s": 0,
+    "determinism_frames": 8,
+    "loudness_target_lufs": -14
+  },
+  "shots": [
+    {
+      "id": "rebond",
+      "duration": 2.5,
+      "plates": [
+        {
+          "id": "decor",
+          "world": {
+            "color": "bg",
+            "strength": 1.0
+          },
+          "camera": {
+            "location": [
+              0,
+              -9,
+              3.2
+            ],
+            "target": [
+              0,
+              0,
+              1.0
+            ],
+            "lens": 50,
+            "fstop": 5.6,
+            "anim": [
+              {
+                "prop": "location",
+                "keys": [
+                  {
+                    "t": 0,
+                    "v": [
+                      0,
+                      -9,
+                      3.2
+                    ]
+                  },
+                  {
+                    "t": 2.5,
+                    "v": [
+                      0.9,
+                      -7.6,
+                      2.6
+                    ],
+                    "ease": "sine.inOut"
+                  }
+                ]
+              }
+            ]
+          },
+          "objects": [
+            {
+              "id": "cyc",
+              "primitive": "cyclorama",
+              "size": 30,
+              "minor": 10,
+              "bevel": 3,
+              "location": [
+                0,
+                6,
+                0
+              ],
+              "material": "floor"
+            },
+            {
+              "id": "cube",
+              "primitive": "rounded_cube",
+              "size": 1.2,
+              "bevel": 0.2,
+              "location": [
+                -2.2,
+                1.0,
+                0.6
+              ],
+              "rotation": [
+                0,
+                0,
+                -20
+              ],
+              "material": "peach"
+            },
+            {
+              "id": "balle",
+              "primitive": "sphere",
+              "size": 1.1,
+              "location": [
+                0.2,
+                0,
+                4.0
+              ],
+              "material": "lilac",
+              "anim": [
+                {
+                  "prop": "location",
+                  "keys": [
+                    {
+                      "t": 0,
+                      "v": [
+                        0.2,
+                        0,
+                        4.0
+                      ]
+                    },
+                    {
+                      "t": 0.5,
+                      "v": [
+                        0.2,
+                        0,
+                        0.55
+                      ],
+                      "ease": "power2.in"
+                    },
+                    {
+                      "t": 0.85,
+                      "v": [
+                        0.2,
+                        0,
+                        1.6
+                      ],
+                      "ease": "power2.out"
+                    },
+                    {
+                      "t": 1.2,
+                      "v": [
+                        0.2,
+                        0,
+                        0.55
+                      ],
+                      "ease": "power2.in"
+                    }
+                  ]
+                },
+                {
+                  "prop": "scale",
+                  "keys": [
+                    {
+                      "t": 0.45,
+                      "v": [
+                        1,
+                        1,
+                        1
+                      ]
+                    },
+                    {
+                      "t": 0.52,
+                      "v": [
+                        1.18,
+                        1.18,
+                        0.74
+                      ],
+                      "ease": "power2.out"
+                    },
+                    {
+                      "t": 0.62,
+                      "v": [
+                        1,
+                        1,
+                        1
+                      ],
+                      "ease": "power2.out"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "layers": [
+        {
+          "id": "decor",
+          "type": "sequence",
+          "plate": "decor",
+          "w": 1080,
+          "h": 1080,
+          "x": 540,
+          "y": 540
+        },
+        {
+          "id": "titre",
+          "type": "text",
+          "text": "Rebond",
+          "style": "display",
+          "size": 130,
+          "color": "fg",
+          "align": "center",
+          "x": "50%",
+          "y": "safe:86%",
+          "anim": [
+            {
+              "move": "chars_up",
+              "at": 0.6
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "carte",
+      "duration": 2.5,
+      "background": "bg",
+      "transition_in": {
+        "type": "crossfade",
+        "dur": 0.5
+      },
+      "layers": [
+        {
+          "id": "chiffre",
+          "type": "text",
+          "text": "3 matières",
+          "style": "display",
+          "size": 120,
+          "color": "primary",
+          "align": "center",
+          "x": "50%",
+          "y": "42%",
+          "anim": [
+            {
+              "move": "pop",
+              "at": 0.5
+            }
+          ]
+        },
+        {
+          "id": "detail",
+          "type": "text",
+          "text": "rendues par Cycles, composées par le web",
+          "style": "body",
+          "size": 40,
+          "color": "fg",
+          "align": "center",
+          "maxWidth": 800,
+          "x": "50%",
+          "y": "58%",
+          "anim": [
+            {
+              "move": "rise",
+              "at": 0.8
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

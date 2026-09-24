@@ -1,0 +1,126 @@
+{
+  "$schema": "../schema/scene.schema.json",
+  "version": "1.0",
+  "id": "essai_05_vhs_glitch",
+  "title": "Essai 5 — VHS et glitch",
+  "brief": "Test effets : textures VHS (balayage, bande de tracking, grain), glitch sur les temps et sur une fenêtre, texte tapé.",
+  "seed": 11,
+  "preset": "vhs_glitch",
+  "format": {
+    "aspect": "16:9",
+    "resolution": "1080p",
+    "fps": 25,
+    "alpha": false
+  },
+  "audio": {
+    "bpm": 100,
+    "offset": 0.2,
+    "synth": {
+      "kind": "beat"
+    }
+  },
+  "storyboard": [
+    {
+      "shot": "cassette",
+      "intent": "Ambiance VHS nerveuse.",
+      "notes": "Glitch sur les temps 2 à 7 et fenêtre à 3,2 s."
+    }
+  ],
+  "outputs": [
+    {
+      "profile": "hevc_main10",
+      "crf": 18
+    },
+    {
+      "profile": "prores_422hq"
+    }
+  ],
+  "qc": {
+    "safe_zone": "title",
+    "safe_zone_tolerance_s": 0.5,
+    "allow_black_s": 0,
+    "determinism_frames": 8,
+    "loudness_target_lufs": -14
+  },
+  "shots": [
+    {
+      "id": "cassette",
+      "duration": 4,
+      "fx": {
+        "glitch": {
+          "on_beats": {
+            "from": 2,
+            "to": 7,
+            "every": 1,
+            "length": 0.12
+          },
+          "windows": [
+            [
+              3.2,
+              0.3
+            ]
+          ],
+          "amount": 0.7,
+          "mode": "both",
+          "colors": [
+            "primary",
+            "secondary"
+          ]
+        }
+      },
+      "layers": [
+        {
+          "id": "compteur",
+          "type": "text",
+          "text": "LECTURE  00:00:00",
+          "style": "body",
+          "size": 40,
+          "color": "accent",
+          "x": "safe:3%",
+          "y": "safe:3%",
+          "anchor": "top-left",
+          "anim": [
+            {
+              "move": "flicker_in",
+              "at": 0
+            }
+          ]
+        },
+        {
+          "id": "titre",
+          "type": "text",
+          "text": "SIGNAL PERDU",
+          "style": "display",
+          "size": 200,
+          "color": "primary",
+          "align": "center",
+          "x": "safe:50%",
+          "y": "safe:45%",
+          "anim": [
+            {
+              "move": "type_on",
+              "at": 0.4
+            }
+          ]
+        },
+        {
+          "id": "legende",
+          "type": "text",
+          "text": "rembobinez la bande",
+          "style": "body",
+          "size": 44,
+          "color": "fg",
+          "align": "center",
+          "x": "safe:50%",
+          "y": "safe:66%",
+          "anim": [
+            {
+              "move": "rise",
+              "at": 1.6
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

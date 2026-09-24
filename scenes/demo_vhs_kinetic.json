@@ -73,8 +73,8 @@
           "style": "body",
           "size": 40,
           "color": "accent",
-          "x": "safe:0%",
-          "y": "safe:0%",
+          "x": "safe:2%",
+          "y": "safe:2%",
           "anchor": "top-left",
           "z": 5,
           "anim": [

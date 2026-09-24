@@ -77,6 +77,14 @@ def smoothstep(x: float) -> float:
     return x * x * (3.0 - 2.0 * x)
 
 
+def _transition(shot: dict) -> tuple[str, str]:
+    """(type, direction) de la transition d'entrée d'un plan compilé ; les scènes compilées avant
+    l'ajout de wipe/push n'ont pas la clé : fondu si chevauchement, coupe sinon."""
+    tr = shot.get("transition") or {}
+    kind = tr.get("type") or ("crossfade" if shot.get("fade_in_frames") else "cut")
+    return kind, tr.get("direction") or "left"
+
+
 def fade_weight(k: int, fade_frames: int) -> float:
     """Poids du plan ENTRANT à l'image k (0..F−1) d'un fondu de F images : jamais 0 ni 1."""
     return smoothstep((k + 1) / (fade_frames + 1))
@@ -170,6 +178,69 @@ def convert_depth(img: np.ndarray, depth: int) -> np.ndarray:
     raise ComposeError("Conversion 16 -> 8 bits refusée : la profondeur maître ne peut pas être "
                        "inférieure à celle d'un plan (recompilez la scène).")
 
+
+
+def _shift(a: np.ndarray, dx: int, dy: int) -> np.ndarray:
+    """Translation entière (pixels) avec bords transparents : aucun rééchantillonnage, bords nets."""
+    h, w = a.shape[:2]
+    out = np.zeros_like(a)
+    xs0, xs1 = max(0, -dx), min(w, w - dx)
+    ys0, ys1 = max(0, -dy), min(h, h - dy)
+    if xs1 > xs0 and ys1 > ys0:
+        out[ys0 + dy:ys1 + dy, xs0 + dx:xs1 + dx] = a[ys0:ys1, xs0:xs1]
+    return out
+
+
+def _wipe_mask(h: int, w: int, p: float, direction: str) -> np.ndarray:
+    """Couverture (0..1) du plan entrant pour un volet à la progression p : le bord part du côté
+    d'où arrive le plan (left = arrive par la droite) ; bord anticrénelé sur 1 pixel."""
+    if direction in ("left", "right"):
+        x = np.arange(w, dtype=np.float32) + np.float32(0.5)
+        edge = np.float32(w * (1.0 - p)) if direction == "left" else np.float32(w * p)
+        cov = np.clip(x - edge + np.float32(0.5), 0.0, 1.0) if direction == "left" \
+            else np.clip(edge - x + np.float32(0.5), 0.0, 1.0)
+        return np.broadcast_to(cov[None, :, None], (h, w, 1))
+    y = np.arange(h, dtype=np.float32) + np.float32(0.5)
+    edge = np.float32(h * (1.0 - p)) if direction == "up" else np.float32(h * p)
+    cov = np.clip(y - edge + np.float32(0.5), 0.0, 1.0) if direction == "up" \
+        else np.clip(edge - y + np.float32(0.5), 0.0, 1.0)
+    return np.broadcast_to(cov[:, None, None], (h, w, 1))
+
+
+def blend_transitions(layers: list[tuple[np.ndarray, float, str, str]], depth: int) -> np.ndarray:
+    """Mélange successif avec transitions GÉOMÉTRIQUES, en alpha prémultiplié.
+
+    layers = [(image, poids, type, direction)] ; le premier plan a poids 1. crossfade : même formule
+    que blend_premultiplied ; wipe : le plan entrant est révélé par un volet ; push : le plan entrant
+    pousse l'accumulation (translation entière, le poids smoothstep sert de progression).
+    """
+    acc = None
+    for img, w, kind, direction in layers:
+        f = _to_float(img)
+        alpha = f[:, :, 3:4]
+        pre = np.concatenate([f[:, :, :3] * alpha, alpha], axis=2)
+        if acc is None:
+            acc = pre
+            continue
+        h, wd = pre.shape[:2]
+        if kind == "wipe":
+            m = _wipe_mask(h, wd, float(w), direction)
+            acc = acc * (np.float32(1.0) - m) + pre * m
+        elif kind == "push":
+            span = wd if direction in ("left", "right") else h
+            off = int(round(float(w) * span))
+            sign = {"left": (-1, 0), "right": (1, 0), "up": (0, -1), "down": (0, 1)}[direction]
+            out_acc = _shift(acc, sign[0] * off, sign[1] * off)
+            inc = _shift(pre, -sign[0] * (span - off), -sign[1] * (span - off))
+            acc = inc + out_acc * (np.float32(1.0) - inc[:, :, 3:4])
+        else:
+            acc = acc * np.float32(1.0 - w) + pre * np.float32(w)
+    alpha = acc[:, :, 3:4]
+    safe = np.where(alpha > 0, alpha, np.float32(1.0))
+    rgb = np.where(alpha > 0, acc[:, :, :3] / safe, np.float32(0.0))
+    out = _quantize(np.concatenate([np.clip(rgb, 0.0, 1.0), np.clip(alpha, 0.0, 1.0)], axis=2), depth)
+    out[..., :3][out[..., 3] == 0] = 0
+    return out
 
 # ---------------------------------------------------------------------------
 # Lecture et vérification des plans
@@ -339,6 +410,10 @@ def compose_scene(compiled: dict, *, log=print) -> dict:
             i, local, _ = layers[0]
             mode = "link" if shots[i]["depth"] == depth else "convert"
             src = [[shots[i]["id"], local, 1.0]]
+        elif any(_transition(compiled["shots"][i])[0] in ("wipe", "push") for i, _, _ in layers[1:]):
+            # Transition géométrique : src garde [plan, image, progression] (pas de part de mélange).
+            mode = _transition(compiled["shots"][layers[-1][0]])[0]
+            src = [[shots[i]["id"], local, w] for i, local, w in layers]
         else:
             mode = "blend"
             # Poids EFFECTIFS de chaque plan dans le mélange successif (somme = 1).
@@ -369,9 +444,13 @@ def compose_scene(compiled: dict, *, log=print) -> dict:
         elif task["mode"] == "convert":
             i, local, _ = task["layers"][0]
             _write_png(dst, convert_depth(_read_png(shots[i]["files"][local]), depth))
-        else:
+        elif task["mode"] == "blend":
             layers = [(_read_png(shots[i]["files"][local]), w) for i, local, w in task["layers"]]
             _write_png(dst, blend_premultiplied(layers, depth))
+        else:
+            layers = [(_read_png(shots[i]["files"][local]), w, *_transition(compiled["shots"][i]))
+                      for i, local, w in task["layers"]]
+            _write_png(dst, blend_transitions(layers, depth))
 
     heavy = [t for t in tasks if t["mode"] != "link"]
     try:
@@ -409,7 +488,8 @@ def compose_scene(compiled: dict, *, log=print) -> dict:
         "depth": depth,
         "alpha": bool(compiled["format"].get("alpha", False)),
         "segments": [{"shot_id": s["id"], "global_start": s["global_start"], "frames": s["frames"],
-                      "fade_in_frames": s["fade_in_frames"]} for s in compiled["shots"]],
+                      "fade_in_frames": s["fade_in_frames"], "transition": _transition(s)[0],
+                      "direction": _transition(s)[1]} for s in compiled["shots"]],
         "frame_map": [{"g": t["g"], "mode": t["mode"], "src": t["src"]} for t in tasks],
         "layout_every": config.layout_every(fps),
         "layout": {str(g): layout[g] for g in sorted(layout)},

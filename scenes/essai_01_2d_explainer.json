@@ -1,0 +1,313 @@
+{
+  "$schema": "../schema/scene.schema.json",
+  "version": "1.0",
+  "id": "essai_01_2d_explainer",
+  "title": "Essai 1 — explainer 2D",
+  "brief": "Test 2D pur : titre lettre à lettre, formes, graphique en barres, trois plans reliés par volet et poussée.",
+  "seed": 11,
+  "preset": "flat_riso",
+  "format": {
+    "aspect": "16:9",
+    "resolution": "1080p",
+    "fps": 25,
+    "alpha": false
+  },
+  "storyboard": [
+    {
+      "shot": "intro",
+      "intent": "Poser le sujet.",
+      "notes": "Formes à droite, texte à gauche en zone sûre."
+    },
+    {
+      "shot": "chiffres",
+      "intent": "Montrer les données.",
+      "notes": "Entrée en volet vers la gauche."
+    },
+    {
+      "shot": "fin",
+      "intent": "Conclure.",
+      "notes": "Entrée en poussée."
+    }
+  ],
+  "outputs": [
+    {
+      "profile": "hevc_main10",
+      "crf": 18
+    },
+    {
+      "profile": "prores_422hq"
+    }
+  ],
+  "qc": {
+    "safe_zone": "title",
+    "safe_zone_tolerance_s": 0.5,
+    "allow_black_s": 0,
+    "determinism_frames": 8,
+    "loudness_target_lufs": -14
+  },
+  "shots": [
+    {
+      "id": "intro",
+      "duration": 3.2,
+      "background": "bg",
+      "layers": [
+        {
+          "id": "rond",
+          "type": "shape",
+          "shape": "ellipse",
+          "w": 520,
+          "h": 520,
+          "fill": "secondary",
+          "x": 1480,
+          "y": 520,
+          "anim": [
+            {
+              "move": "pop",
+              "at": 0.1
+            }
+          ]
+        },
+        {
+          "id": "carre",
+          "type": "shape",
+          "shape": "rect",
+          "w": 300,
+          "h": 300,
+          "radius": 36,
+          "fill": "accent",
+          "x": 1650,
+          "y": 800,
+          "rotation": -8,
+          "z": 1,
+          "anim": [
+            {
+              "move": "slide_anticipate",
+              "at": 0.3
+            }
+          ]
+        },
+        {
+          "id": "anneau",
+          "type": "shape",
+          "shape": "ellipse",
+          "w": 200,
+          "h": 200,
+          "fill": "none",
+          "stroke": "primary",
+          "strokeWidth": 14,
+          "x": 1250,
+          "y": 250,
+          "z": 2,
+          "anim": [
+            {
+              "move": "draw",
+              "at": 0.5
+            }
+          ]
+        },
+        {
+          "id": "titre",
+          "type": "text",
+          "text": "Tester mograph",
+          "style": "display",
+          "size": 150,
+          "color": "fg",
+          "x": "safe:3%",
+          "y": "safe:40%",
+          "anchor": "left",
+          "z": 3,
+          "anim": [
+            {
+              "move": "chars_up",
+              "at": 0.35
+            }
+          ]
+        },
+        {
+          "id": "trait",
+          "type": "shape",
+          "shape": "line",
+          "w": 420,
+          "h": 14,
+          "stroke": "primary",
+          "strokeWidth": 12,
+          "x": "safe:3%",
+          "y": "safe:56%",
+          "anchor": "left",
+          "z": 3,
+          "anim": [
+            {
+              "move": "draw",
+              "at": 1.0
+            }
+          ]
+        },
+        {
+          "id": "sous_titre",
+          "type": "text",
+          "text": "Essai 2D : texte, formes et graphique",
+          "style": "body",
+          "size": 46,
+          "color": "fg",
+          "x": "safe:3%",
+          "y": "safe:66%",
+          "anchor": "left",
+          "z": 3,
+          "anim": [
+            {
+              "move": "rise",
+              "at": 1.2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "chiffres",
+      "duration": 4,
+      "background": "bg",
+      "transition_in": {
+        "type": "wipe",
+        "dur": 0.4,
+        "direction": "left"
+      },
+      "layers": [
+        {
+          "id": "entete",
+          "type": "text",
+          "text": "Croissance par trimestre",
+          "style": "display",
+          "size": 76,
+          "color": "fg",
+          "x": "safe:3%",
+          "y": "safe:8%",
+          "anchor": "left",
+          "anim": [
+            {
+              "move": "rise",
+              "at": 0.4
+            }
+          ]
+        },
+        {
+          "id": "barres",
+          "type": "chart",
+          "w": 1240,
+          "h": 620,
+          "x": 960,
+          "y": 610,
+          "data": [
+            {
+              "label": "T1",
+              "value": 12
+            },
+            {
+              "label": "T2",
+              "value": 19
+            },
+            {
+              "label": "T3",
+              "value": 27
+            },
+            {
+              "label": "T4",
+              "value": 41
+            }
+          ],
+          "max": 45,
+          "gap": 56,
+          "barRadius": 18,
+          "colors": [
+            "primary",
+            "secondary",
+            "accent",
+            "primary"
+          ],
+          "valueFormat": {
+            "decimals": 0,
+            "prefix": "+",
+            "suffix": " %"
+          },
+          "labelStyle": {
+            "style": "body",
+            "size": 40,
+            "color": "fg"
+          },
+          "valueStyle": {
+            "style": "display",
+            "size": 58,
+            "color": "fg"
+          },
+          "grow": {
+            "at": 0.6,
+            "dur": 1.6,
+            "stagger": 0.14,
+            "ease": "settle"
+          }
+        },
+        {
+          "id": "source",
+          "type": "text",
+          "text": "Données fictives",
+          "style": "body",
+          "size": 26,
+          "color": "fg",
+          "x": "safe:3%",
+          "y": "safe:98%",
+          "anchor": "bottom-left",
+          "anim": [
+            {
+              "move": "rise",
+              "at": 2.2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "fin",
+      "duration": 2.4,
+      "background": "primary",
+      "transition_in": {
+        "type": "push",
+        "dur": 0.4,
+        "direction": "left"
+      },
+      "layers": [
+        {
+          "id": "merci",
+          "type": "text",
+          "text": "Merci",
+          "style": "display",
+          "size": 200,
+          "color": "bg",
+          "x": "50%",
+          "y": "46%",
+          "anim": [
+            {
+              "move": "pop",
+              "at": 0.45
+            }
+          ]
+        },
+        {
+          "id": "ligne",
+          "type": "shape",
+          "shape": "line",
+          "w": 300,
+          "h": 12,
+          "stroke": "accent",
+          "strokeWidth": 10,
+          "x": "50%",
+          "y": "62%",
+          "anim": [
+            {
+              "move": "draw",
+              "at": 0.8
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

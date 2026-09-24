@@ -1,0 +1,15 @@
+{
+  "json.schemas": [
+    {
+      "fileMatch": ["/scenes/*.json", "/templates/*.json", "/build/_variants/**/*.json"],
+      "url": "./schema/scene.schema.json"
+    },
+    {
+      "fileMatch": ["/presets/*.json"],
+      "url": "./schema/preset.schema.json"
+    }
+  ],
+  "files.associations": { "*.srt": "plaintext", "*.vtt": "plaintext" },
+  "files.exclude": { "**/__pycache__": true },
+  "search.exclude": { "build/**": true, "out/**": true, "node_modules/**": true, ".venv*/**": true }
+}

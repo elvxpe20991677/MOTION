@@ -22,6 +22,19 @@ Les schémas JSON dans `schema/` et `schema/internal/` sont normatifs.
 | Blender | bpy 5.0.1 sous CPython 3.11 — venv `.venv-blender` → **`.venv-blender/Scripts/python.exe`** |
 | Référence Cycles | cube 540², 16 éch., OIDN : **1,09 s/image CPU (24 threads)**, 2,10 s OptiX (surcoût d'init sur scène triviale) |
 
+### Machine 2 : conteneur Linux (reprise du travail, étapes 18 à 20)
+| Élément | Valeur |
+|---|---|
+| OS | Ubuntu 24.04.4 LTS (noyau 6.18), sans GPU |
+| CPU / RAM / disque | Intel Xeon 2,10 GHz, 4 cœurs, 16 Go, ~28 Go libres (le minimum de la SPEC) |
+| FFmpeg | **6.1.1** (paquet Ubuntu), libzimg 3.0.5 : défauts d'alpha contournés (§7), plage ProRes lue sur l'image (§8) |
+| Python / Node | 3.12.3 (`.venv/bin/python`) / Node 22.22.2, npm 10.9.7 ; mêmes versions pip/npm figées |
+| Chromium | 141.0.7390.37 (playwright build v1194, identique à la machine 1) |
+| Blender | bpy 5.0.1 sous CPython 3.11 (`.venv-blender/bin/python`), Cycles CPU |
+| Référence Cycles | scène clay 540², 24 éch., flou 0,5 : **~5 s/image (4 threads)** ; web 1080p : 0,37 s/image (4 navigateurs) ; plaque 1080², 96 éch. : ~56 s/image |
+
+Le déterminisme est garanti PAR machine (§6) : la porte de l'étape 19 est rejouée ici.
+
 Constat bpy : `world.color` seul n'est PAS rendu (fond gris sombre) ; le monde doit être construit
 avec un arbre de nœuds (Background / Sky Texture).
 
@@ -368,13 +381,30 @@ normalisation BGRA 8 bits (ajout d'un alpha 255 si Chromium l'a omis) ; `cv2.imw
   une page par plan, dans un ORDRE MÉLANGÉ, chacune par un `__seek` isolé ; comparées aux
   empreintes du manifeste. En cas d'écart : image de différence `build/<scene>/determinism_diff/`.
 - Plaques : Cycles avec graine fixe ; le rapport de l'agent Blender indique si deux rendus du même
-  numéro d'image sont identiques au bit près en CPU et en OptiX.
+  numéro d'image sont identiques au bit près en CPU et en OptiX. Exigence pour une plaque re-rendue
+  (reprise) : écart invisible après composition 8 bits (max ≤ 128/65535, moyen ≤ 1/65535) — l'échantillonnage
+  adaptatif multithread de Cycles n'est pas bit-exact d'une machine à l'autre (mesuré jusqu'à 33/65535 sur un
+  runner GitHub). La porte de déterminisme, sur les images web recomposées des MÊMES plaques, reste au bit près.
 
 ---------------------------------------------------------------------------------------------------
 ## 7. Encodage (rappel normatif)
 Voir SPEC §15. `-framerate fps -start_number 0 -i master/%06d.png`, `-frames:v N`, conversion
-`config.ZSCALE`, préfixe `format=rgba64le,premultiply=inplace=1` si `alpha_flatten`, audio
+`config.ZSCALE`, aplatissement sur noir si `alpha_flatten`, audio
 `-af apad=whole_dur=D,atrim=end=D` avec `D = N / fps` (texte décimal exact), `-map 0:v:0 -map 1:a:0`.
+
+**Plan alpha (FFmpeg 6.1.1 d'Ubuntu 24.04, mesuré)** : swscale `rgba → gbrap` décale l'alpha ≥ 128
+de +1, `rgba → rgba64le` donne 65532 pour 255, `vf_zscale` traite l'alpha comme une plage limitée
+(255 → 1020 en 10 bits). Le préfixe littéral `format=rgba64le,premultiply=inplace=1` aplatit donc
+le blanc opaque à Y = 937. Règle : l'alpha n'est JAMAIS converti par ces chemins ; il est lu par
+`extractplanes=a`, recopié dans R = G = B (`mergeplanes`, maps par défaut) et converti par le
+chemin couleur de zscale (exact). Formats selon `compiled.depth` : 8 bits `rgba`/`gbrp`,
+16 bits `rgba64be`/`gbrp16le` (alpha recopié en `gbrp16be`, boutisme d'extractplanes).
+- aplatissement (équivalent exact du préfixe du contrat) : RVB et alpha en `gbrp16le`, puis
+  `premultiply=inplace=0` (2 entrées, alpha = plan 0 du 2e flux), puis `config.ZSCALE` ;
+- ProRes 4444 : couleur `config.ZSCALE → yuv444p10le`, alpha `zscale plein, matrix=709 →
+  yuv444p10le` (Y = alpha car Kr + Kg + Kb = 1), fusion `mergeplanes → yuva444p10le`.
+Vérifié au bit près en 8 et 16 bits (`tests/verify_step15_encode.py`), identique en couleur à la
+chaîne précédente, valable aussi sur FFmpeg 8.x (mêmes filtres, sans option dépréciée).
 HEVC `keyint = 2 × fps`, `min-keyint = fps` (valeurs numériques). `encode_commands.sh` : script bash
 exécutable depuis la racine (`cd "$(dirname "$0")/../.."`), une commande par livrable, citations
 POSIX (`shlex.join`), chemins relatifs à la racine.
@@ -383,7 +413,9 @@ POSIX (`shlex.join`), chemins relatifs à la racine.
 ## 8. QC (rappel normatif)
 Attendus déduits de la scène compilée : codec/profil/pix_fmt (`config.PROFILES`, 4444 décodé en
 yuva444p10le OU yuva444p12le), taille `output`, `r_frame_rate` = `avg_frame_rate` = `fps/1`,
-`nb_read_frames` = frames, durée ± ½ image, `hvc1` (HEVC), bt709 ×3 + tv, piste `tmcd` (ProRes),
+`nb_read_frames` = frames, durée ± ½ image, `hvc1` (HEVC), bt709 ×3 + tv (champ absent du flux :
+lu sur la 1re image décodée — FFmpeg < 7 ne pose la plage ProRes que sur les images, l'atome MOV
+`colr nclc` n'ayant pas de drapeau de plage), piste `tmcd` (ProRes),
 alpha réel (4444, alphaextract image médiane : min < 255), blackdetect `pix_th = 0.03`
 (bloquant si noir > allow_black_s, informatif si `format.alpha`), audio (codec aac|pcm_s24le,
 48 kHz, durée ± (1 image + 25 ms)), loudness ±1 LU + true peak ≤ −1 dBTP, zones sûres (master
@@ -403,3 +435,65 @@ Agents parallèles, chacun propriétaire exclusif de ses fichiers (§2) et de se
   `tests/verify_step14_compose.py`, `tests/verify_step15_encode.py`, `tests/verify_step16_audio.py`.
 - qc : `pipeline/qc.py`, `tests/verify_step17_qc.py`.
 L'intégrateur écrit `mograph.py`, les scènes démo, README.md, QC_CHECKLIST.md.
+
+---------------------------------------------------------------------------------------------------
+## 10. Extensions (après l'étape 20) — normatives
+
+### 10.1 Scène compilée : ajouts
+Chaque entrée de `shots[]` porte en plus (hors `spec` : les empreintes des plans ne changent pas) :
+- `transition` : `{type: cut|crossfade|wipe|push, direction: left|right|up|down}` ; `fade_in_frames`
+  reste le chevauchement (commun aux trois transitions non « cut »).
+- `media` : tâches d'extraction des calques vidéo `[{kind: "video", layer_id, plate_key, src, start,
+  loop, fit, fps, frames, width, height, color_matrix, out_dir, digest}]`.
+`audio` gagne `normalize` (booléen).
+
+### 10.2 Calques ajoutés (développés par le compilateur, le runtime n'a pas de nouveau type)
+- `video` → calque `sequence` compilé dont `plate` = `video__<id>` ; `spec.plates["video__<id>"]` a
+  en plus `source` (= `digest` : SHA-256 de la source + réglages, invalide le plan s'il change).
+  Images dans `build/<scène>/media/<plan>__<calque>/NNNNNN.png` (`config.media_dir`), extraites par
+  `pipeline/media.py` avant le rendu web du plan (`web_render.render_shot` l'appelle).
+- `subtitles` → un calque `text` par réplique (id `<id>-NNN`), développé après `_timing()` : temps
+  SRT/VTT globaux convertis en local, fondus `fade`, répliques hors plan ignorées.
+
+### 10.3 Transitions géométriques (`pipeline/compose.py`)
+`blend_transitions` : volet (masque anticrénelé sur 1 px) et poussée (translation ENTIÈRE, sans
+rééchantillonnage), en alpha prémultiplié, progression = `fade_weight` (smoothstep). Le fondu garde
+`blend_premultiplied` inchangé (maîtres existants identiques au bit près). Manifeste maître :
+`frame_map[].mode` ∈ {link, convert, blend, wipe, push} ; `segments[]` + `transition`, `direction`.
+
+### 10.4 API ajoutées
+```python
+# pipeline/audio.py
+def analyse_tempo(path, *, bpm_min=60.0, bpm_max=200.0, beats_per_bar=4) -> dict
+    # {bpm, offset (1er temps fort), beats_per_bar, confidence 0..1, drop (s|None), duration}
+# pipeline/encode.py
+def loudnorm_prefix(src, duration: str, target_lufs: float) -> str   # 2 passes, loudnorm linéaire
+# pipeline/media.py
+def ensure_shot_media(compiled, shot_index, *, log=print) -> list[Path]
+# pipeline/qc.py
+def preflight_layout(compiled, *, margin_px=None) -> dict   # relevés des plans, avant composition
+# check_output : contrôle « levels » (signalstats) si expected["levels"]
+# pipeline/sheets.py
+def pick_frames(compiled, max_tiles=16) -> list[tuple[int, str]]
+def write_contact_sheets(compiled, *, log=print) -> list[Path]
+# pipeline/preview.py
+def serve(scene_path, *, port=8765, open_browser=True, log=print, ready_event=None, stop_event=None)
+# pipeline/batch.py
+def expand(scenes: list[str], *, data: str | None = None) -> list[tuple[str, str | dict]]
+def write_report(results, *, draft: bool) -> Path
+```
+
+### 10.5 Réglages (`pipeline/config.py`)
+`WEB_MAX_WORKERS` (env `MOGRAPH_MAX_WORKERS`, défaut 4) ; `_default_workers` = un navigateur par
+cœur jusqu'à ce plafond. `LEVELS_R103_Y = (55, 966)`. `TEMPLATES_DIR`, `VIDEO_EXTENSIONS`,
+`SUBTITLE_EXTENSIONS`, `media_dir()`. MIME audio ajoutés (aperçu).
+
+### 10.6 CLI
+`validate --layout`, `all|render --draft` (id `<id>_draft` : aucun mélange avec le rendu final ;
+pas de porte de déterminisme ni de QC), `preview`, `new`, `batch [--data CSV]`, `beats`, `sheets`.
+`all` produit les planches contact avant le QC. `render`/`all` rendent les plans sans plaque
+pendant Blender (`step_plates_and_web`).
+
+### 10.7 Tests
+`tests/verify_features.py` (isolé dans `build/_tests/features/`, médias dans `assets/_tests/`),
+rejoué par la CI (`.github/workflows/tests.yml`) avec les étapes 9 à 17.

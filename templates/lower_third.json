@@ -1,0 +1,110 @@
+{
+  "$schema": "../schema/scene.schema.json",
+  "version": "1.0",
+  "id": "modele_lower_third",
+  "title": "Bandeau nominatif",
+  "brief": "Bandeau incrustable (fond transparent) : nom et fonction, entrée et sortie rapides.",
+  "seed": 1,
+  "preset": "kinetic_signal",
+  "format": {
+    "aspect": "16:9",
+    "resolution": "1080p",
+    "fps": 25,
+    "alpha": true
+  },
+  "outputs": [
+    {
+      "profile": "prores_4444"
+    },
+    {
+      "profile": "hevc_main10",
+      "crf": 18,
+      "suffix": "_flat"
+    }
+  ],
+  "qc": {
+    "safe_zone": "title",
+    "safe_zone_tolerance_s": 0.5,
+    "allow_black_s": 0,
+    "determinism_frames": 8,
+    "loudness_target_lufs": -14
+  },
+  "shots": [
+    {
+      "id": "bandeau",
+      "duration": 4,
+      "layers": [
+        {
+          "id": "barre",
+          "type": "shape",
+          "shape": "rect",
+          "w": 760,
+          "h": 140,
+          "fill": "primary",
+          "x": "safe:0%",
+          "y": "safe:84%",
+          "anchor": "left",
+          "anim": [
+            {
+              "move": "slide_anticipate",
+              "at": 0.05,
+              "from": {
+                "x": -900
+              }
+            },
+            {
+              "at": 3.5,
+              "dur": 0.3,
+              "to": {
+                "x": -1000
+              },
+              "ease": "exit"
+            }
+          ]
+        },
+        {
+          "id": "nom",
+          "type": "text",
+          "text": "Prénom Nom",
+          "style": "display",
+          "size": 96,
+          "color": "fg",
+          "x": "safe:2%",
+          "y": "safe:84%",
+          "anchor": "left",
+          "anim": [
+            {
+              "move": "chars_drop",
+              "at": 0.3
+            },
+            {
+              "move": "punch_out",
+              "at": 3.35
+            }
+          ]
+        },
+        {
+          "id": "fonction",
+          "type": "text",
+          "text": "Fonction",
+          "style": "body",
+          "size": 36,
+          "color": "fg",
+          "x": "safe:1%",
+          "y": "safe:97%",
+          "anchor": "left",
+          "anim": [
+            {
+              "move": "slide_anticipate",
+              "at": 0.6
+            },
+            {
+              "move": "punch_out",
+              "at": 3.4
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

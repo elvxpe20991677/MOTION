@@ -340,7 +340,10 @@ def main() -> int:
           "durée beats:4 = 60 images ; transition par défaut du preset = coupe")
     check(kin["motion_blur"] == {"enabled": True, "samples": 8, "shutter": 0.5} and kin["depth"] == 16,
           "flou de mouvement du preset -> profondeur 16 bits")
-    check(kin["audio"]["src"] is None and kin["audio"]["bpm"] == 120, "audio sans fichier : tempo seul")
+    # Contrat §4 : audio = null | {src absolu, …} ; un bloc « tempo seul » ne sert qu'à caler les temps.
+    check(kin["audio"] is None and any("MUETS" in w for w in kin["warnings"]),
+          "audio sans fichier : tempo seul -> audio null (livrables muets) + avertissement",
+          str(kin["audio"]))
 
     # ------------------------------------------------------------------------------------------
     print("== Plaques et preset 3D (clay_3d) ==")

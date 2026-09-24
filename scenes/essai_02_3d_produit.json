@@ -1,0 +1,187 @@
+{
+  "$schema": "../schema/scene.schema.json",
+  "version": "1.0",
+  "id": "essai_02_3d_produit",
+  "title": "Essai 2 — 3D photoréaliste seule",
+  "brief": "Test 3D pur : objets métal et céramique sous ciel physique, travelling lent, profondeur de champ f/2.8.",
+  "seed": 11,
+  "preset": "photoreal_3d",
+  "format": {
+    "aspect": "16:9",
+    "resolution": "1080p",
+    "fps": 24,
+    "alpha": false
+  },
+  "quality": {
+    "plate_scale": 1,
+    "motion_blur": {
+      "enabled": false
+    }
+  },
+  "storyboard": [
+    {
+      "shot": "produit",
+      "intent": "Mettre en valeur les matières.",
+      "notes": "Aucun texte : test de la chaîne 3D seule (Cycles, AgX, ciel, DOF)."
+    }
+  ],
+  "outputs": [
+    {
+      "profile": "hevc_main10",
+      "crf": 18
+    },
+    {
+      "profile": "prores_422hq"
+    }
+  ],
+  "qc": {
+    "safe_zone": "title",
+    "safe_zone_tolerance_s": 0.5,
+    "allow_black_s": 0,
+    "determinism_frames": 8,
+    "loudness_target_lufs": -14
+  },
+  "shots": [
+    {
+      "id": "produit",
+      "duration": 3,
+      "plates": [
+        {
+          "id": "studio",
+          "camera": {
+            "location": [
+              0,
+              -8.5,
+              2.4
+            ],
+            "target": [
+              0,
+              0,
+              0.9
+            ],
+            "lens": 50,
+            "fstop": 2.8,
+            "anim": [
+              {
+                "prop": "location",
+                "keys": [
+                  {
+                    "t": 0,
+                    "v": [
+                      0,
+                      -8.5,
+                      2.4
+                    ]
+                  },
+                  {
+                    "t": 3.0,
+                    "v": [
+                      2.6,
+                      -7.4,
+                      1.9
+                    ],
+                    "ease": "sine.inOut"
+                  }
+                ]
+              }
+            ]
+          },
+          "objects": [
+            {
+              "id": "sol",
+              "primitive": "cyclorama",
+              "size": 30,
+              "minor": 10,
+              "bevel": 3,
+              "location": [
+                0,
+                6,
+                0
+              ],
+              "material": "graphite"
+            },
+            {
+              "id": "vase",
+              "primitive": "cylinder",
+              "size": 1.0,
+              "location": [
+                -1.6,
+                0.6,
+                0.9
+              ],
+              "scale": [
+                1,
+                1,
+                1.8
+              ],
+              "material": "ceramic"
+            },
+            {
+              "id": "bille",
+              "primitive": "sphere",
+              "size": 1.1,
+              "location": [
+                0.4,
+                0,
+                0.55
+              ],
+              "material": "brass"
+            },
+            {
+              "id": "anneau",
+              "primitive": "torus",
+              "size": 1.4,
+              "minor": 0.16,
+              "location": [
+                1.9,
+                0.8,
+                0.75
+              ],
+              "rotation": [
+                70,
+                0,
+                20
+              ],
+              "material": "aluminium",
+              "anim": [
+                {
+                  "prop": "rotation",
+                  "keys": [
+                    {
+                      "t": 0,
+                      "v": [
+                        70,
+                        0,
+                        20
+                      ]
+                    },
+                    {
+                      "t": 3.0,
+                      "v": [
+                        70,
+                        0,
+                        110
+                      ],
+                      "ease": "sine.inOut"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "layers": [
+        {
+          "id": "rendu3d",
+          "type": "sequence",
+          "plate": "studio",
+          "w": 1920,
+          "h": 1080,
+          "x": 960,
+          "y": 540
+        }
+      ]
+    }
+  ]
+}

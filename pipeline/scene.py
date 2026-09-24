@@ -11,7 +11,7 @@ Une scène fautive est REFUSÉE par une SceneError qui regroupe TOUTES les erreu
 localisée par un chemin JSON lisible (ex. « shots[0].layers[2].anim[1].ease (plan « intro »,
 calque « titre ») ») et assortie d'une correction suggérée.
 
-Usage direct (diagnostic) : .venv/Scripts/python.exe -m pipeline.scene scenes/<scène>.json
+Usage direct (diagnostic) : .venv/bin/python -m pipeline.scene scenes/<scène>.json (Windows : .venv/Scripts/python.exe)
 """
 
 from __future__ import annotations
@@ -23,6 +23,7 @@ import json
 import math
 import os
 import re
+import subprocess
 import sys
 import urllib.parse
 from dataclasses import dataclass
@@ -322,6 +323,83 @@ def _apply_case(text: str, case: str) -> str:
     return text
 
 
+_SUB_TIME = re.compile(r"(?:(\d+):)?(\d{1,2}):(\d{2})[,.](\d{1,3})")
+_SUB_TAG = re.compile(r"<[^>]+>|\{\\[^}]*\}")
+
+
+def _sub_seconds(m: re.Match) -> float:
+    h, mi, se, ms = m.group(1), m.group(2), m.group(3), m.group(4)
+    return int(h or 0) * 3600 + int(mi) * 60 + int(se) + int(ms.ljust(3, "0")) / 1000
+
+
+def _read_subtitles(src: str) -> list[tuple[float, float, str]]:
+    """Lit un .srt ou .vtt sous assets/ : [(début, fin, texte)] en secondes GLOBALES, triés.
+
+    Balises (<i>, <b>, {\\an8}) retirées ; lignes d'une réplique jointes par une espace (le retour à la
+    ligne est géré par maxWidth). ValueError (message actionnable) si le fichier est absent ou vide.
+    """
+    path = (config.ROOT / src).resolve()
+    if not path.is_relative_to(config.ASSETS_DIR.resolve()):
+        raise ValueError(f"le fichier de sous-titres {_q(src)} doit se trouver sous assets/ (ex. « assets/subs/film.srt »).")
+    if path.suffix.lower() not in config.SUBTITLE_EXTENSIONS:
+        raise ValueError(f"format de sous-titres « {path.suffix} » non pris en charge : .srt ou .vtt.")
+    if not path.is_file():
+        raise ValueError(f"fichier de sous-titres introuvable : {path}.")
+    text = path.read_text(encoding="utf-8-sig", errors="replace").replace("\r\n", "\n").replace("\r", "\n")
+    cues = []
+    for block in re.split(r"\n\s*\n", text):
+        lines = [ln.strip() for ln in block.strip().split("\n") if ln.strip()]
+        k = next((n for n, ln in enumerate(lines) if "-->" in ln), None)
+        if k is None:
+            continue  # en-tête WEBVTT, NOTE, bloc vide
+        left, _, right = lines[k].partition("-->")
+        m0, m1 = _SUB_TIME.search(left), _SUB_TIME.search(right)
+        if not (m0 and m1):
+            raise ValueError(f"{path.name} : ligne de temps illisible « {lines[k]} » (attendu « 00:00:01,000 --> 00:00:02,500 »).")
+        body = " ".join(_SUB_TAG.sub("", ln) for ln in lines[k + 1:]).strip()
+        t0, t1 = _sub_seconds(m0), _sub_seconds(m1)
+        if body and t1 > t0:
+            cues.append((t0, t1, re.sub(r"\s+", " ", body)))
+    if not cues:
+        raise ValueError(f"{path.name} : aucun sous-titre lisible (format SRT/VTT attendu).")
+    return sorted(cues)
+
+
+def _file_sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _probe_video(path: Path) -> dict:
+    """ffprobe du 1er flux vidéo : durée (s), matrice couleur à utiliser pour la conversion en RVB."""
+    try:
+        r = subprocess.run([config.FFPROBE, "-v", "error", "-select_streams", "v:0", "-show_entries",
+                            "stream=width,height,color_space:format=duration", "-of", "json", str(path)],
+                           capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {"error": f"ffprobe indisponible ({exc})"}
+    if r.returncode != 0:
+        return {"error": (r.stderr or "").strip()[-300:] or f"code {r.returncode}"}
+    data = json.loads(r.stdout or "{}")
+    streams = data.get("streams") or []
+    if not streams:
+        return {"error": "aucun flux vidéo"}
+    st = streams[0]
+    cs = st.get("color_space")
+    # Source non étiquetée : BT.709 pour la HD et au-delà, BT.601 sinon (convention broadcast) ;
+    # swscale supposerait BT.601 partout, d'où des couleurs fausses sur les vidéos HD non étiquetées.
+    matrix = {"bt709": "bt709", "smpte170m": "bt601", "bt470bg": "bt601", "bt2020nc": "bt2020"}.get(
+        cs, "bt709" if int(st.get("height") or 0) >= 720 else "bt601")
+    try:
+        duration = float((data.get("format") or {}).get("duration") or 0)
+    except ValueError:
+        duration = 0.0
+    return {"duration": duration, "color_matrix": matrix, "width": st.get("width"), "height": st.get("height")}
+
+
 def _served_url(path: Path, *, directory: bool = False) -> str:
     """URL http://mograph.render/... d'un fichier servi au navigateur, déduite de config.SERVED_PREFIXES
     (même table que la route Playwright : une URL produite ici est forcément servie)."""
@@ -423,7 +501,7 @@ _ANYOF_HELP = (
     ("durationRef", "durée invalide : nombre de secondes > 0, « beats:N » (ex. « beats:2 », nécessite audio.bpm) ou alias du preset short / medium / long"),
     ("position", "position invalide : nombre de px logiques, « N% » du canevas, « safe:N% » ou « action:N% » de la zone sûre (ex. « safe:50% »)"),
     ("paint", "peinture invalide : couleur « #RRGGBB(AA) », nom de palette ou « none »"),
-    ("transition", "transition invalide : « cut », « crossfade » ou {\"type\": \"crossfade\", \"dur\": 0.4}"),
+    ("transition", "transition invalide : « cut », « crossfade », « wipe », « push » ou {\"type\": \"wipe\", \"dur\": 0.4, \"direction\": \"left\"}"),
     ("textureOverride", "surcharge de texture invalide : false (désactive), nombre 0..1 (amount) ou objet fusionné sur la texture du preset"),
     ("boil", "boil invalide : true, false ou {\"amount\": px, \"freq\": > 0, \"step\": entier ≥ 1}"),
 )
@@ -973,6 +1051,8 @@ class _ShotTiming:
     fade: int
     global_start: int
     duration: float
+    transition: str = "cut"
+    direction: str = "left"
 
 
 class _Compiler:
@@ -1014,6 +1094,9 @@ class _Compiler:
         self.preset = load_preset(raw["preset"], raw.get("preset_overrides"))
         self._setup()
         self._timing()
+        # Sous-titres : chaque réplique devient un calque texte ordinaire (même validation, mêmes
+        # polices, mêmes zones sûres) ; il faut les débuts globaux des plans, d'où après _timing.
+        self._expand_subtitles()
         shots = []
         for i, shot in enumerate(raw["shots"]):
             try:
@@ -1183,19 +1266,23 @@ class _Compiler:
 
             tr = shot.get("transition_in")
             explicit = tr is not None
+            direction = "left"
             if tr is None:
                 kind, tdur = (preset_tr["default"] if i > 0 else "cut"), None
             elif isinstance(tr, str):
                 kind, tdur = tr, None
             else:
                 kind, tdur = tr["type"], tr.get("dur")
+                direction = tr.get("direction", "left")
             fade = 0
-            if kind == "crossfade":
+            # wipe / push : même chevauchement qu'un fondu (même durée par défaut, mêmes limites),
+            # seul le mélange diffère (compose.py). Le premier plan n'a rien à recouvrir.
+            if kind in ("crossfade", "wipe", "push"):
                 where = ("shots", i, "transition_in")
                 if i == 0:
                     if explicit:
-                        self.err(where, "un fondu enchaîné est impossible sur le premier plan (aucun plan précédent) : "
-                                        "supprimez transition_in ou mettez « cut ».")
+                        self.err(where, f"une transition « {kind} » est impossible sur le premier plan (aucun plan "
+                                        "précédent) : supprimez transition_in ou mettez « cut ».")
                 else:
                     try:
                         if tdur is not None:
@@ -1220,7 +1307,8 @@ class _Compiler:
                     except _Skip:
                         pass
             gs = 0 if prev is None else prev.global_start + prev.frames - fade
-            st = _ShotTiming(index=i, id=sid, frames=frames, fade=fade, global_start=gs, duration=_r(frames / self.fps))
+            st = _ShotTiming(index=i, id=sid, frames=frames, fade=fade, global_start=gs, duration=_r(frames / self.fps),
+                             transition=kind if fade else "cut", direction=direction)
             self.timing.append(st)
             prev = st
 
@@ -1330,6 +1418,7 @@ class _Compiler:
 
         layers = shot.get("layers") or []
         plates = shot.get("plates") or []
+        self._media: list[dict] = []
         layer_ids: list[str] = []
         for j, layer in enumerate(layers):
             if layer["id"] in layer_ids:
@@ -1371,6 +1460,16 @@ class _Compiler:
                 "width": job["width"],
                 "height": job["height"],
             }
+        for job in self._media:
+            # Clé « video__<calque> » : jamais en collision avec un id de plaque (qui n'a pas « __ »).
+            plates_spec[job["plate_key"]] = {
+                "url": _served_url(Path(job["out_dir"]), directory=True),
+                "frames": job["frames"],
+                "width": job["width"],
+                "height": job["height"],
+                # Empreinte de la source et de l'extraction : changer la vidéo invalide le plan.
+                "source": job["digest"],
+            }
 
         rects = {}
         for zone in ("title", "action"):
@@ -1406,7 +1505,8 @@ class _Compiler:
             "layers": [cl for _, _, cl in compiled_layers],
         }
         return {"id": shot["id"], "index": i, "frames": st.frames, "global_start": st.global_start,
-                "fade_in_frames": st.fade, "spec": spec, "plates": jobs}
+                "fade_in_frames": st.fade, "transition": {"type": st.transition, "direction": st.direction},
+                "spec": spec, "plates": jobs, "media": list(self._media)}
 
     # -- textures et glitch ----------------------------------------------------------------------
 
@@ -1552,6 +1652,8 @@ class _Compiler:
             cl.update({"plate": layer["plate"], "w": float(layer.get("w", self.canvas_w)), "h": float(layer.get("h", self.canvas_h))})
         elif typ == "chart":
             self._chart_fields(st, lp, layer, cl)
+        elif typ == "video":
+            self._video_fields(st, lp, layer, cl)
         tweens, initial, targets = self._compile_tweens(st, lp, layer, cl)
         cl["initial"] = initial
         cl["tweens"] = tweens
@@ -1629,6 +1731,123 @@ class _Compiler:
             "src": _served_url(path),
             "w": float(layer["w"]), "h": float(layer["h"]), "fit": layer.get("fit", "cover"),
         })
+
+    def _video_fields(self, st: _ShotTiming, lp: tuple, layer: dict, cl: dict) -> None:
+        """Calque vidéo : images extraites par FFmpeg (pipeline/media.py), affichées comme une plaque.
+
+        La page ne lit jamais la vidéo (lecture non déterministe) : l'image k du plan est la source à
+        start + k / fps, extraite en PNG au cadrage exact du calque (fit appliqué par FFmpeg).
+        """
+        src = layer["src"]
+        path = (config.ROOT / src).resolve()
+        if not path.is_relative_to(config.ASSETS_DIR.resolve()):
+            self.fail(lp + ("src",), f"la vidéo {_q(src)} doit se trouver sous assets/ : déplacez-la et donnez un "
+                                     "chemin relatif à la racine, ex. « assets/video/plan.mp4 ».")
+        if path.suffix.lower() not in config.VIDEO_EXTENSIONS:
+            self.fail(lp + ("src",), f"format vidéo « {path.suffix} » non pris en charge ; formats acceptés : "
+                                     f"{', '.join(config.VIDEO_EXTENSIONS)}.")
+        if not path.is_file():
+            self.fail(lp + ("src",), f"vidéo introuvable : {path}. Vérifiez le chemin (relatif à la racine du projet).")
+        info = _probe_video(path)
+        if info.get("error"):
+            self.fail(lp + ("src",), f"vidéo illisible ({path.name}) : {info['error']}. Vérifiez le fichier avec ffprobe.")
+        start = float(layer.get("start", 0))
+        loop = bool(layer.get("loop", False))
+        need = start + st.frames / self.fps
+        if info["duration"] and not loop and need > info["duration"] + 1e-6:
+            self.warn(lp + ("src",), f"la vidéo dure {_fr(info['duration'], max_dec=2)} s mais le plan en demande "
+                                     f"{_fr(need, max_dec=2)} s (start {_fr(start)} s) : la dernière image sera tenue. "
+                                     "Ajoutez \"loop\": true, réduisez « start » ou raccourcissez le plan.")
+        if info["duration"] and start >= info["duration"]:
+            self.fail(lp + ("start",), f"start = {_fr(start)} s au-delà de la fin de la vidéo ({_fr(info['duration'], max_dec=2)} s).")
+        w, h = float(layer["w"]), float(layer["h"])
+        fit = layer.get("fit", "cover")
+        job = {
+            "kind": "video",
+            "layer_id": layer["id"],
+            "plate_key": f"video__{layer['id']}",
+            "src": str(path),
+            "start": start,
+            "loop": loop,
+            "fit": fit,
+            "fps": self.fps,
+            "frames": st.frames,
+            "width": max(2, _even_up(w * self.dsf)),
+            "height": max(2, _even_up(h * self.dsf)),
+            "color_matrix": info["color_matrix"],
+            "out_dir": str(config.media_dir(self.scene_id, st.id, layer["id"])),
+        }
+        job["digest"] = hashlib.sha256(canonical_json({**{k: v for k, v in job.items() if k != "out_dir"},
+                                                        "src": _file_sha256(path)})).hexdigest()
+        self._media.append(job)
+        # Pour le runtime, c'est une séquence d'images comme une plaque 3D (même code, même décodage).
+        cl.update({"type": "sequence", "plate": job["plate_key"], "w": w, "h": h})
+
+    def _expand_subtitles(self) -> None:
+        """Remplace chaque calque « subtitles » par un calque texte par réplique (fondus d'entrée/sortie)."""
+        for i, shot in enumerate(self.raw["shots"]):
+            layers = shot.get("layers") or []
+            if not any(layer.get("type") == "subtitles" for layer in layers):
+                continue
+            st = self.timing[i]
+            out: list[dict] = []
+            for j, layer in enumerate(layers):
+                if layer.get("type") != "subtitles":
+                    out.append(layer)
+                    continue
+                lp = ("shots", i, "layers", j)
+                if layer.get("anim"):
+                    self.err(lp + ("anim",), "un calque « subtitles » n'accepte pas « anim » : ses fondus sont réglés par "
+                                             "« fade » ; animez un calque texte ordinaire si besoin.")
+                try:
+                    cues = _read_subtitles(layer["src"])
+                except ValueError as exc:
+                    self.err(lp + ("src",), str(exc))
+                    continue
+                safe = config.safe_rect(self.aspect, "title")
+                base = {k: layer[k] for k in ("style", "size", "weight", "color", "align", "maxWidth", "lineHeight",
+                                              "tracking", "case", "rotation", "scale", "blend", "boil") if k in layer}
+                base.setdefault("style", "body")
+                base.setdefault("size", round(0.045 * min(self.canvas_w, self.canvas_h), 1))
+                base.setdefault("color", "fg")
+                base.setdefault("align", "center")
+                base.setdefault("maxWidth", round(0.9 * safe["width"], 1))
+                shot_start = st.global_start / self.fps
+                offset = float(layer.get("offset", 0))
+                fade_max = float(layer.get("fade", 0.12))
+                n_kept = 0
+                for n, (t0, t1, text) in enumerate(cues):
+                    a, b = t0 + offset - shot_start, t1 + offset - shot_start
+                    if b <= 0 or a >= st.duration:
+                        continue
+                    a_c, b_c = max(0.0, a), min(st.duration, b)
+                    fade = min(fade_max, (b_c - a_c) / 2)
+                    anim = []
+                    if a >= 0 and fade > 0:
+                        anim.append({"at": _r(a_c), "dur": _r(fade), "from": {"opacity": 0}, "to": {"opacity": 1},
+                                     "ease": "power1.out"})
+                    if b <= st.duration and fade > 0:
+                        anim.append({"at": _r(b_c - fade), "dur": _r(fade), "to": {"opacity": 0}, "ease": "power1.in"})
+                    if a < 0 and b > st.duration:
+                        pass  # réplique présente tout le plan : texte fixe
+                    elif not anim:
+                        # Réplique trop courte pour un fondu : apparition et disparition franches (1 image).
+                        step = 1 / self.fps
+                        anim = [{"at": _r(a_c), "dur": _r(step), "from": {"opacity": 0}, "to": {"opacity": 1}, "ease": "steps(1)"},
+                                {"at": _r(max(a_c + step, b_c - step)), "dur": _r(step), "to": {"opacity": 0}, "ease": "steps(1)"}]
+                    out.append({
+                        "id": f"{layer['id']}-{n + 1:03d}", "type": "text", "text": text, **base,
+                        "x": layer.get("x", "safe:50%"), "y": layer.get("y", "safe:100%"),
+                        "anchor": layer.get("anchor", "bottom"), "z": int(layer.get("z", 50)),
+                        "opacity": float(layer.get("opacity", 1)), "safe": bool(layer.get("safe", True)),
+                        "anim": anim,
+                    })
+                    n_kept += 1
+                if not n_kept:
+                    self.warn(lp + ("src",), f"aucun sous-titre de {layer['src']} ne tombe dans ce plan "
+                                             f"({_fr(shot_start, max_dec=2)} s → {_fr(shot_start + st.duration, max_dec=2)} s "
+                                             "en temps global) : vérifiez « offset ».")
+            shot["layers"] = out
 
     def _chart_fields(self, st: _ShotTiming, lp: tuple, layer: dict, cl: dict) -> None:
         data = layer["data"]
@@ -2248,6 +2467,8 @@ class _Compiler:
             "markers": [{"id": m["id"], "time": float(m["time"])} for m in audio.get("markers") or []],
             "synth": {"kind": synth["kind"], "target_lufs": target} if synth else None,
             "target_lufs": target,
+            # Normalisation de la source vers qc.loudness_target_lufs à l'encodage (loudnorm 2 passes).
+            "normalize": bool(audio.get("normalize", False)),
         }
 
     def _storyboard(self) -> None:
@@ -2339,7 +2560,11 @@ def summary(compiled: dict) -> str:
         if s["index"] == 0:
             entry = "début"
         elif s["fade_in_frames"]:
-            entry = f"fondu {s['fade_in_frames']} images ({_fr_seconds(s['fade_in_frames'], fps)} s)"
+            tr = (s.get("transition") or {}).get("type", "crossfade")
+            kind = {"crossfade": "fondu", "wipe": "volet", "push": "poussée"}.get(tr, tr)
+            if tr in ("wipe", "push"):
+                kind += f" vers {({'left': 'la gauche', 'right': 'la droite', 'up': 'le haut', 'down': 'le bas'})[s['transition']['direction']]}"
+            entry = f"{kind} {s['fade_in_frames']} images ({_fr_seconds(s['fade_in_frames'], fps)} s)"
         else:
             entry = "coupe"
         lines.append(f"    [{s['index']}] {s['id']:<18} {s['frames']:>5} images ({_fr_seconds(s['frames'], fps)} s)  "

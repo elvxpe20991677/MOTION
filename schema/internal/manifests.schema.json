@@ -85,7 +85,9 @@
               "shot_id": { "type": "string" },
               "global_start": { "type": "integer", "minimum": 0 },
               "frames": { "type": "integer", "minimum": 1 },
-              "fade_in_frames": { "type": "integer", "minimum": 0 }
+              "fade_in_frames": { "type": "integer", "minimum": 0 },
+              "transition": { "enum": ["cut", "crossfade", "wipe", "push"] },
+              "direction": { "enum": ["left", "right", "up", "down"] }
             }
           }
         },
@@ -98,7 +100,7 @@
             "required": ["g", "mode", "src"],
             "properties": {
               "g": { "type": "integer", "minimum": 0 },
-              "mode": { "enum": ["link", "convert", "blend"], "description": "link = lien physique ; convert = copie convertie en 16 bits ; blend = fondu." },
+              "mode": { "enum": ["link", "convert", "blend", "wipe", "push"], "description": "link = lien physique ; convert = copie convertie en 16 bits ; blend = fondu ; wipe / push = transition géométrique (poids = progression)." },
               "src": {
                 "type": "array",
                 "items": { "type": "array", "prefixItems": [ { "type": "string" }, { "type": "integer" }, { "type": "number" } ], "minItems": 3, "maxItems": 3 },

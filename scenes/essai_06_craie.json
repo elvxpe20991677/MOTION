@@ -1,0 +1,123 @@
+{
+  "$schema": "../schema/scene.schema.json",
+  "version": "1.0",
+  "id": "essai_06_craie",
+  "title": "Essai 6 — craie faite main",
+  "brief": "Test fait main : tracés qui bouillonnent, écriture manuscrite, animation tenue deux images (on twos).",
+  "seed": 11,
+  "preset": "handmade_chalk",
+  "format": {
+    "aspect": "1:1",
+    "resolution": "1080p",
+    "fps": 24,
+    "alpha": false
+  },
+  "storyboard": [
+    {
+      "shot": "tableau",
+      "intent": "Chaleur du fait main.",
+      "notes": "frame_step 2 du preset, boil sur les tracés."
+    }
+  ],
+  "outputs": [
+    {
+      "profile": "hevc_main10",
+      "crf": 18
+    },
+    {
+      "profile": "prores_422hq"
+    }
+  ],
+  "qc": {
+    "safe_zone": "title",
+    "safe_zone_tolerance_s": 0.5,
+    "allow_black_s": 0,
+    "determinism_frames": 8,
+    "loudness_target_lufs": -14
+  },
+  "shots": [
+    {
+      "id": "tableau",
+      "duration": 4,
+      "background": "bg",
+      "layers": [
+        {
+          "id": "cadre",
+          "type": "shape",
+          "shape": "rect",
+          "w": 820,
+          "h": 560,
+          "radius": 30,
+          "fill": "none",
+          "stroke": "fg",
+          "strokeWidth": 6,
+          "x": "50%",
+          "y": "46%",
+          "boil": true,
+          "anim": [
+            {
+              "move": "draw",
+              "at": 0.1
+            }
+          ]
+        },
+        {
+          "id": "fleche",
+          "type": "shape",
+          "shape": "path",
+          "w": 300,
+          "h": 120,
+          "d": "M 10 100 C 90 10, 200 10, 280 60 M 250 30 L 280 60 L 240 80",
+          "fill": "none",
+          "stroke": "primary",
+          "strokeWidth": 8,
+          "x": 700,
+          "y": 820,
+          "boil": true,
+          "anim": [
+            {
+              "move": "draw",
+              "at": 1.8
+            }
+          ]
+        },
+        {
+          "id": "texte",
+          "type": "text",
+          "text": "Leçon n°1 : tout bouge un peu",
+          "style": "display",
+          "size": 82,
+          "color": "fg",
+          "align": "center",
+          "maxWidth": 700,
+          "x": "50%",
+          "y": "46%",
+          "boil": true,
+          "anim": [
+            {
+              "move": "write_on",
+              "at": 0.6
+            }
+          ]
+        },
+        {
+          "id": "signature",
+          "type": "text",
+          "text": "— le professeur",
+          "style": "body",
+          "size": 44,
+          "color": "secondary",
+          "x": "safe:95%",
+          "y": "safe:92%",
+          "anchor": "right",
+          "anim": [
+            {
+              "move": "wobble_in",
+              "at": 2.4
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

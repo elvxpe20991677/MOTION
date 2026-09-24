@@ -165,7 +165,8 @@ def _check_installation() -> None:
     if not Path(config.BLENDER_PYTHON).is_file():
         raise BlenderRenderError(
             f"interpréteur Blender introuvable : {config.BLENDER_PYTHON}. Installez-le depuis la racine du projet : "
-            "« uv venv --python 3.11 .venv-blender » puis « uv pip install --python .venv-blender/Scripts/python.exe bpy==5.0.1 »."
+            f"« uv venv --python 3.11 .venv-blender » puis « uv pip install --python "
+            f"{Path(config.BLENDER_PYTHON).relative_to(config.ROOT).as_posix()} bpy==5.0.1 »."
         )
     if not Path(config.BLENDER_BACKEND).is_file():
         raise BlenderRenderError(f"backend introuvable : {config.BLENDER_BACKEND}. Restaurez backends/blender_backend.py.")

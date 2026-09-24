@@ -1,0 +1,124 @@
+{
+  "$schema": "../schema/scene.schema.json",
+  "version": "1.0",
+  "id": "essai_07_bandeau_4k_alpha",
+  "title": "Essai 7 — bandeau 4K transparent",
+  "brief": "Test livraison broadcast : bandeau nominatif 4K à couche alpha, flou de mouvement 8 sous-images, ProRes 4444 + HEVC aplati.",
+  "seed": 11,
+  "preset": "kinetic_signal",
+  "format": {
+    "aspect": "16:9",
+    "resolution": "4k",
+    "fps": 25,
+    "alpha": true
+  },
+  "quality": {
+    "motion_blur": {
+      "enabled": true,
+      "samples": 8,
+      "shutter": 0.5
+    }
+  },
+  "storyboard": [
+    {
+      "shot": "bandeau",
+      "intent": "Incrustation lisible et nerveuse.",
+      "notes": "Vérifier l'alpha sur fond clair ET sombre (planche_alpha.png)."
+    }
+  ],
+  "outputs": [
+    {
+      "profile": "prores_4444"
+    },
+    {
+      "profile": "hevc_main10",
+      "crf": 18,
+      "suffix": "_flat"
+    }
+  ],
+  "qc": {
+    "safe_zone": "title",
+    "safe_zone_tolerance_s": 0.5,
+    "allow_black_s": 0,
+    "determinism_frames": 8,
+    "loudness_target_lufs": -14
+  },
+  "shots": [
+    {
+      "id": "bandeau",
+      "duration": 2.4,
+      "layers": [
+        {
+          "id": "barre",
+          "type": "shape",
+          "shape": "rect",
+          "w": 780,
+          "h": 150,
+          "fill": "primary",
+          "x": "safe:3%",
+          "y": "safe:82%",
+          "anchor": "left",
+          "anim": [
+            {
+              "move": "slide_anticipate",
+              "at": 0.04,
+              "from": {
+                "x": -900
+              }
+            },
+            {
+              "at": 1.9,
+              "dur": 0.3,
+              "to": {
+                "x": -1000
+              },
+              "ease": "exit"
+            }
+          ]
+        },
+        {
+          "id": "nom",
+          "type": "text",
+          "text": "Alex Durand",
+          "style": "display",
+          "size": 104,
+          "color": "fg",
+          "x": "safe:5%",
+          "y": "safe:82%",
+          "anchor": "left",
+          "anim": [
+            {
+              "move": "chars_drop",
+              "at": 0.3
+            },
+            {
+              "move": "punch_out",
+              "at": 1.75
+            }
+          ]
+        },
+        {
+          "id": "role",
+          "type": "text",
+          "text": "Réalisateur",
+          "style": "body",
+          "size": 38,
+          "color": "fg",
+          "x": "safe:4%",
+          "y": "safe:95%",
+          "anchor": "left",
+          "anim": [
+            {
+              "move": "slide_anticipate",
+              "at": 0.6
+            },
+            {
+              "move": "punch_out",
+              "at": 1.8
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

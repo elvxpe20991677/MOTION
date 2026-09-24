@@ -1,0 +1,126 @@
+{
+  "$schema": "../schema/scene.schema.json",
+  "version": "1.0",
+  "id": "essai_08_video_soustitres",
+  "title": "Essai 8 — vidéo et sous-titres",
+  "brief": "Test médias : une vraie vidéo en fond (cadrée, animée), sous-titres SRT, cartouche de titre par-dessus.",
+  "seed": 11,
+  "preset": "flat_riso",
+  "format": {
+    "aspect": "16:9",
+    "resolution": "1080p",
+    "fps": 25,
+    "alpha": false
+  },
+  "storyboard": [
+    {
+      "shot": "film",
+      "intent": "Habiller une vidéo existante.",
+      "notes": "Remplacer assets/video/essai_mire.mp4 par votre rush et le .srt par vos sous-titres. Bande sombre translucide sous les sous-titres : lisibles sur toute image."
+    }
+  ],
+  "outputs": [
+    {
+      "profile": "hevc_main10",
+      "crf": 18
+    },
+    {
+      "profile": "prores_422hq"
+    }
+  ],
+  "qc": {
+    "safe_zone": "title",
+    "safe_zone_tolerance_s": 0.5,
+    "allow_black_s": 0,
+    "determinism_frames": 8,
+    "loudness_target_lufs": -14
+  },
+  "shots": [
+    {
+      "id": "film",
+      "duration": 6,
+      "background": "fg",
+      "layers": [
+        {
+          "id": "fond",
+          "type": "video",
+          "src": "assets/video/essai_mire.mp4",
+          "w": 1920,
+          "h": 1080,
+          "fit": "cover",
+          "x": "50%",
+          "y": "50%",
+          "z": -1,
+          "anim": [
+            {
+              "move": "pop",
+              "at": 0
+            }
+          ]
+        },
+        {
+          "id": "cartouche",
+          "type": "shape",
+          "shape": "rect",
+          "w": 640,
+          "h": 110,
+          "radius": 20,
+          "fill": "bg",
+          "x": "safe:3%",
+          "y": "safe:6%",
+          "anchor": "top-left",
+          "anim": [
+            {
+              "move": "slide_anticipate",
+              "at": 0.3
+            }
+          ]
+        },
+        {
+          "id": "titre",
+          "type": "text",
+          "text": "Essai vidéo",
+          "style": "display",
+          "size": 64,
+          "color": "fg",
+          "x": "safe:5%",
+          "y": "safe:11%",
+          "anchor": "left",
+          "anim": [
+            {
+              "move": "rise",
+              "at": 0.5
+            }
+          ]
+        },
+        {
+          "id": "bande",
+          "type": "shape",
+          "shape": "rect",
+          "w": 1920,
+          "h": 170,
+          "fill": "fg",
+          "opacity": 0.72,
+          "x": "50%",
+          "y": "100%",
+          "anchor": "bottom",
+          "z": 40,
+          "anim": [
+            {
+              "move": "rise",
+              "at": 0.2
+            }
+          ]
+        },
+        {
+          "id": "st",
+          "type": "subtitles",
+          "src": "assets/subs/essai.srt",
+          "color": "bg",
+          "size": 48,
+          "z": 50
+        }
+      ]
+    }
+  ]
+}

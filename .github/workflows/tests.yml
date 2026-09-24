@@ -1,0 +1,92 @@
+# Vérifications automatiques de mograph à chaque push / pull request (Ubuntu 24.04 = plateforme SPEC).
+# Deux jobs : « rapide » (compilateur, compose, encodage, audio, QC) et « rendu » (Chromium + Blender,
+# nouveautés de bout en bout). Versions figées identiques au poste de rendu (requirements.txt,
+# package-lock.json, bpy 5.0.1) ; FFmpeg = paquet Ubuntu 6.1.1.
+name: tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rapide:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: FFmpeg (libx265, prores_ks, zscale)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Dépendances Python et npm (versions figées)
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -r requirements.txt
+          .venv/bin/python -m playwright install --with-deps chromium
+          npm ci
+      - name: Étape 9 — presets
+        run: .venv/bin/python tests/verify_step09_presets.py
+      - name: Étape 11 — compilateur
+        run: .venv/bin/python tests/verify_step11_compiler.py
+      - name: Étape 14 — compositeur
+        run: .venv/bin/python tests/verify_step14_compose.py
+      - name: Étape 15 — encodeur
+        run: .venv/bin/python tests/verify_step15_encode.py
+      - name: Étape 16 — audio
+        run: .venv/bin/python tests/verify_step16_audio.py
+      - name: Étape 17 — contrôle qualité
+        run: .venv/bin/python tests/verify_step17_qc.py
+
+  rendu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - uses: astral-sh/setup-uv@v5
+      - name: FFmpeg et bibliothèques système de bpy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg \
+            libxrender1 libxxf86vm1 libxfixes3 libxi6 libxkbcommon0 libsm6 libgl1 libegl1
+      - name: Dépendances (Python, Chromium, npm, bpy)
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -r requirements.txt
+          .venv/bin/python -m playwright install --with-deps chromium
+          npm ci
+          uv venv --python 3.11 .venv-blender
+          uv pip install --python .venv-blender/bin/python bpy==5.0.1
+      - name: Étape 12 — pilote web (déterminisme, 4K, alpha, reprise)
+        run: .venv/bin/python tests/verify_step12_web.py
+      - name: Étape 13 — backend Blender
+        run: .venv/bin/python tests/verify_step13_blender.py
+      - name: Nouveautés — de bout en bout
+        run: .venv/bin/python tests/verify_features.py
+      - name: Journaux et images de test (en cas d'échec)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-tests
+          path: |
+            build/_tests/**/*.json
+            build/_tests/**/*.log
+          retention-days: 7
