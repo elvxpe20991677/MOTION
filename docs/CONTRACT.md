@@ -31,7 +31,7 @@ Les schémas JSON dans `schema/` et `schema/internal/` sont normatifs.
 | Python / Node | 3.12.3 (`.venv/bin/python`) / Node 22.22.2, npm 10.9.7 ; mêmes versions pip/npm figées |
 | Chromium | 141.0.7390.37 (playwright build v1194, identique à la machine 1) |
 | Blender | bpy 5.0.1 sous CPython 3.11 (`.venv-blender/bin/python`), Cycles CPU |
-| Référence Cycles | scène clay 540², 24 éch., flou 0,5 : **~5 s/image (4 threads)** ; web 1080p : ~0,5 s/image |
+| Référence Cycles | scène clay 540², 24 éch., flou 0,5 : **~5 s/image (4 threads)** ; web 1080p : 0,37 s/image (4 navigateurs) ; plaque 1080², 96 éch. : ~56 s/image |
 
 Le déterminisme est garanti PAR machine (§6) : la porte de l'étape 19 est rejouée ici.
 

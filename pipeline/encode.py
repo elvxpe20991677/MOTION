@@ -333,8 +333,9 @@ def encode_scene(compiled: dict, *, log=print) -> list[Path]:
                 # FileNotFoundError / PermissionError de CreateProcess : exécutable absent ou bloqué.
                 raise EncodeError(
                     f"FFmpeg introuvable ou impossible à lancer ({config.FFMPEG} : {exc}). Installez FFmpeg "
-                    "8.x build complet (libx265, prores_ks, zscale) dans le PATH, ou définissez la variable "
-                    "d'environnement MOGRAPH_FFMPEG avec le chemin de ffmpeg.exe, puis relancez l'encodage."
+                    "≥ 6.1 compilé avec libx265, prores_ks et libzimg (zscale) dans le PATH, ou définissez la "
+                    "variable d'environnement MOGRAPH_FFMPEG avec le chemin de l'exécutable ffmpeg, puis "
+                    "relancez l'encodage."
                 ) from exc
             try:
                 code = proc.wait()

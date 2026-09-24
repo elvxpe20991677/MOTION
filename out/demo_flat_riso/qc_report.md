@@ -5,7 +5,7 @@
 - Scène : Le rapport 2025 — explainer flat
 - Format : 16:9 1080p, 25 i/s, 165 images (6.6 s), sortie 1920x1080, alpha : non
 - Contrôles : 24 PASS, 0 FAIL, 0 WARN, 4 SKIP
-- Généré le 2026-09-24T08:28:37+00:00 ; ffmpeg version 6.1.1-3ubuntu5
+- Généré le 2026-09-24T10:22:52+00:00 ; ffmpeg version 6.1.1-3ubuntu5
 
 ## Livrables
 

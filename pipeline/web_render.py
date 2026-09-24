@@ -491,7 +491,10 @@ def _worker_main(spec: dict, out_dir: str, layout_set: list[int], capture_set: l
 
 def _default_workers(n_frames: int) -> int:
     cpu = os.cpu_count() or 4
-    w = min(MAX_WORKERS, max(1, cpu // 6))
+    # Un navigateur par cœur jusqu'à MAX_WORKERS : mesuré sur 4 cœurs (demo_flat_riso, 165 images),
+    # 1 navigateur 0,95 s/image, 2 : 0,54 s, 4 : 0,37 s, empreintes identiques ; l'ancien cpu // 6
+    # n'en lançait qu'un sous 6 cœurs.
+    w = min(MAX_WORKERS, max(1, cpu))
     # Un navigateur coûte ~2-4 s à démarrer : inutile d'en lancer plus que de lots de travail.
     return max(1, min(w, math.ceil(n_frames / (BATCH_FRAMES * 2))))
 

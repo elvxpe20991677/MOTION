@@ -11,7 +11,7 @@ Une scène fautive est REFUSÉE par une SceneError qui regroupe TOUTES les erreu
 localisée par un chemin JSON lisible (ex. « shots[0].layers[2].anim[1].ease (plan « intro »,
 calque « titre ») ») et assortie d'une correction suggérée.
 
-Usage direct (diagnostic) : .venv/Scripts/python.exe -m pipeline.scene scenes/<scène>.json
+Usage direct (diagnostic) : .venv/bin/python -m pipeline.scene scenes/<scène>.json (Windows : .venv/Scripts/python.exe)
 """
 
 from __future__ import annotations

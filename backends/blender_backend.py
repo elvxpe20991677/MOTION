@@ -2,7 +2,8 @@
 
 Exécuté par l'interpréteur du venv Blender (CPython 3.11 + bpy 5.0.1), jamais par l'orchestrateur :
 
-    .venv-blender/Scripts/python.exe backends/blender_backend.py <job.json> [--frames 0,12,40] [--print-values]
+    .venv-blender/bin/python backends/blender_backend.py <job.json> [--frames 0,12,40] [--print-values]
+    (Windows : .venv-blender/Scripts/python.exe)
 
     --frames        sous-ensemble d'images locales à rendre (liste « 0,12,40 », intervalles « 0-10 » admis) ;
                     par défaut toutes les images 0..frames-1.
