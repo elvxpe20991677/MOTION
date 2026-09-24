@@ -16,7 +16,7 @@
     {
       "shot": "film",
       "intent": "Habiller une vidéo existante.",
-      "notes": "Remplacer assets/video/essai_mire.mp4 par votre rush et le .srt par vos sous-titres."
+      "notes": "Remplacer assets/video/essai_mire.mp4 par votre rush et le .srt par vos sous-titres. Bande sombre translucide sous les sous-titres : lisibles sur toute image."
     }
   ],
   "outputs": [
@@ -94,11 +94,31 @@
           ]
         },
         {
+          "id": "bande",
+          "type": "shape",
+          "shape": "rect",
+          "w": 1920,
+          "h": 170,
+          "fill": "fg",
+          "opacity": 0.72,
+          "x": "50%",
+          "y": "100%",
+          "anchor": "bottom",
+          "z": 40,
+          "anim": [
+            {
+              "move": "rise",
+              "at": 0.2
+            }
+          ]
+        },
+        {
           "id": "st",
           "type": "subtitles",
           "src": "assets/subs/essai.srt",
           "color": "bg",
-          "size": 44
+          "size": 48,
+          "z": 50
         }
       ]
     }
