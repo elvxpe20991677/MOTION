@@ -17,3 +17,6 @@ archive-*/
 
 # Médias générés par les tests (vidéo, sous-titres, audio)
 assets/_tests/
+# Rendus des modèles (templates/) : sorties de vérification, régénérables
+out/modele_*/
+out/*_draft/
