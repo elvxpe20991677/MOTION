@@ -1,9 +1,12 @@
 {
-  "beats_per_bar": 4,
-  "bpm": 120.0,
-  "generator": "mograph-beat/1",
-  "offset": 0.0,
-  "sample_rate": 48000,
-  "samples": 240000,
-  "target_lufs": -14.0
+  "params": {
+    "beats_per_bar": 4,
+    "bpm": 120.0,
+    "generator": "mograph-beat/1",
+    "offset": 0.0,
+    "sample_rate": 48000,
+    "samples": 240000,
+    "target_lufs": -14.0
+  },
+  "wav_sha256": "3711da5e043a33d74e913ec618e150590470d35373a13de572806888b012144f"
 }
