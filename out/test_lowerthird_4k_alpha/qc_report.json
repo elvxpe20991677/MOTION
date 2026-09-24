@@ -3,7 +3,7 @@
   "scene_id": "test_lowerthird_4k_alpha",
   "title": "Bandeau nominatif 4K à couche alpha",
   "verdict": "CONFORME",
-  "generated_at": "2026-09-24T08:36:38+00:00",
+  "generated_at": "2026-09-24T13:57:52+00:00",
   "format": {
     "aspect": "16:9",
     "resolution": "4k",
@@ -17,9 +17,9 @@
   "frames": 50,
   "duration_s": 2.0,
   "counts": {
-    "PASS": 23,
+    "PASS": 24,
     "FAIL": 0,
-    "WARN": 2,
+    "WARN": 3,
     "SKIP": 4
   },
   "blocking_failures": [],
@@ -39,6 +39,7 @@
         "prores_4444.frames",
         "prores_4444.duration",
         "prores_4444.color",
+        "prores_4444.levels",
         "prores_4444.timecode",
         "prores_4444.alpha",
         "prores_4444.black",
@@ -63,6 +64,7 @@
         "hevc_main10_flat.duration",
         "hevc_main10_flat.hvc1",
         "hevc_main10_flat.color",
+        "hevc_main10_flat.levels",
         "hevc_main10_flat.black",
         "hevc_main10_flat.audio",
         "hevc_main10_flat.loudness"
@@ -164,6 +166,28 @@
       },
       "blocking": true,
       "detail": "color_range lu(s) sur la 1re image décodée (absent(s) du flux : conteneur MOV « colr nclc » sans drapeau de plage, FFmpeg < 7)."
+    },
+    {
+      "id": "prores_4444.levels",
+      "label": "prores_4444 : niveaux vidéo (signalstats)",
+      "status": "PASS",
+      "expected": {
+        "reserved_codes": "aucun (4..1019)",
+        "luma_r103": [
+          55.0,
+          966.0
+        ]
+      },
+      "actual": {
+        "y_min": 62.2,
+        "y_max": 942.2,
+        "c_min": 363.0,
+        "c_max": 960.5,
+        "frames_outside_r103": 0,
+        "frames": 50
+      },
+      "blocking": false,
+      "detail": "Y 62.2..942.2, chroma 363..960.5 (10 bits)"
     },
     {
       "id": "prores_4444.timecode",
@@ -345,6 +369,28 @@
       },
       "blocking": true,
       "detail": ""
+    },
+    {
+      "id": "hevc_main10_flat.levels",
+      "label": "hevc_main10_flat : niveaux vidéo (signalstats)",
+      "status": "WARN",
+      "expected": {
+        "reserved_codes": "aucun (4..1019)",
+        "luma_r103": [
+          55.0,
+          966.0
+        ]
+      },
+      "actual": {
+        "y_min": 17.0,
+        "y_max": 997.0,
+        "c_min": 344.0,
+        "c_max": 893.0,
+        "frames_outside_r103": 29,
+        "frames": 50
+      },
+      "blocking": false,
+      "detail": "29 image(s) hors plage EBU R103 (Y 55.0..966.0) : acceptable sur le web, à corriger pour la diffusion (dépassements de compression ou couleurs saturées)."
     },
     {
       "id": "hevc_main10_flat.black",

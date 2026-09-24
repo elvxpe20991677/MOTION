@@ -4,8 +4,8 @@
 
 - Scène : Bandeau nominatif 4K à couche alpha
 - Format : 16:9 4k, 25 i/s, 50 images (2.0 s), sortie 3840x2160, alpha : oui
-- Contrôles : 23 PASS, 0 FAIL, 2 WARN, 4 SKIP
-- Généré le 2026-09-24T08:36:38+00:00 ; ffmpeg version 6.1.1-3ubuntu5
+- Contrôles : 24 PASS, 0 FAIL, 3 WARN, 4 SKIP
+- Généré le 2026-09-24T13:57:52+00:00 ; ffmpeg version 6.1.1-3ubuntu5
 
 ## Livrables
 
@@ -27,6 +27,7 @@
 | **PASS** | `prores_4444.frames` | prores_4444 : nombre d'images compté (nb_read_frames) | 50 | 50 | oui |
 | **PASS** | `prores_4444.duration` | prores_4444 : durée vidéo (± 1/2 image) | seconds=2, tolerance_s=0.02 | 2 | oui |
 | **PASS** | `prores_4444.color` | prores_4444 : métadonnées couleur (bt709 x3, plage tv) | color_primaries=bt709, color_transfer=bt709, color_space=bt709, color_range=tv | color_primaries=bt709, color_transfer=bt709, color_space=bt709, color_range=tv | oui |
+| **PASS** | `prores_4444.levels` | prores_4444 : niveaux vidéo (signalstats) | reserved_codes=aucun (4..1019), luma_r103=[55, 966] | y_min=62.2, y_max=942.2, c_min=363, c_max=960.5, frames_outside_r103=0, frames=50 | non |
 | **PASS** | `prores_4444.timecode` | prores_4444 : piste timecode tmcd | tmcd=oui, timecode=01:00:00:00 | tmcd=oui, timecode=01:00:00:00 | oui |
 | **PASS** | `prores_4444.alpha` | prores_4444 : alpha réel (image médiane) | frame=25, alpha_min_below=255 | frame=25, min=0, max=255, pixels_below_255=7716640, fraction_below_255=0.930343 | oui |
 | **WARN** | `prores_4444.black` | prores_4444 : noir (informatif : scène à fond transparent) | max_black_s=0, pix_th=0.03, informative=oui | black_s=0.48 | non |
@@ -42,6 +43,7 @@
 | **PASS** | `hevc_main10_flat.duration` | hevc_main10_flat : durée vidéo (± 1/2 image) | seconds=2, tolerance_s=0.02 | 2 | oui |
 | **PASS** | `hevc_main10_flat.hvc1` | hevc_main10_flat : étiquette HEVC hvc1 | hvc1 | hvc1 | oui |
 | **PASS** | `hevc_main10_flat.color` | hevc_main10_flat : métadonnées couleur (bt709 x3, plage tv) | color_primaries=bt709, color_transfer=bt709, color_space=bt709, color_range=tv | color_primaries=bt709, color_transfer=bt709, color_space=bt709, color_range=tv | oui |
+| **WARN** | `hevc_main10_flat.levels` | hevc_main10_flat : niveaux vidéo (signalstats) | reserved_codes=aucun (4..1019), luma_r103=[55, 966] | y_min=17, y_max=997, c_min=344, c_max=893, frames_outside_r103=29, frames=50 | non |
 | **WARN** | `hevc_main10_flat.black` | hevc_main10_flat : noir (informatif : scène à fond transparent) | max_black_s=0, pix_th=0.03, informative=oui | black_s=0.48 | non |
 | **SKIP** | `hevc_main10_flat.audio` | hevc_main10_flat : piste audio | aucune (scène sans audio) | aucune | non |
 | **SKIP** | `hevc_main10_flat.loudness` | hevc_main10_flat : loudness EBU R128 | — | — | non |
@@ -55,4 +57,5 @@ Aucun échec bloquant.
 ## Avertissements (non bloquants)
 
 - `prores_4444.black` : 0.480 s de noir détectées ; attendu pour une scène à alpha (zones transparentes aplaties sur noir) : à vérifier à l'œil.
+- `hevc_main10_flat.levels` : 29 image(s) hors plage EBU R103 (Y 55.0..966.0) : acceptable sur le web, à corriger pour la diffusion (dépassements de compression ou couleurs saturées).
 - `hevc_main10_flat.black` : 0.480 s de noir détectées ; attendu pour une scène à alpha (zones transparentes aplaties sur noir) : à vérifier à l'œil.

@@ -3,7 +3,7 @@
   "scene_id": "demo_vhs_kinetic",
   "title": "Tout se rejoue — typo cinétique VHS",
   "verdict": "CONFORME",
-  "generated_at": "2026-09-24T08:34:18+00:00",
+  "generated_at": "2026-09-24T13:56:08+00:00",
   "format": {
     "aspect": "9:16",
     "resolution": "1080p",
@@ -19,7 +19,7 @@
   "counts": {
     "PASS": 28,
     "FAIL": 0,
-    "WARN": 0,
+    "WARN": 2,
     "SKIP": 0
   },
   "blocking_failures": [],
@@ -28,7 +28,7 @@
       "name": "hevc_main10",
       "profile": "hevc_main10",
       "path": "/home/user/MOTION/out/demo_vhs_kinetic/demo_vhs_kinetic_hevc_main10.mp4",
-      "size_bytes": 1058933,
+      "size_bytes": 1062074,
       "checks": [
         "hevc_main10.readable",
         "hevc_main10.codec",
@@ -40,6 +40,7 @@
         "hevc_main10.duration",
         "hevc_main10.hvc1",
         "hevc_main10.color",
+        "hevc_main10.levels",
         "hevc_main10.black",
         "hevc_main10.audio",
         "hevc_main10.loudness"
@@ -50,7 +51,7 @@
       "name": "prores_422hq",
       "profile": "prores_422hq",
       "path": "/home/user/MOTION/out/demo_vhs_kinetic/demo_vhs_kinetic_prores_422hq.mov",
-      "size_bytes": 145329326,
+      "size_bytes": 145327340,
       "checks": [
         "prores_422hq.readable",
         "prores_422hq.codec",
@@ -61,6 +62,7 @@
         "prores_422hq.frames",
         "prores_422hq.duration",
         "prores_422hq.color",
+        "prores_422hq.levels",
         "prores_422hq.timecode",
         "prores_422hq.black",
         "prores_422hq.audio",
@@ -77,7 +79,7 @@
       "expected": "1 flux vidéo",
       "actual": "1 flux vidéo",
       "blocking": true,
-      "detail": "1058933 octets"
+      "detail": "1062074 octets"
     },
     {
       "id": "hevc_main10.codec",
@@ -174,6 +176,28 @@
       "detail": ""
     },
     {
+      "id": "hevc_main10.levels",
+      "label": "hevc_main10 : niveaux vidéo (signalstats)",
+      "status": "WARN",
+      "expected": {
+        "reserved_codes": "aucun (4..1019)",
+        "luma_r103": [
+          55.0,
+          966.0
+        ]
+      },
+      "actual": {
+        "y_min": 14.0,
+        "y_max": 956.0,
+        "c_min": 210.0,
+        "c_max": 832.0,
+        "frames_outside_r103": 77,
+        "frames": 150
+      },
+      "blocking": false,
+      "detail": "77 image(s) hors plage EBU R103 (Y 55.0..966.0) : acceptable sur le web, à corriger pour la diffusion (dépassements de compression ou couleurs saturées)."
+    },
+    {
       "id": "hevc_main10.black",
       "label": "hevc_main10 : noir non voulu (blackdetect)",
       "status": "PASS",
@@ -218,8 +242,8 @@
       },
       "actual": {
         "integrated_lufs": -14.0,
-        "true_peak_dbtp": -4.1,
-        "lra": 0.6
+        "true_peak_dbtp": -3.9,
+        "lra": 1.5
       },
       "blocking": true,
       "detail": ""
@@ -231,7 +255,7 @@
       "expected": "1 flux vidéo",
       "actual": "1 flux vidéo",
       "blocking": true,
-      "detail": "145329326 octets"
+      "detail": "145327340 octets"
     },
     {
       "id": "prores_422hq.codec",
@@ -319,6 +343,28 @@
       "detail": "color_range lu(s) sur la 1re image décodée (absent(s) du flux : conteneur MOV « colr nclc » sans drapeau de plage, FFmpeg < 7)."
     },
     {
+      "id": "prores_422hq.levels",
+      "label": "prores_422hq : niveaux vidéo (signalstats)",
+      "status": "WARN",
+      "expected": {
+        "reserved_codes": "aucun (4..1019)",
+        "luma_r103": [
+          55.0,
+          966.0
+        ]
+      },
+      "actual": {
+        "y_min": 14.0,
+        "y_max": 954.0,
+        "c_min": 153.0,
+        "c_max": 883.0,
+        "frames_outside_r103": 139,
+        "frames": 150
+      },
+      "blocking": false,
+      "detail": "139 image(s) hors plage EBU R103 (Y 55.0..966.0) : acceptable sur le web, à corriger pour la diffusion (dépassements de compression ou couleurs saturées)."
+    },
+    {
       "id": "prores_422hq.timecode",
       "label": "prores_422hq : piste timecode tmcd",
       "status": "PASS",
@@ -378,8 +424,8 @@
       },
       "actual": {
         "integrated_lufs": -14.0,
-        "true_peak_dbtp": -4.2,
-        "lra": 0.6
+        "true_peak_dbtp": -4.0,
+        "lra": 1.5
       },
       "blocking": true,
       "detail": ""

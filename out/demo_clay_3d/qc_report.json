@@ -3,7 +3,7 @@
   "scene_id": "demo_clay_3d",
   "title": "Doux rebond — plaque 3D clay",
   "verdict": "CONFORME",
-  "generated_at": "2026-09-24T09:51:51+00:00",
+  "generated_at": "2026-09-24T13:58:43+00:00",
   "format": {
     "aspect": "1:1",
     "resolution": "1080p",
@@ -17,7 +17,7 @@
   "frames": 72,
   "duration_s": 3.0,
   "counts": {
-    "PASS": 24,
+    "PASS": 26,
     "FAIL": 0,
     "WARN": 0,
     "SKIP": 4
@@ -40,6 +40,7 @@
         "hevc_main10.duration",
         "hevc_main10.hvc1",
         "hevc_main10.color",
+        "hevc_main10.levels",
         "hevc_main10.black",
         "hevc_main10.audio",
         "hevc_main10.loudness"
@@ -61,6 +62,7 @@
         "prores_422hq.frames",
         "prores_422hq.duration",
         "prores_422hq.color",
+        "prores_422hq.levels",
         "prores_422hq.timecode",
         "prores_422hq.black",
         "prores_422hq.audio",
@@ -172,6 +174,28 @@
       },
       "blocking": true,
       "detail": ""
+    },
+    {
+      "id": "hevc_main10.levels",
+      "label": "hevc_main10 : niveaux vidéo (signalstats)",
+      "status": "PASS",
+      "expected": {
+        "reserved_codes": "aucun (4..1019)",
+        "luma_r103": [
+          55.0,
+          966.0
+        ]
+      },
+      "actual": {
+        "y_min": 133.0,
+        "y_max": 858.0,
+        "c_min": 437.0,
+        "c_max": 610.0,
+        "frames_outside_r103": 0,
+        "frames": 72
+      },
+      "blocking": false,
+      "detail": "Y 133..858, chroma 437..610 (10 bits)"
     },
     {
       "id": "hevc_main10.black",
@@ -300,6 +324,28 @@
       },
       "blocking": true,
       "detail": "color_range lu(s) sur la 1re image décodée (absent(s) du flux : conteneur MOV « colr nclc » sans drapeau de plage, FFmpeg < 7)."
+    },
+    {
+      "id": "prores_422hq.levels",
+      "label": "prores_422hq : niveaux vidéo (signalstats)",
+      "status": "PASS",
+      "expected": {
+        "reserved_codes": "aucun (4..1019)",
+        "luma_r103": [
+          55.0,
+          966.0
+        ]
+      },
+      "actual": {
+        "y_min": 164.0,
+        "y_max": 855.0,
+        "c_min": 438.0,
+        "c_max": 619.0,
+        "frames_outside_r103": 0,
+        "frames": 72
+      },
+      "blocking": false,
+      "detail": "Y 164..855, chroma 438..619 (10 bits)"
     },
     {
       "id": "prores_422hq.timecode",
