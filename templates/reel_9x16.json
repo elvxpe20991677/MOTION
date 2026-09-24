@@ -13,7 +13,6 @@
     "alpha": false
   },
   "audio": {
-    "src": "assets/audio/beat_120.wav",
     "bpm": 120,
     "offset": 0,
     "synth": {
