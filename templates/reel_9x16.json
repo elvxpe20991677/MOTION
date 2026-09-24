@@ -194,6 +194,14 @@
               "move": "slam",
               "at": "beat:6",
               "sync": "end"
+            },
+            {
+              "at": "beat:7-0.1",
+              "dur": 0.08,
+              "to": {
+                "opacity": 0
+              },
+              "ease": "steps(1)"
             }
           ]
         },
