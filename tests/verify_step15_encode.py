@@ -171,9 +171,21 @@ def find_bash() -> str | None:
     return None
 
 
-def check_common_tags(label: str, vs: dict, fps: int, frames: int) -> None:
-    tags = (vs.get("color_primaries"), vs.get("color_transfer"), vs.get("color_space"), vs.get("color_range"))
-    check(f"{label} : bt709 ×3 + tv", tags == ("bt709", "bt709", "bt709", "tv"), str(tags))
+def frame_color(path: Path) -> dict:
+    """Champs couleur de la 1re image décodée (FFmpeg < 7 : plage ProRes posée sur les images seulement)."""
+    p = run([config.FFPROBE, "-v", "error", "-select_streams", "v:0", "-read_intervals", "%+#1", "-show_entries",
+             "frame=color_primaries,color_transfer,color_space,color_range", "-of", "json", str(path)])
+    assert p.returncode == 0, p.stderr.decode(errors="replace")
+    return (json.loads(p.stdout).get("frames") or [{}])[0]
+
+
+def check_common_tags(label: str, vs: dict, fps: int, frames: int, path: Path) -> None:
+    keys = ("color_primaries", "color_transfer", "color_space", "color_range")
+    # Flux d'abord ; champ absent -> image décodée (même règle que pipeline/qc.py).
+    fr = frame_color(path) if any(vs.get(k) is None for k in keys) else {}
+    tags = tuple(vs.get(k) if vs.get(k) is not None else fr.get(k) for k in keys)
+    check(f"{label} : bt709 ×3 + tv", tags == ("bt709", "bt709", "bt709", "tv"),
+          str(tags) + (f" (image décodée pour {[k for k in keys if vs.get(k) is None]})" if fr else ""))
     check(f"{label} : r_frame_rate = avg_frame_rate = {fps}/1",
           vs.get("r_frame_rate") == f"{fps}/1" == vs.get("avg_frame_rate"),
           f"{vs.get('r_frame_rate')} / {vs.get('avg_frame_rate')}")
@@ -227,11 +239,11 @@ def scenario_levels(bash: str | None) -> None:
           (vh["codec_name"], vh.get("profile"), vh["pix_fmt"]) == ("hevc", "Main 10", "yuv420p10le"),
           f"{vh['codec_name']} / {vh.get('profile')} / {vh['pix_fmt']}")
     check("[niveaux] HEVC : tag hvc1", vh.get("codec_tag_string") == "hvc1", vh.get("codec_tag_string"))
-    check_common_tags("[niveaux] HEVC", vh, fps, n)
+    check_common_tags("[niveaux] HEVC", vh, fps, n, hevc)
     check("[niveaux] ProRes : profil HQ, yuv422p10le",
           (vp["codec_name"], vp.get("profile"), vp["pix_fmt"]) == ("prores", "HQ", "yuv422p10le"),
           f"{vp['codec_name']} / {vp.get('profile')} / {vp['pix_fmt']}")
-    check_common_tags("[niveaux] ProRes 422 HQ", vp, fps, n)
+    check_common_tags("[niveaux] ProRes 422 HQ", vp, fps, n, prores)
     tmcd = [s for s in pp["streams"] if s.get("codec_tag_string") == "tmcd"]
     check("[niveaux] ProRes : piste timecode tmcd 01:00:00:00",
           bool(tmcd) and tmcd[0].get("tags", {}).get("timecode") == "01:00:00:00",
@@ -353,7 +365,7 @@ def scenario_gradient() -> None:
     ns = audio_samples(prores)
     check(f"[dégradé] audio ProRes : exactement {exp_samples} échantillons (1 s coupée à 0,16 s)", ns == exp_samples,
           f"{ns}")
-    check_common_tags("[dégradé] ProRes 422 HQ", video_stream(probe(prores)), fps, n)
+    check_common_tags("[dégradé] ProRes 422 HQ", video_stream(probe(prores)), fps, n, prores)
 
 
 # ---------------------------------------------------------------------------
@@ -375,14 +387,20 @@ def scenario_alpha() -> None:
                              [("prores_4444", "", False), ("hevc_main10", "_flat", True)], None)
     cmds = encode.build_commands(compiled)
     vf_flat = cmds[1]["argv"][cmds[1]["argv"].index("-vf") + 1]
-    check("[alpha] HEVC aplati : expansion 16 bits exacte puis préfixe format=rgba64le,premultiply=inplace=1 "
-          "puis config.ZSCALE ; pas d'audio mappé",
-          vf_flat == f"zscale=rangein=full:range=full,format=gbrap16le,format=rgba64le,premultiply=inplace=1,"
-                     f"{config.ZSCALE},format=yuv420p10le"
+    vf_4444 = cmds[0]["argv"][cmds[0]["argv"].index("-vf") + 1]
+    # Aplatissement = préfixe du contrat (RVB × alpha en 16 bits) sans convertisseur d'alpha inexact
+    # de FFmpeg 6.1 : alpha lu par extractplanes (maître 16 bits : rgba64be), premultiply à 2 entrées.
+    check("[alpha] HEVC aplati : RVB et alpha étendus en 16 bits (alpha par extractplanes), premultiply "
+          "à 2 entrées, puis config.ZSCALE ; pas d'audio mappé",
+          vf_flat.startswith("split[c][a];[c]format=gbrp16le,") and "[a]format=rgba64be,extractplanes=a," in vf_flat
+          and "[c16][a16]premultiply=inplace=0," in vf_flat and "rgba64le" not in vf_flat
+          and vf_flat.endswith(f",{config.ZSCALE},format=yuv420p10le")
           and "-map" in cmds[1]["argv"] and "1:a:0" not in cmds[1]["argv"], vf_flat)
-    check("[alpha] ProRes 4444 : profil 4, yuva444p10le, alpha_bits 16, sans préfixe d'aplatissement",
+    check("[alpha] ProRes 4444 : profil 4, yuva444p10le, alpha_bits 16, couleur par config.ZSCALE, alpha exact "
+          "fusionné (mergeplanes), sans aplatissement",
           all(x in " ".join(cmds[0]["argv"]) for x in ["-profile:v 4", "-pix_fmt yuva444p10le", "-alpha_bits 16"])
-          and "premultiply" not in " ".join(cmds[0]["argv"]))
+          and f"{config.ZSCALE},format=yuv444p10le[yuv]" in vf_4444 and "extractplanes=a" in vf_4444
+          and vf_4444.endswith("format=yuva444p10le") and "premultiply" not in " ".join(cmds[0]["argv"]), vf_4444)
     t0 = time.perf_counter()
     p4444, hevc = encode.encode_scene(compiled, log=lambda *_: None)
     TIMINGS[sid] = time.perf_counter() - t0
@@ -391,13 +409,13 @@ def scenario_alpha() -> None:
     check("[alpha] ProRes 4444 : profil 4444, format yuva444p10le/12le",
           v4.get("profile") == "4444" and v4["pix_fmt"] in ("yuva444p10le", "yuva444p12le"),
           f"{v4.get('profile')} / {v4['pix_fmt']}")
-    check_common_tags("[alpha] ProRes 4444", v4, fps, n)
+    check_common_tags("[alpha] ProRes 4444", v4, fps, n, p4444)
     f4 = decode_planes(p4444, "yuva444p10le", w, h)[0]
     a_row = f4["A"][h // 4].astype(int)
     check("[alpha] ProRes 4444 : alpha dégradé de 0 à 1023", a_row.min() == 0 and a_row.max() == 1023
           and a_row[0] == 0 and a_row[-1] == 1023, f"min {a_row.min()} max {a_row.max()}")
-    check("[alpha] ProRes 4444 : alpha monotone croissant, écart max à la rampe idéale ≤ 1",
-          bool(np.all(np.diff(a_row) >= 0)) and int(np.abs(a_row - np.arange(w)).max()) <= 1,
+    check("[alpha] ProRes 4444 : alpha = rampe idéale au code près (maître 16 bits)",
+          bool(np.all(np.diff(a_row) >= 0)) and int(np.abs(a_row - np.arange(w)).max()) == 0,
           f"{np.unique(a_row).size} valeurs distinctes, écart max {int(np.abs(a_row - np.arange(w)).max())}")
     check("[alpha] ProRes 4444 : zones transparente (A = 0) et semi-transparente (A = 512 ±1)",
           int(f4["A"][48, 256]) == 0 and abs(int(f4["A"][48, 768]) - 512) <= 1,
@@ -425,6 +443,32 @@ def scenario_alpha() -> None:
     check("[alpha] sans audio : aucun flux audio dans les deux fichiers",
           not any(s["codec_type"] == "audio" for p in (p4444, hevc) for s in probe(p)["streams"]))
 
+
+def scenario_alpha8() -> None:
+    """Maître 8 bits à alpha (scène alpha sans flou de mouvement) -> ProRes 4444 : l'alpha doit valoir
+    exactement round(a × 1023 / 255) (défaut corrigé sous FFmpeg 6.1 : opaque = 1020, rampe décalée)."""
+    sid, w, h, fps, n = "t15_alpha8", 256, 16, 25, 2
+    x = np.arange(w, dtype=np.uint8)
+    img = np.zeros((h, w, 4), np.uint8)
+    img[..., :3] = 255
+    img[..., 3] = x[None, :]                                   # blanc, alpha 0..255 selon x
+    make_master(sid, [img] * n, fps, True)
+    compiled = make_compiled(sid, w, h, fps, n, 8, True, [("prores_4444", "", False)], None)
+    vf = encode.build_commands(compiled)[0]["argv"]
+    vf = vf[vf.index("-vf") + 1]
+    check("[alpha 8 bits] ProRes 4444 : alpha lu en rgba (sortie du décodeur PNG 8 bits)",
+          "[a]format=rgba,extractplanes=a,mergeplanes=format=gbrp,format=gbrp," in vf, vf)
+    (p4444,) = encode.encode_scene(compiled, log=lambda *_: None)
+    f = decode_planes(p4444, "yuva444p10le", w, h)[0]
+    a_row = f["A"][h // 2].astype(int)
+    ideal = np.floor(x.astype(float) * 1023 / 255 + 0.5).astype(int)
+    check("[alpha 8 bits] ProRes 4444 : alpha 0 -> 0 et 255 -> 1023 (opaque réellement opaque)",
+          a_row[0] == 0 and a_row[-1] == 1023, f"A[0] {a_row[0]}, A[255] {a_row[-1]}")
+    check("[alpha 8 bits] ProRes 4444 : alpha = round(a × 1023 / 255) sur toute la rampe (écart 0)",
+          bool(np.array_equal(a_row, ideal)), f"écart max {int(np.abs(a_row - ideal).max())}")
+    check("[alpha 8 bits] ProRes 4444 : blanc -> Y = 940, chroma 512 (couleur non prémultipliée)",
+          np.unique(f["Y"]).tolist() == [940] and np.unique(np.concatenate([f["U"].ravel(), f["V"].ravel()])).tolist()
+          == [512], f"Y {np.unique(f['Y']).tolist()[:4]}")
 
 def scenario_flatten8() -> None:
     """Maître 8 bits à alpha (cas par défaut sans flou de mouvement) aplati pour HEVC et ProRes 422 HQ :
@@ -578,7 +622,7 @@ def main() -> int:
     TEST_DIR.mkdir(parents=True)
     bash = find_bash()
     info(f"bash utilisé pour rejouer le script : {bash}")
-    for fn, args in ((scenario_levels, (bash,)), (scenario_gradient, ()), (scenario_alpha, ()), (scenario_flatten8, ()),
+    for fn, args in ((scenario_levels, (bash,)), (scenario_gradient, ()), (scenario_alpha, ()), (scenario_alpha8, ()), (scenario_flatten8, ()),
                      (scenario_fps30, ()), (scenario_errors, ())):
         try:
             fn(*args)

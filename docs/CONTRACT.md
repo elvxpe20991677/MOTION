@@ -22,6 +22,19 @@ Les schémas JSON dans `schema/` et `schema/internal/` sont normatifs.
 | Blender | bpy 5.0.1 sous CPython 3.11 — venv `.venv-blender` → **`.venv-blender/Scripts/python.exe`** |
 | Référence Cycles | cube 540², 16 éch., OIDN : **1,09 s/image CPU (24 threads)**, 2,10 s OptiX (surcoût d'init sur scène triviale) |
 
+### Machine 2 : conteneur Linux (reprise du travail, étapes 18 à 20)
+| Élément | Valeur |
+|---|---|
+| OS | Ubuntu 24.04.4 LTS (noyau 6.18), sans GPU |
+| CPU / RAM / disque | Intel Xeon 2,10 GHz, 4 cœurs, 16 Go, ~28 Go libres (le minimum de la SPEC) |
+| FFmpeg | **6.1.1** (paquet Ubuntu), libzimg 3.0.5 : défauts d'alpha contournés (§7), plage ProRes lue sur l'image (§8) |
+| Python / Node | 3.12.3 (`.venv/bin/python`) / Node 22.22.2, npm 10.9.7 ; mêmes versions pip/npm figées |
+| Chromium | 141.0.7390.37 (playwright build v1194, identique à la machine 1) |
+| Blender | bpy 5.0.1 sous CPython 3.11 (`.venv-blender/bin/python`), Cycles CPU |
+| Référence Cycles | scène clay 540², 24 éch., flou 0,5 : **~5 s/image (4 threads)** ; web 1080p : ~0,5 s/image |
+
+Le déterminisme est garanti PAR machine (§6) : la porte de l'étape 19 est rejouée ici.
+
 Constat bpy : `world.color` seul n'est PAS rendu (fond gris sombre) ; le monde doit être construit
 avec un arbre de nœuds (Background / Sky Texture).
 
@@ -373,8 +386,22 @@ normalisation BGRA 8 bits (ajout d'un alpha 255 si Chromium l'a omis) ; `cv2.imw
 ---------------------------------------------------------------------------------------------------
 ## 7. Encodage (rappel normatif)
 Voir SPEC §15. `-framerate fps -start_number 0 -i master/%06d.png`, `-frames:v N`, conversion
-`config.ZSCALE`, préfixe `format=rgba64le,premultiply=inplace=1` si `alpha_flatten`, audio
+`config.ZSCALE`, aplatissement sur noir si `alpha_flatten`, audio
 `-af apad=whole_dur=D,atrim=end=D` avec `D = N / fps` (texte décimal exact), `-map 0:v:0 -map 1:a:0`.
+
+**Plan alpha (FFmpeg 6.1.1 d'Ubuntu 24.04, mesuré)** : swscale `rgba → gbrap` décale l'alpha ≥ 128
+de +1, `rgba → rgba64le` donne 65532 pour 255, `vf_zscale` traite l'alpha comme une plage limitée
+(255 → 1020 en 10 bits). Le préfixe littéral `format=rgba64le,premultiply=inplace=1` aplatit donc
+le blanc opaque à Y = 937. Règle : l'alpha n'est JAMAIS converti par ces chemins ; il est lu par
+`extractplanes=a`, recopié dans R = G = B (`mergeplanes`, maps par défaut) et converti par le
+chemin couleur de zscale (exact). Formats selon `compiled.depth` : 8 bits `rgba`/`gbrp`,
+16 bits `rgba64be`/`gbrp16le` (alpha recopié en `gbrp16be`, boutisme d'extractplanes).
+- aplatissement (équivalent exact du préfixe du contrat) : RVB et alpha en `gbrp16le`, puis
+  `premultiply=inplace=0` (2 entrées, alpha = plan 0 du 2e flux), puis `config.ZSCALE` ;
+- ProRes 4444 : couleur `config.ZSCALE → yuv444p10le`, alpha `zscale plein, matrix=709 →
+  yuv444p10le` (Y = alpha car Kr + Kg + Kb = 1), fusion `mergeplanes → yuva444p10le`.
+Vérifié au bit près en 8 et 16 bits (`tests/verify_step15_encode.py`), identique en couleur à la
+chaîne précédente, valable aussi sur FFmpeg 8.x (mêmes filtres, sans option dépréciée).
 HEVC `keyint = 2 × fps`, `min-keyint = fps` (valeurs numériques). `encode_commands.sh` : script bash
 exécutable depuis la racine (`cd "$(dirname "$0")/../.."`), une commande par livrable, citations
 POSIX (`shlex.join`), chemins relatifs à la racine.
@@ -383,7 +410,9 @@ POSIX (`shlex.join`), chemins relatifs à la racine.
 ## 8. QC (rappel normatif)
 Attendus déduits de la scène compilée : codec/profil/pix_fmt (`config.PROFILES`, 4444 décodé en
 yuva444p10le OU yuva444p12le), taille `output`, `r_frame_rate` = `avg_frame_rate` = `fps/1`,
-`nb_read_frames` = frames, durée ± ½ image, `hvc1` (HEVC), bt709 ×3 + tv, piste `tmcd` (ProRes),
+`nb_read_frames` = frames, durée ± ½ image, `hvc1` (HEVC), bt709 ×3 + tv (champ absent du flux :
+lu sur la 1re image décodée — FFmpeg < 7 ne pose la plage ProRes que sur les images, l'atome MOV
+`colr nclc` n'ayant pas de drapeau de plage), piste `tmcd` (ProRes),
 alpha réel (4444, alphaextract image médiane : min < 255), blackdetect `pix_th = 0.03`
 (bloquant si noir > allow_black_s, informatif si `format.alpha`), audio (codec aac|pcm_s24le,
 48 kHz, durée ± (1 image + 25 ms)), loudness ±1 LU + true peak ≤ −1 dBTP, zones sûres (master

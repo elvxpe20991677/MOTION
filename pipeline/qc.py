@@ -231,6 +231,25 @@ def probe(path, *, timeout: float | None = None) -> dict:
     return info
 
 
+def _first_frame_color(path: Path, keys, timeout: float) -> dict:
+    """Champs couleur de la PREMIÈRE image décodée (ffprobe -show_entries frame=…) ; {} si illisible.
+
+    FFmpeg < 7 : le décodeur ProRes pose la plage « tv » sur chaque image mais pas sur le flux
+    (vérifié dans proresdec2.c de la 6.1.1 ; FFmpeg ≥ 7 la pose aussi sur le flux), et l'atome MOV
+    « colr nclc » n'a pas de drapeau de plage : c'est donc l'image décodée qui fait foi.
+    """
+    argv = [config.FFPROBE, "-v", "error", "-select_streams", "v:0", "-read_intervals", "%+#1",
+            "-show_entries", "frame=" + ",".join(keys), "-of", "json", str(path)]
+    res = _run(argv, timeout=timeout)
+    if res.returncode != 0:
+        return {}
+    try:
+        frames = json.loads(_text(res.stdout)).get("frames") or []
+    except json.JSONDecodeError:
+        return {}
+    return frames[0] if frames else {}
+
+
 def _alpha_stats(path: Path, frame_index: int, fps: int, width: int, height: int,
                  start_time: float, timeout: float) -> dict:
     """Extrait le plan alpha d'UNE image (alphaextract) et renvoie min et part de pixels < 255."""
@@ -508,11 +527,23 @@ def check_output(path, expected: dict) -> list[dict]:
     # --- Métadonnées couleur ---------------------------------------------------------------------
     if expected.get("color"):
         act = {k: v.get(k) for k in expected["color"]}
+        # Champ absent du flux : repli sur l'image décodée (plage ProRes sous FFmpeg < 7), mentionné
+        # dans le détail pour que le rapport dise d'où vient chaque valeur.
+        missing = [k for k in expected["color"] if act.get(k) is None]
+        from_frame = []
+        if missing:
+            frame = _first_frame_color(p, list(expected["color"]), timeout)
+            for k in missing:
+                if frame.get(k) is not None:
+                    act[k] = frame[k]
+                    from_frame.append(k)
         bad = [k for k, want in expected["color"].items() if act.get(k) != want]
+        note = (f"{', '.join(from_frame)} lu(s) sur la 1re image décodée (absent(s) du flux : conteneur MOV "
+                "« colr nclc » sans drapeau de plage, FFmpeg < 7)." if from_frame else "")
         add("color", "métadonnées couleur (bt709 x3, plage tv)", "FAIL" if bad else "PASS", expected["color"], act,
-            True, "" if not bad else
+            True, note if not bad else
             f"Champs non conformes : {', '.join(bad)}. Ajoutez « -color_primaries bt709 -color_trc bt709 "
-            "-colorspace bt709 -color_range tv » (et +write_colr dans -movflags).")
+            "-colorspace bt709 -color_range tv » (et +write_colr dans -movflags). " + note)
 
     # --- Piste timecode tmcd (ProRes) ------------------------------------------------------------
     if expected.get("timecode"):

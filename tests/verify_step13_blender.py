@@ -178,6 +178,9 @@ def main() -> int:
 
     # 1. Fixtures conformes au schéma normatif --------------------------------------------------
     for path, job in ((CLAY, clay), (KIT, kit)):
+        # out_dir doit être ABSOLU (schéma), donc propre à la machine qui a écrit la fixture
+        # (« C:/… » n'est pas absolu sous Linux) : on le reloge sous build/_tests avant validation.
+        job = dict(job, out_dir=str(TEST_DIR / f"fixture_{path.stem.removeprefix('job_')}"))
         try:
             br.validate_job(job)
             check(f"schéma : {path.name} conforme à blender_job.schema.json", True)
@@ -233,7 +236,7 @@ def main() -> int:
         moved = float(np.abs(a0[..., :3].astype(np.int32) - a12[..., :3].astype(np.int32)).mean())
         check("CPU : l'image 12 diffère de l'image 0 (la sphère a bougé)", moved > 200, f"écart moyen {moved:.0f}/65535")
     t_cpu = frame_times(out_cpu)
-    info(f"temps CPU par image (24 threads, 540², 24 éch., flou 0,5) : {t_cpu} ; processus complet {wall:.2f} s")
+    info(f"temps CPU par image ({os.cpu_count()} threads, 540², 24 éch., flou 0,5) : {t_cpu} ; processus complet {wall:.2f} s")
     measures["cpu"] = f"{t_cpu} (processus {wall:.2f} s)"
 
     # 5. Rendu OptiX ------------------------------------------------------------------------------

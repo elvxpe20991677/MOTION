@@ -23,16 +23,52 @@ from pipeline import config
 _COMMON = ["-y", "-hide_banner", "-nostdin"]
 # Étiquettes couleur Rec.709 plage limitée : identiques pour tous les profils (QC : bt709 ×3 + tv).
 _COLOR_TAGS = ["-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", "-color_range", "tv"]
-# Aplatissement d'une source à alpha pour un livrable opaque (préfixe du contrat) : passage en
-# 16 bits puis multiplication RVB × alpha = composition sur noir.
-_FLATTEN = "format=rgba64le,premultiply=inplace=1"
-# Expansion 16 bits EXACTE placée avant le préfixe : la conversion automatique de swscale
-# rgba -> rgba64le est inexacte (mesuré : 255 -> 65283, alpha 255 -> 65532, soit un blanc aplati
-# à Y = 937 au lieu de 940) ; zscale en plage pleine -> pleine donne exactement v × 257 (alpha
-# compris) sur un maître 8 bits et l'identité sur un maître 16 bits (mesuré, écart 0), la chaîne
-# est donc juste quelle que soit la profondeur du maître.
-_EXPAND_16 = "zscale=rangein=full:range=full,format=gbrap16le"
 _PIX_FMT = {"hevc_main10": "yuv420p10le", "prores_422hq": "yuv422p10le", "prores_4444": "yuva444p10le"}
+
+# Le plan ALPHA ne passe jamais par les convertisseurs de FFmpeg 6.1 (Ubuntu 24.04), mesurés
+# inexacts : swscale rgba -> gbrap décale l'alpha ≥ 128 de +1, rgba -> rgba64le donne 65532 pour
+# 255 ; vf_zscale traite l'alpha comme une plage limitée (255 -> 1020 en 10 bits). Seul le chemin
+# COULEUR de zscale est exact (v × 257, v × 1023 / 255 arrondi). On extrait donc l'alpha tel quel
+# (extractplanes, lecture directe du PNG), on le recopie dans R = G = B (mergeplanes) et on le
+# convertit par ce chemin couleur. Exact au bit près sur 6.1.1 comme sur 8.x, en 8 et 16 bits.
+# Formats par profondeur du maître : sortie du décodeur PNG, plans RVB natifs, alpha recopié
+# (même boutisme que la sortie d'extractplanes, exigé par mergeplanes).
+_MASTER_FMT = {8: ("rgba", "gbrp", "gbrp"), 16: ("rgba64be", "gbrp16le", "gbrp16be")}
+_FULL = "zscale=rangein=full:range=full"
+# Recopie des maps par défaut de mergeplanes (tous les plans <- plan 0 de l'entrée 0) : l'option
+# « mapping » est dépréciée depuis FFmpeg 6.
+_ALPHA_AS_RGB = "format={packed},extractplanes=a,mergeplanes=format={alpha},format={planar}"
+
+
+def _alpha_as_rgb(depth: int) -> str:
+    packed, planar, alpha = _MASTER_FMT[depth]
+    return _ALPHA_AS_RGB.format(packed=packed, planar=planar, alpha=alpha)
+
+
+def _flatten_graph(depth: int, tail: str) -> str:
+    """Aplatissement sur noir (livrable opaque d'une scène à alpha) puis `tail` (ZSCALE, format).
+
+    Équivalent exact du préfixe du contrat « format=rgba64le,premultiply=inplace=1 » : RVB et
+    alpha étendus en 16 bits (v × 257, identité sur un maître 16 bits), puis premultiply à deux
+    entrées (RVB × alpha / 65535, plan 0 du 2e flux = alpha).
+    """
+    planar = _MASTER_FMT[depth][1]
+    return (f"split[c][a];[c]format={planar},{_FULL},format=gbrp16le[c16];"
+            f"[a]{_alpha_as_rgb(depth)},{_FULL},format=gbrp16le[a16];"
+            f"[c16][a16]premultiply=inplace=0,{tail}")
+
+
+def _alpha_graph(depth: int) -> str:
+    """ProRes 4444 : couleur par config.ZSCALE, alpha plein 10 bits exact, fusionnés en yuva444p10le.
+
+    Alpha dans R = G = B puis matrice 709 en plage pleine : Y = alpha (Kr + Kg + Kb = 1).
+    mergeplanes impose le même format à ses deux entrées : yuv444p10le.
+    """
+    planar = _MASTER_FMT[depth][1]
+    return (f"split[c][a];[c]format={planar},{config.ZSCALE},format=yuv444p10le[yuv];"
+            f"[a]{_alpha_as_rgb(depth)},{_FULL}:matrix=709,format=yuv444p10le[a10];"
+            f"[yuv][a10]mergeplanes=map0s=0:map0p=0:map1s=0:map1p=1:map2s=0:map2p=2:"
+            f"map3s=1:map3p=0:format=yuva444p10le")
 
 
 class EncodeError(RuntimeError):
@@ -128,6 +164,10 @@ def build_commands(compiled: dict) -> list[dict]:
     scene_id = compiled["scene_id"]
     fps = int(compiled["format"]["fps"])
     frames = int(compiled["frames"])
+    # Profondeur UNIQUE du maître (compose.py) : elle fixe les formats des chaînes alpha.
+    depth = int(compiled["depth"])
+    if depth not in _MASTER_FMT:
+        raise EncodeError(f"Profondeur maître invalide ({depth}) : 8 ou 16 attendus (recompilez la scène).")
     duration = duration_text(frames, fps)
     pattern = config.master_dir(scene_id) / config.FRAME_PATTERN_FFMPEG
     audio = compiled.get("audio")
@@ -144,7 +184,9 @@ def build_commands(compiled: dict) -> list[dict]:
         crf = config.HEVC_CRF_DEFAULT if crf is None else int(crf)
         vf = f"{config.ZSCALE},format={_PIX_FMT[profile]}"
         if out.get("alpha_flatten"):
-            vf = f"{_EXPAND_16},{_FLATTEN},{vf}"
+            vf = _flatten_graph(depth, vf)
+        elif profile == "prores_4444":
+            vf = _alpha_graph(depth)
         argv = [config.FFMPEG, *_COMMON,
                 # -framerate (option d'entrée image2) fixe la cadence exacte, sans conversion ;
                 # -start_number 0 : la séquence maître commence à 000000.png.
