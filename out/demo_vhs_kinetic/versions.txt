@@ -1,0 +1,58 @@
+### Date (UTC)
+2026-09-24 08:34:10
+
+### Système
+Linux-6.18.44-fc-v37-x86_64-with-glibc2.39 | x86_64 | 4 threads
+
+### Python orchestrateur
+3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0]
+
+### ffmpeg -version
+ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers
+built with gcc 13 (Ubuntu 13.2.0-23ubuntu3)
+configuration: --prefix=/usr --extra-version=3ubuntu5 --toolchain=hardened --libdir=/usr/lib/x86_64-linux-gnu --incdir=/usr/include/x86_64-linux-gnu --arch=amd64 --enable-gpl --disable-stripping --disable-omx --enable-gnutls --enable-libaom --enable-libass --enable-libbs2b --enable-libcaca --enable-libcdio --enable-libcodec2 --enable-libdav1d --enable-libflite --enable-libfontconfig --enable-libfreetype --enable-libfribidi --enable-libglslang --enable-libgme --enable-libgsm --enable-libharfbuzz --enable-libmp3lame --enable-libmysofa --enable-libopenjpeg --enable-libopenmpt --enable-libopus --enable-librubberband --enable-libshine --enable-libsnappy --enable-libsoxr --enable-libspeex --enable-libtheora --enable-libtwolame --enable-libvidstab --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libx265 --enable-libxml2 --enable-libxvid --enable-libzimg --enable-openal --enable-opencl --enable-opengl --disable-sndio --enable-libvpl --disable-libmfx --enable-libdc1394 --enable-libdrm --enable-libiec61883 --enable-chromaprint --enable-frei0r --enable-ladspa --enable-libbluray --enable-libjack --enable-libpulse --enable-librabbitmq --enable-librist --enable-libsrt --enable-libssh --enable-libsvtav1 --enable-libx264 --enable-libzmq --enable-libzvbi --enable-lv2 --enable-sdl2 --enable-libplacebo --enable-librav1e --enable-pocketsphinx --enable-librsvg --enable-libjxl --enable-shared
+libavutil      58. 29.100 / 58. 29.100
+libavcodec     60. 31.102 / 60. 31.102
+libavformat    60. 16.100 / 60. 16.100
+libavdevice    60.  3.100 / 60.  3.100
+libavfilter     9. 12.100 /  9. 12.100
+libswscale      7.  5.100 /  7.  5.100
+libswresample   4. 12.100 /  4. 12.100
+libpostproc    57.  3.100 / 57.  3.100
+
+### pip freeze
+attrs==26.1.0
+greenlet==3.5.6
+jsonschema==4.23.0
+jsonschema-specifications==2025.9.1
+numpy==2.2.6
+opencv-python-headless==4.12.0.88
+playwright==1.56.0
+pyee==13.0.1
+referencing==0.37.0
+rpds-py==2026.6.3
+typing_extensions==4.16.0
+
+### npm ls --depth=0
+mograph-runtime-libs@1.0.0 /home/user/MOTION
+├── @fontsource/anton@5.3.0
+├── @fontsource/bricolage-grotesque@5.3.0
+├── @fontsource/caveat@5.3.0
+├── @fontsource/dm-sans@5.3.0
+├── @fontsource/fraunces@5.3.0
+├── @fontsource/inter-tight@5.3.0
+├── @fontsource/patrick-hand@5.3.0
+├── @fontsource/space-grotesk@5.3.0
+├── @fontsource/space-mono@5.3.0
+├── @fontsource/vt323@5.3.0
+└── gsap@3.15.0
+
+### bpy
+bpy 5.0.1 | python 3.11.15
+
+### Chromium (playwright)
+141.0.7390.37
+
+### git
+cd40744b70353da871bf8f50dff6dde72d4dce44 Thu Sep 24 08:31:51 2026 +0000
+
