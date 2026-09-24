@@ -14,3 +14,6 @@ assets/audio/*.wav
 
 # Dépôt d’un outil tiers, étranger au projet
 archive-*/
+
+# Médias générés par les tests (vidéo, sous-titres, audio)
+assets/_tests/

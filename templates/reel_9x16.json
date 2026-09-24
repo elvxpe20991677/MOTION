@@ -1,0 +1,221 @@
+{
+  "$schema": "../schema/scene.schema.json",
+  "version": "1.0",
+  "id": "modele_reel_9x16",
+  "title": "Reel sur la musique",
+  "brief": "Format vertical : un mot par temps musical (120 BPM), impacts calés sur le temps.",
+  "seed": 1,
+  "preset": "kinetic_signal",
+  "format": {
+    "aspect": "9:16",
+    "resolution": "1080p",
+    "fps": 30,
+    "alpha": false
+  },
+  "audio": {
+    "src": "assets/audio/beat_120.wav",
+    "bpm": 120,
+    "offset": 0,
+    "synth": {
+      "kind": "beat"
+    }
+  },
+  "storyboard": [
+    {
+      "shot": "mots",
+      "intent": "Rythme : chaque mot tombe sur un temps.",
+      "notes": "Remplacez la piste test par votre musique (assets/audio/…) puis « mograph.py beats <piste> » pour obtenir bpm et offset."
+    }
+  ],
+  "outputs": [
+    {
+      "profile": "hevc_main10",
+      "crf": 18
+    },
+    {
+      "profile": "prores_422hq"
+    }
+  ],
+  "qc": {
+    "safe_zone": "title",
+    "safe_zone_tolerance_s": 0.5,
+    "allow_black_s": 0,
+    "determinism_frames": 8,
+    "loudness_target_lufs": -14
+  },
+  "shots": [
+    {
+      "id": "mots",
+      "duration": "beats:8",
+      "background": "bg",
+      "layers": [
+        {
+          "id": "m1",
+          "type": "text",
+          "text": "UN",
+          "style": "display",
+          "size": 230,
+          "color": "fg",
+          "align": "center",
+          "x": "safe:50%",
+          "y": "safe:50%",
+          "anim": [
+            {
+              "move": "slam",
+              "at": "beat:1",
+              "sync": "end"
+            },
+            {
+              "at": "beat:2-0.1",
+              "dur": 0.08,
+              "to": {
+                "opacity": 0
+              },
+              "ease": "steps(1)"
+            }
+          ]
+        },
+        {
+          "id": "m2",
+          "type": "text",
+          "text": "MOT",
+          "style": "display",
+          "size": 230,
+          "color": "accent",
+          "align": "center",
+          "x": "safe:50%",
+          "y": "safe:50%",
+          "anim": [
+            {
+              "move": "slam",
+              "at": "beat:2",
+              "sync": "end"
+            },
+            {
+              "at": "beat:3-0.1",
+              "dur": 0.08,
+              "to": {
+                "opacity": 0
+              },
+              "ease": "steps(1)"
+            }
+          ]
+        },
+        {
+          "id": "m3",
+          "type": "text",
+          "text": "PAR",
+          "style": "display",
+          "size": 230,
+          "color": "fg",
+          "align": "center",
+          "x": "safe:50%",
+          "y": "safe:50%",
+          "anim": [
+            {
+              "move": "slam",
+              "at": "beat:3",
+              "sync": "end"
+            },
+            {
+              "at": "beat:4-0.1",
+              "dur": 0.08,
+              "to": {
+                "opacity": 0
+              },
+              "ease": "steps(1)"
+            }
+          ]
+        },
+        {
+          "id": "m4",
+          "type": "text",
+          "text": "TEMPS",
+          "style": "display",
+          "size": 230,
+          "color": "accent",
+          "align": "center",
+          "x": "safe:50%",
+          "y": "safe:50%",
+          "anim": [
+            {
+              "move": "slam",
+              "at": "beat:4",
+              "sync": "end"
+            },
+            {
+              "at": "beat:5-0.1",
+              "dur": 0.08,
+              "to": {
+                "opacity": 0
+              },
+              "ease": "steps(1)"
+            }
+          ]
+        },
+        {
+          "id": "m5",
+          "type": "text",
+          "text": "SUR",
+          "style": "display",
+          "size": 230,
+          "color": "fg",
+          "align": "center",
+          "x": "safe:50%",
+          "y": "safe:50%",
+          "anim": [
+            {
+              "move": "slam",
+              "at": "beat:5",
+              "sync": "end"
+            },
+            {
+              "at": "beat:6-0.1",
+              "dur": 0.08,
+              "to": {
+                "opacity": 0
+              },
+              "ease": "steps(1)"
+            }
+          ]
+        },
+        {
+          "id": "m6",
+          "type": "text",
+          "text": "LE",
+          "style": "display",
+          "size": 230,
+          "color": "accent",
+          "align": "center",
+          "x": "safe:50%",
+          "y": "safe:50%",
+          "anim": [
+            {
+              "move": "slam",
+              "at": "beat:6",
+              "sync": "end"
+            }
+          ]
+        },
+        {
+          "id": "m7",
+          "type": "text",
+          "text": "BEAT",
+          "style": "display",
+          "size": 230,
+          "color": "fg",
+          "align": "center",
+          "x": "safe:50%",
+          "y": "safe:50%",
+          "anim": [
+            {
+              "move": "slam",
+              "at": "beat:7",
+              "sync": "end"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

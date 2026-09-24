@@ -1,0 +1,148 @@
+{
+  "$schema": "../schema/scene.schema.json",
+  "version": "1.0",
+  "id": "modele_titre",
+  "title": "Titre d'annonce",
+  "brief": "Annonce courte : un titre fort, une accroche, puis un plan de signature.",
+  "seed": 1,
+  "preset": "flat_riso",
+  "format": {
+    "aspect": "16:9",
+    "resolution": "1080p",
+    "fps": 25,
+    "alpha": false
+  },
+  "storyboard": [
+    {
+      "shot": "titre",
+      "intent": "Poser le message en une lecture.",
+      "notes": "Remplacez les textes ; gardez-les courts (≤ 20 caractères pour le titre)."
+    },
+    {
+      "shot": "signature",
+      "intent": "Signer la vidéo.",
+      "notes": "Transition volet vers la gauche."
+    }
+  ],
+  "outputs": [
+    {
+      "profile": "hevc_main10",
+      "crf": 18
+    },
+    {
+      "profile": "prores_422hq"
+    }
+  ],
+  "qc": {
+    "safe_zone": "title",
+    "safe_zone_tolerance_s": 0.5,
+    "allow_black_s": 0,
+    "determinism_frames": 8,
+    "loudness_target_lufs": -14
+  },
+  "shots": [
+    {
+      "id": "titre",
+      "duration": 3.2,
+      "background": "bg",
+      "layers": [
+        {
+          "id": "forme",
+          "type": "shape",
+          "shape": "ellipse",
+          "w": 460,
+          "h": 460,
+          "fill": "secondary",
+          "x": 1500,
+          "y": 540,
+          "anim": [
+            {
+              "move": "pop",
+              "at": 0.1
+            }
+          ]
+        },
+        {
+          "id": "titre",
+          "type": "text",
+          "text": "Votre titre ici",
+          "style": "display",
+          "size": 150,
+          "color": "fg",
+          "x": "safe:0%",
+          "y": "safe:42%",
+          "anchor": "left",
+          "anim": [
+            {
+              "move": "chars_up",
+              "at": 0.3
+            }
+          ]
+        },
+        {
+          "id": "trait",
+          "type": "shape",
+          "shape": "line",
+          "w": 360,
+          "h": 12,
+          "stroke": "primary",
+          "strokeWidth": 10,
+          "x": "safe:0%",
+          "y": "safe:58%",
+          "anchor": "left",
+          "anim": [
+            {
+              "move": "draw",
+              "at": 0.9
+            }
+          ]
+        },
+        {
+          "id": "accroche",
+          "type": "text",
+          "text": "Une phrase d'accroche courte",
+          "style": "body",
+          "size": 48,
+          "color": "fg",
+          "x": "safe:0%",
+          "y": "safe:68%",
+          "anchor": "left",
+          "anim": [
+            {
+              "move": "rise",
+              "at": 1.1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "signature",
+      "duration": 2,
+      "background": "primary",
+      "transition_in": {
+        "type": "wipe",
+        "dur": 0.4,
+        "direction": "left"
+      },
+      "layers": [
+        {
+          "id": "marque",
+          "type": "text",
+          "text": "Votre marque",
+          "style": "display",
+          "size": 120,
+          "color": "bg",
+          "x": "50%",
+          "y": "50%",
+          "anim": [
+            {
+              "move": "pop",
+              "at": 0.3
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

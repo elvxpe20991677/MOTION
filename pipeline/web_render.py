@@ -45,8 +45,8 @@ DETERMINISM_CONTRACT = "mograph-determinism/1"
 BATCH_FRAMES = 6
 
 # Nombre maximal de navigateurs simultanés : au-delà, le coût mémoire (~400 Mo par Chromium) et la
-# contention CPU de SwiftShader annulent le gain.
-MAX_WORKERS = 4
+# contention CPU de SwiftShader annulent le gain (réglable : MOGRAPH_MAX_WORKERS, voir config).
+MAX_WORKERS = config.WEB_MAX_WORKERS
 
 
 class WebRenderError(RuntimeError):
@@ -509,6 +509,9 @@ def render_shot(compiled: dict, shot_index: int, *, workers: int | None = None,
     shot = compiled["shots"][shot_index]
     spec = shot["spec"]
     sid = spec["shot_id"]
+    # Calques vidéo : images extraites par FFmpeg AVANT d'ouvrir le navigateur (réutilisées si à jour).
+    from pipeline import media
+    media.ensure_shot_media(compiled, shot_index, log=log)
     out_dir = config.shot_frames_dir(compiled["scene_id"], sid)
     out_dir.mkdir(parents=True, exist_ok=True)
     man = _load_or_reset_manifest(compiled, spec, out_dir, log)

@@ -107,7 +107,8 @@
           "url": { "type": "string", "pattern": "^http://mograph\\.render/build/.+/$", "description": "Dossier ; image i = url + format('%06d.png', i)." },
           "frames": { "type": "integer", "minimum": 1 },
           "width": { "type": "integer", "description": "Pixels réels de la plaque (peut être < w*dsf si plate_scale < 1)." },
-          "height": { "type": "integer" }
+          "height": { "type": "integer" },
+          "source": { "type": "string", "description": "Calque vidéo : empreinte de la source et des réglages d'extraction (invalide le plan si elle change)." }
         }
       }
     },

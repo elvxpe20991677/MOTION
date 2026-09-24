@@ -1,0 +1,130 @@
+{
+  "$schema": "../schema/scene.schema.json",
+  "version": "1.0",
+  "id": "modele_chiffres",
+  "title": "Chiffres clés",
+  "brief": "Un titre puis un graphique en barres dont les compteurs suivent les barres.",
+  "seed": 1,
+  "preset": "flat_riso",
+  "format": {
+    "aspect": "16:9",
+    "resolution": "1080p",
+    "fps": 25,
+    "alpha": false
+  },
+  "outputs": [
+    {
+      "profile": "hevc_main10",
+      "crf": 18
+    },
+    {
+      "profile": "prores_422hq"
+    }
+  ],
+  "qc": {
+    "safe_zone": "title",
+    "safe_zone_tolerance_s": 0.5,
+    "allow_black_s": 0,
+    "determinism_frames": 8,
+    "loudness_target_lufs": -14
+  },
+  "shots": [
+    {
+      "id": "graphique",
+      "duration": 4,
+      "background": "bg",
+      "layers": [
+        {
+          "id": "titre",
+          "type": "text",
+          "text": "Nos chiffres clés",
+          "style": "display",
+          "size": 76,
+          "color": "fg",
+          "x": "safe:0%",
+          "y": "safe:6%",
+          "anchor": "left",
+          "anim": [
+            {
+              "move": "rise",
+              "at": 0.1
+            }
+          ]
+        },
+        {
+          "id": "barres",
+          "type": "chart",
+          "w": 1240,
+          "h": 620,
+          "x": 960,
+          "y": 600,
+          "data": [
+            {
+              "label": "2022",
+              "value": 12
+            },
+            {
+              "label": "2023",
+              "value": 19
+            },
+            {
+              "label": "2024",
+              "value": 27
+            },
+            {
+              "label": "2025",
+              "value": 41
+            }
+          ],
+          "max": 45,
+          "gap": 56,
+          "barRadius": 16,
+          "colors": [
+            "primary",
+            "secondary",
+            "accent",
+            "primary"
+          ],
+          "valueFormat": {
+            "decimals": 0,
+            "prefix": "+",
+            "suffix": " %"
+          },
+          "labelStyle": {
+            "style": "body",
+            "size": 38,
+            "color": "fg"
+          },
+          "valueStyle": {
+            "style": "display",
+            "size": 56,
+            "color": "fg"
+          },
+          "grow": {
+            "at": 0.4,
+            "dur": 1.6,
+            "stagger": 0.14,
+            "ease": "settle"
+          }
+        },
+        {
+          "id": "source",
+          "type": "text",
+          "text": "Source : à compléter",
+          "style": "body",
+          "size": 26,
+          "color": "fg",
+          "x": "safe:0%",
+          "y": "safe:100%",
+          "anchor": "bottom-left",
+          "anim": [
+            {
+              "move": "rise",
+              "at": 1.8
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -24,6 +24,15 @@ Documents : `docs/SPEC.md` (mission), `docs/CONTRACT.md` (décisions et API entr
 ---------------------------------------------------------------------------------------------------
 ## 1. Installation
 
+**En une commande** (idempotente, relançable) :
+- Windows 11 : `powershell -ExecutionPolicy Bypass -File .\setup.ps1 -Tests` (ajouter `-Defender`, en
+  administrateur, pour exclure `build\` de l'antivirus : écriture des PNG nettement plus rapide) ;
+- Linux / macOS / WSL2 : `./setup.sh --tests`.
+
+Ils vérifient les prérequis (FFmpeg avec zscale, Python 3.12, Node, uv), créent les deux venvs,
+installent les versions figées, Chromium et bpy, détectent le GPU NVIDIA (OptiX) puis rejouent les
+tests rapides. Installation manuelle équivalente :
+
 ### Windows 11 (machine de référence, natif — sans WSL)
 Prérequis : git, Python 3.12, Node.js (≥ 22), uv, FFmpeg ≥ 6.1 compilé avec libx265, prores_ks et
 **libzimg** (le build « full » de gyan.dev convient : `winget install Gyan.FFmpeg`).
@@ -65,6 +74,10 @@ contournées par l'encodeur (voir `docs/CONTRACT.md` §7), vérifié par `tests/
 Versions figées : `requirements.txt` (pip), `package.json` + `package-lock.json` (npm),
 `bpy==5.0.1`. Toute mise à jour peut changer des pixels : refaire la porte de déterminisme.
 
+**VS Code** : ouvrir le dossier suffit. `.vscode/settings.json` associe les schémas aux scènes,
+modèles et presets : autocomplétion des propriétés, des valeurs permises et erreurs soulignées à la
+frappe. **CI** : `.github/workflows/tests.yml` rejoue les tests à chaque push (Ubuntu 24.04).
+
 ---------------------------------------------------------------------------------------------------
 ## 2. Commandes
 
@@ -80,10 +93,44 @@ Versions figées : `requirements.txt` (pip), `package.json` + `package-lock.json
 | `python mograph.py compose <scène>` | séquence maître `build/<scène>/master/` |
 | `python mograph.py encode <scène>` | maître + tous les livrables + `encode_commands.sh` |
 | `python mograph.py qc <scène>` | QC automatique, code 1 si NON CONFORME |
-| `python mograph.py all <scène> [--detach]` | plaques → web → déterminisme → maître → encodage → QC |
+| `python mograph.py all <scène> [--detach]` | plaques → web → déterminisme → maître → encodage → planches → QC |
+| `python mograph.py all <scène> --draft` | **préversion** rapide (1080p, 3D réduite, sans flou, sans QC) → `out/<scène>_draft/` |
+| `python mograph.py validate <scène> --layout` | contrôle des zones sûres en quelques secondes, avant le rendu complet |
+| `python mograph.py preview <scène>` | **aperçu en direct** dans le navigateur, rechargé à chaque sauvegarde |
+| `python mograph.py new <id> --template titre` | nouvelle scène depuis un modèle (`new --list` : les modèles) |
+| `python mograph.py batch <scènes…>` | rend plusieurs scènes (motifs acceptés : `"scenes/promo_*.json"`) |
+| `python mograph.py batch <modèle> --data lignes.csv` | **déclinaisons** : une vidéo par ligne du CSV |
+| `python mograph.py beats <musique> [--scene <scène> --write]` | tempo, premier temps fort et drop détectés |
+| `python mograph.py sheets <scène>` | planches contact (`out/<scène>/planche_contact.png`, `planche_alpha.png`) |
 | `python mograph.py synth-beat --bpm 120 --duration 5 --out assets/audio/beat.wav` | piste test |
 | `python mograph.py status <scène>` | avancement (y compris d'un rendu détaché) |
 | `python mograph.py versions <scène>` | archive les versions dans `out/<scène>/versions.txt` |
+
+### Flux de travail conseillé
+1. `new ma_video --template titre` (ou partir d'une démo) ;
+2. `preview ma_video` : modifier le JSON, sauvegarder, regarder (lecture, ←/→ image par image, son) ;
+3. `validate ma_video --layout` : zones sûres garanties avant de lancer le rendu ;
+4. `all ma_video --draft` : préversion encodée à montrer ;
+5. `all ma_video --detach` : rendu final, QC, planches contact.
+
+### Déclinaisons (CSV)
+Dans la scène modèle, écrire `{{colonne}}` partout où une valeur change (`"text": "{{nom}}"`,
+`"value": "{{ca}}"`). Le CSV (UTF-8, séparateur `,` ou `;`, export Excel accepté) a une ligne
+d'en-têtes ; la colonne facultative `id` nomme chaque vidéo (sinon `<id>_001`, `<id>_002`…). Une
+cellule seule dans sa chaîne devient un nombre si c'en est un (`30,5` → 30.5). Les scènes générées
+sont relisibles dans `build/_variants/<modèle>/` ; le bilan du lot dans `build/_batch/`.
+
+### Musique
+`beats <fichier>` (wav, mp3, m4a, ou vidéo) estime le tempo (± 0,1 BPM), le premier temps fort
+(± 5 ms) et le « drop » (plus forte hausse d'énergie d'une mesure à la suivante), avec un indice de
+confiance ; `--scene <scène> --write` écrit le bloc `audio` (src, bpm, offset, marqueur `drop`).
+Tempo fixe uniquement. `"audio": {"normalize": true}` ramène la piste à `qc.loudness_target_lufs`
+(mesure puis gain linéaire, true peak ≤ −1,5 dBTP).
+
+### Rendu en parallèle
+Les plans sans plaque 3D sont rendus par Chromium **pendant** que Blender calcule les plaques
+(gain total avec un GPU). `MOGRAPH_MAX_WORKERS` (défaut 4) règle le nombre de navigateurs
+simultanés : sur 16 threads, essayer 6 à 8 et garder la valeur la plus rapide.
 
 ### Rendus longs
 `--detach` relance la commande dans un processus **indépendant du terminal** (Windows :
@@ -99,7 +146,7 @@ existants). Un plan dont la définition compilée change repart de zéro.
 - `build/<scène>/` : `compiled.json`, `shots/<plan>/NNNNNN.png + manifest.json`,
   `plates/<plan>__<plaque>/`, `master/`, `determinism.json`, `logs/`.
 - `out/<scène>/` : `<scène><suffixe>_<profil>.mp4|.mov`, `encode_commands.sh`,
-  `qc_report.json`, `qc_report.md`, `versions.txt`.
+  `qc_report.json`, `qc_report.md`, `versions.txt`, `planche_contact.png` (+ `planche_alpha.png`).
 - `MOGRAPH_BUILD_DIR` / `MOGRAPH_OUT_DIR` déplacent `build/` et `out/` (disque plus grand).
 
 ---------------------------------------------------------------------------------------------------
@@ -131,12 +178,14 @@ existants). Un plan dont la définition compilée change repart de zéro.
 - `durée × fps` doit être **entier** (sinon refus avec valeurs proches proposées).
 
 ### Plans et transitions
-`transition_in` : `cut` ou `crossfade` (ou `{ "type": "crossfade", "dur": 0.4 }`). Un fondu
-**chevauche** les deux plans : total = Σ images − Σ images de fondu. Le mélange se fait en alpha
-prémultiplié avec un poids smoothstep.
+`transition_in` : `cut`, `crossfade` (fondu), `wipe` (volet) ou `push` (le plan entrant pousse le
+précédent) ; forme objet `{ "type": "wipe", "dur": 0.4, "direction": "left|right|up|down" }`
+(left = le plan entrant arrive par la droite). Toute transition autre que `cut` **chevauche** les
+deux plans : total = Σ images − Σ images de chevauchement. Mélange en alpha prémultiplié, progression
+smoothstep ; la poussée translate d'un nombre entier de pixels (bords nets).
 
 ### Calques (communs)
-`id, type (text|shape|image|sequence|chart), x, y, anchor, z, rotation, scale, opacity, blend,
+`id, type (text|shape|image|sequence|chart|video|subtitles), x, y, anchor, z, rotation, scale, opacity, blend,
 safe, boil, anim`.
 - Positions : px logiques, `"50%"` du canevas, `"safe:50%"` / `"action:50%"` de la zone sûre.
 - Canevas logiques : 16:9 = 1920×1080, 9:16 = 1080×1920, 1:1 = 1080×1080 ; la 4K est la même
@@ -148,6 +197,17 @@ safe, boil, anim`.
 - `chart` : `data [{label, value, color}], w, h, max, gap, barRadius, colors, valueFormat,
   labelStyle, valueStyle, grow {at, dur, stagger, ease}` — barres et compteurs partagent le même
   easing, sans dépassement (back/elastic refusés pour `grow`).
+- `video` : `src (assets/….mp4|mov|webm…), w, h, fit (cover|contain|fill), start (s), loop`. FFmpeg
+  extrait l'image k du plan = la source à `start + k / fps`, déjà cadrée, dans
+  `build/<scène>/media/` (réutilisée tant que la source et les réglages ne changent pas) : la page
+  ne lit jamais la vidéo, le rendu reste déterministe. Source plus courte que le plan : dernière
+  image tenue (avertissement) ou `"loop": true`. Animable comme tout calque (`anim`). Son de la
+  vidéo ignoré (mettre la piste dans `audio`).
+- `subtitles` : `src (assets/….srt|vtt), offset, fade, style, size, color, align, maxWidth, x, y,
+  anchor` — temps du fichier = temps **global** de la vidéo ; chaque réplique devient un calque
+  texte (fondus d'entrée/sortie `fade`, 0,12 s par défaut), placé par défaut en bas de la zone sûre
+  titre, largeur 90 % de la zone ; balises `<i>`, `{\an8}` retirées. Glyphes vérifiés comme tout
+  texte (aucune police de repli).
 
 ### Tweens (`anim`)
 `move, at, dur, from, to, ease, stagger, target (self|chars|words|lines|shape|bars), revealDir,
@@ -216,12 +276,23 @@ la machine de rendu final.
    du preset dans git.
 
 ---------------------------------------------------------------------------------------------------
-## 7. Limites connues
+## 7. Contrôle qualité automatique
+En plus des contrôles de l'étape 17 (codec, profil, fps, images comptées, hvc1, bt709/tv, timecode,
+alpha, noir, son, loudness, zones sûres, déterminisme), chaque livrable passe un **contrôle des
+niveaux** (signalstats sur toutes les images) : codes réservés (< 4 ou > 1019 en 10 bits) = échec,
+luminance hors EBU R103 (55..966) = avertissement (dépassements de compression, acceptables sur le
+web). Les **planches contact** (`out/<scène>/planche_contact.png`, et `planche_alpha.png` sur fonds
+clair et sombre pour une scène transparente) montrent les coupes, transitions, temps musicaux et
+marqueurs : la relecture humaine commence par elles.
+
+---------------------------------------------------------------------------------------------------
+## 8. Limites connues
 - Source web en 8 bits par canal (16 bits seulement avec le flou de mouvement).
 - Pas de P3 ni de HDR : chaîne sRGB → Rec.709 SDR uniquement.
 - EEVEE et Grease Pencil exigent un GPU (EEVEE sans GPU : 68 s pour un cube) : le pipeline utilise Cycles.
 - Zones sûres 9:16 approximatives (interfaces TikTok / Reels / Shorts évolutives).
-- Pas de détection automatique des temps musicaux (BPM et marqueurs saisis ; évolution : librosa).
+- Détection des temps (`beats`) pour les morceaux à tempo FIXE seulement (pas de tempo variable).
+- Aperçu en direct : fidèle mais pas au pixel près (navigateur de bureau) ; seul `all` fait foi.
 - Rendu logiciel lent sans GPU (Chromium SwiftShader, Cycles CPU).
 - Windows : pas de `tmux` ; `--detach` le remplace. `--font-render-hinting=none` n'a d'effet que
   sous Linux ; le déterminisme est garanti par machine, pas entre systèmes.

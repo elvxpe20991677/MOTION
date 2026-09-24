@@ -1,0 +1,92 @@
+{
+  "$schema": "../schema/scene.schema.json",
+  "version": "1.0",
+  "id": "modele_citation",
+  "title": "Citation",
+  "brief": "Citation manuscrite à la craie, format carré réseaux sociaux.",
+  "seed": 1,
+  "preset": "handmade_chalk",
+  "format": {
+    "aspect": "1:1",
+    "resolution": "1080p",
+    "fps": 24,
+    "alpha": false
+  },
+  "outputs": [
+    {
+      "profile": "hevc_main10",
+      "crf": 18
+    },
+    {
+      "profile": "prores_422hq"
+    }
+  ],
+  "qc": {
+    "safe_zone": "title",
+    "safe_zone_tolerance_s": 0.5,
+    "allow_black_s": 0,
+    "determinism_frames": 8,
+    "loudness_target_lufs": -14
+  },
+  "shots": [
+    {
+      "id": "citation",
+      "duration": 5,
+      "background": "bg",
+      "layers": [
+        {
+          "id": "guillemet",
+          "type": "text",
+          "text": "«",
+          "style": "display",
+          "size": 200,
+          "color": "primary",
+          "x": "safe:0%",
+          "y": "safe:14%",
+          "anchor": "left",
+          "anim": [
+            {
+              "move": "pop",
+              "at": 0.1
+            }
+          ]
+        },
+        {
+          "id": "texte",
+          "type": "text",
+          "text": "La simplicité est la sophistication suprême.",
+          "style": "display",
+          "size": 88,
+          "color": "fg",
+          "align": "center",
+          "maxWidth": 860,
+          "x": "50%",
+          "y": "46%",
+          "anim": [
+            {
+              "move": "write_on",
+              "at": 0.5
+            }
+          ]
+        },
+        {
+          "id": "auteur",
+          "type": "text",
+          "text": "— Auteur",
+          "style": "body",
+          "size": 44,
+          "color": "secondary",
+          "x": "safe:100%",
+          "y": "safe:84%",
+          "anchor": "right",
+          "anim": [
+            {
+              "move": "wobble_in",
+              "at": 2.6
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

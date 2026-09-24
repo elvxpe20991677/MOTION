@@ -432,3 +432,65 @@ Agents parallèles, chacun propriétaire exclusif de ses fichiers (§2) et de se
   `tests/verify_step14_compose.py`, `tests/verify_step15_encode.py`, `tests/verify_step16_audio.py`.
 - qc : `pipeline/qc.py`, `tests/verify_step17_qc.py`.
 L'intégrateur écrit `mograph.py`, les scènes démo, README.md, QC_CHECKLIST.md.
+
+---------------------------------------------------------------------------------------------------
+## 10. Extensions (après l'étape 20) — normatives
+
+### 10.1 Scène compilée : ajouts
+Chaque entrée de `shots[]` porte en plus (hors `spec` : les empreintes des plans ne changent pas) :
+- `transition` : `{type: cut|crossfade|wipe|push, direction: left|right|up|down}` ; `fade_in_frames`
+  reste le chevauchement (commun aux trois transitions non « cut »).
+- `media` : tâches d'extraction des calques vidéo `[{kind: "video", layer_id, plate_key, src, start,
+  loop, fit, fps, frames, width, height, color_matrix, out_dir, digest}]`.
+`audio` gagne `normalize` (booléen).
+
+### 10.2 Calques ajoutés (développés par le compilateur, le runtime n'a pas de nouveau type)
+- `video` → calque `sequence` compilé dont `plate` = `video__<id>` ; `spec.plates["video__<id>"]` a
+  en plus `source` (= `digest` : SHA-256 de la source + réglages, invalide le plan s'il change).
+  Images dans `build/<scène>/media/<plan>__<calque>/NNNNNN.png` (`config.media_dir`), extraites par
+  `pipeline/media.py` avant le rendu web du plan (`web_render.render_shot` l'appelle).
+- `subtitles` → un calque `text` par réplique (id `<id>-NNN`), développé après `_timing()` : temps
+  SRT/VTT globaux convertis en local, fondus `fade`, répliques hors plan ignorées.
+
+### 10.3 Transitions géométriques (`pipeline/compose.py`)
+`blend_transitions` : volet (masque anticrénelé sur 1 px) et poussée (translation ENTIÈRE, sans
+rééchantillonnage), en alpha prémultiplié, progression = `fade_weight` (smoothstep). Le fondu garde
+`blend_premultiplied` inchangé (maîtres existants identiques au bit près). Manifeste maître :
+`frame_map[].mode` ∈ {link, convert, blend, wipe, push} ; `segments[]` + `transition`, `direction`.
+
+### 10.4 API ajoutées
+```python
+# pipeline/audio.py
+def analyse_tempo(path, *, bpm_min=60.0, bpm_max=200.0, beats_per_bar=4) -> dict
+    # {bpm, offset (1er temps fort), beats_per_bar, confidence 0..1, drop (s|None), duration}
+# pipeline/encode.py
+def loudnorm_prefix(src, duration: str, target_lufs: float) -> str   # 2 passes, loudnorm linéaire
+# pipeline/media.py
+def ensure_shot_media(compiled, shot_index, *, log=print) -> list[Path]
+# pipeline/qc.py
+def preflight_layout(compiled, *, margin_px=None) -> dict   # relevés des plans, avant composition
+# check_output : contrôle « levels » (signalstats) si expected["levels"]
+# pipeline/sheets.py
+def pick_frames(compiled, max_tiles=16) -> list[tuple[int, str]]
+def write_contact_sheets(compiled, *, log=print) -> list[Path]
+# pipeline/preview.py
+def serve(scene_path, *, port=8765, open_browser=True, log=print, ready_event=None, stop_event=None)
+# pipeline/batch.py
+def expand(scenes: list[str], *, data: str | None = None) -> list[tuple[str, str | dict]]
+def write_report(results, *, draft: bool) -> Path
+```
+
+### 10.5 Réglages (`pipeline/config.py`)
+`WEB_MAX_WORKERS` (env `MOGRAPH_MAX_WORKERS`, défaut 4) ; `_default_workers` = un navigateur par
+cœur jusqu'à ce plafond. `LEVELS_R103_Y = (55, 966)`. `TEMPLATES_DIR`, `VIDEO_EXTENSIONS`,
+`SUBTITLE_EXTENSIONS`, `media_dir()`. MIME audio ajoutés (aperçu).
+
+### 10.6 CLI
+`validate --layout`, `all|render --draft` (id `<id>_draft` : aucun mélange avec le rendu final ;
+pas de porte de déterminisme ni de QC), `preview`, `new`, `batch [--data CSV]`, `beats`, `sheets`.
+`all` produit les planches contact avant le QC. `render`/`all` rendent les plans sans plaque
+pendant Blender (`step_plates_and_web`).
+
+### 10.7 Tests
+`tests/verify_features.py` (isolé dans `build/_tests/features/`, médias dans `assets/_tests/`),
+rejoué par la CI (`.github/workflows/tests.yml`) avec les étapes 9 à 17.

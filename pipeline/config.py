@@ -22,6 +22,7 @@ ROOT: Path = Path(__file__).resolve().parent.parent
 SCHEMA_DIR: Path = ROOT / "schema"
 PRESETS_DIR: Path = ROOT / "presets"
 SCENES_DIR: Path = ROOT / "scenes"
+TEMPLATES_DIR: Path = ROOT / "templates"
 RUNTIME_DIR: Path = ROOT / "runtime"
 NODE_MODULES: Path = ROOT / "node_modules"
 ASSETS_DIR: Path = ROOT / "assets"
@@ -68,6 +69,11 @@ def plate_dir(scene_id: str, shot_id: str, plate_id: str) -> Path:
     return scene_build_dir(scene_id) / "plates" / f"{shot_id}__{plate_id}"
 
 
+def media_dir(scene_id: str, shot_id: str, layer_id: str) -> Path:
+    """Images extraites d'une vidéo source (calque « video ») : même nommage que les plaques."""
+    return scene_build_dir(scene_id) / "media" / f"{shot_id}__{layer_id}"
+
+
 def master_dir(scene_id: str) -> Path:
     return scene_build_dir(scene_id) / "master"
 
@@ -105,7 +111,17 @@ MIME_TYPES: dict[str, str] = {
     ".jpeg": "image/jpeg",
     ".webp": "image/webp",
     ".svg": "image/svg+xml",
+    # Aperçu en direct (mograph preview) : pistes audio lues par le navigateur.
+    ".wav": "audio/wav",
+    ".mp3": "audio/mpeg",
+    ".m4a": "audio/mp4",
+    ".ogg": "audio/ogg",
 }
+
+# Vidéos acceptées par le calque « video » (extraites en PNG par FFmpeg, jamais lues par le navigateur).
+VIDEO_EXTENSIONS: tuple[str, ...] = (".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi", ".mxf")
+# Sous-titres acceptés par le calque « subtitles ».
+SUBTITLE_EXTENSIONS: tuple[str, ...] = (".srt", ".vtt")
 
 # ---------------------------------------------------------------------------
 # Canevas, échelle, zones sûres
@@ -211,6 +227,11 @@ def layout_every(fps: int) -> int:
 # Nombre d'images témoins par défaut pour le test de déterminisme.
 DETERMINISM_FRAMES_DEFAULT: int = 8
 
+# Navigateurs Chromium simultanés au plus (rendu web). 4 par défaut (~400 Mo et 2 à 4 threads
+# SwiftShader chacun) ; MOGRAPH_MAX_WORKERS permet de l'augmenter sur une machine de 16 threads ou
+# plus après mesure (les empreintes ne dépendent pas du nombre de navigateurs : vérifié étape 12).
+WEB_MAX_WORKERS: int = max(1, int(os.environ.get("MOGRAPH_MAX_WORKERS", "4")))
+
 # Seuil au-dessus duquel un rendu est considéré « long » et doit être détaché.
 LONG_RENDER_FRAMES: int = 300
 
@@ -278,6 +299,9 @@ AUDIO_RATE: int = 48_000
 
 # QC
 BLACKDETECT_PIX_TH: float = 0.03          # 0.06 pénalise les fonds sombres voulus (vhs, ardoise)
+# Plage de luminance recommandée EBU R103 en codes 10 bits (-1 % .. +103 % de 64..940) : au-delà,
+# avertissement ; les codes réservés (< 4, > 1019) sont un échec.
+LEVELS_R103_Y: tuple[float, float] = (55.0, 966.0)
 LOUDNESS_TOLERANCE_LU: float = 1.0
 TRUE_PEAK_MAX_DBTP: float = -1.0
 AAC_PRIMING_S: float = 0.025              # amorçage AAC toléré en plus d'une image sur la durée audio

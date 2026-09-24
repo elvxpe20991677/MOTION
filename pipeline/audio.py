@@ -630,3 +630,193 @@ def ensure_scene_audio(compiled: dict, *, log=print) -> Path | None:
                    encoding="utf-8")
     os.replace(tmp, sidecar)
     return src
+
+
+# ---------------------------------------------------------------------------
+# Détection du tempo, de la phase, de la mesure et du « drop » (mograph beats)
+# ---------------------------------------------------------------------------
+
+# Analyse à 11 025 Hz mono : suffisant pour les attaques (grosse caisse, caisse claire), 4 fois moins
+# de calcul qu'à 44,1 kHz. Trame 1024 (93 ms), pas 128 (11,6 ms) : résolution de phase < 6 ms.
+TEMPO_RATE = 11_025
+TEMPO_FRAME = 1024
+TEMPO_HOP = 128
+# A priori log-normal centré sur 120 BPM (1 octave d'écart-type) : départage les erreurs d'octave
+# (60 / 120 / 240) comme les détecteurs usuels, sans empêcher un 90 ou un 174 bien marqués.
+TEMPO_PRIOR_BPM = 120.0
+TEMPO_PRIOR_OCTAVES = 1.0
+
+
+def _decode_mono(path, rate: int = TEMPO_RATE) -> np.ndarray:
+    """N'importe quel fichier audio/vidéo -> échantillons mono float32 à `rate` Hz (FFmpeg)."""
+    argv = _FFMPEG_BASE + ["-v", "error", "-i", str(path), "-vn", "-ac", "1", "-ar", str(rate),
+                           "-f", "f32le", "-acodec", "pcm_f32le", "pipe:1"]
+    try:
+        r = subprocess.run(argv, capture_output=True, timeout=600)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise AudioError(f"FFmpeg indisponible pour décoder {path} : {exc}") from exc
+    if r.returncode != 0:
+        raise AudioError(f"Décodage audio impossible ({path}) : {r.stderr.decode(errors='replace').strip()[-300:]}")
+    return np.frombuffer(r.stdout, dtype=np.float32)
+
+
+def _onset_strength(y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Flux spectral positif (log-magnitude) par trame ; renvoie (flux large bande, flux < 200 Hz)."""
+    if y.size < TEMPO_FRAME * 4:
+        raise AudioError("Extrait audio trop court pour estimer un tempo (au moins 1 s).")
+    n = 1 + (y.size - TEMPO_FRAME) // TEMPO_HOP
+    idx = np.arange(TEMPO_FRAME)[None, :] + TEMPO_HOP * np.arange(n)[:, None]
+    frames = y[idx] * np.hanning(TEMPO_FRAME).astype(np.float32)[None, :]
+    mag = np.abs(np.fft.rfft(frames, axis=1)).astype(np.float32)
+    logm = np.log1p(1000.0 * mag)
+    flux = np.maximum(0.0, np.diff(logm, axis=0))
+    low_bins = max(2, int(200 * TEMPO_FRAME / TEMPO_RATE))
+    wide = np.concatenate([[0.0], flux.sum(axis=1)])
+    low = np.concatenate([[0.0], flux[:, :low_bins].sum(axis=1)])
+    # Soustraction d'une moyenne glissante (~0,5 s) : on garde les attaques, pas le niveau global.
+    k = max(1, int(0.5 * TEMPO_RATE / TEMPO_HOP))
+    kern = np.ones(k, dtype=np.float64) / k
+    wide = np.maximum(0.0, wide - np.convolve(wide, kern, mode="same"))
+    low = np.maximum(0.0, low - np.convolve(low, kern, mode="same"))
+    return wide, low
+
+
+def _interp(sig: np.ndarray, pos: np.ndarray) -> np.ndarray:
+    return np.interp(pos, np.arange(sig.size), sig, left=0.0, right=0.0)
+
+
+def _rise_step(rate: int) -> int:
+    """Pas de l'enveloppe fine en échantillons (≈ 1 ms ; exactement step / rate secondes)."""
+    return max(1, int(round(rate / 1000)))
+
+
+def _rise_envelope(y: np.ndarray, rate: int, lowpass_hz: float | None) -> np.ndarray:
+    """Montée d'énergie à 1 ms de résolution (dérivée positive de la puissance lissée sur 10 ms) :
+    son maximum tombe sur l'instant d'attaque, sans le retard d'une trame spectrale."""
+    x = y.astype(np.float64)
+    if lowpass_hz:
+        length = max(1, int(round(0.443 * rate / float(lowpass_hz))))
+        x = _box_same(_box_same(x, length), length)
+    power = _box_same(x * x, max(1, int(round(0.010 * rate))))
+    amp = np.sqrt(power[::_rise_step(rate)])
+    rise = np.maximum(0.0, np.diff(amp, prepend=amp[:1]))
+    return rise / (rise.max() or 1.0)
+
+
+def analyse_tempo(path, *, bpm_min: float = 60.0, bpm_max: float = 200.0, beats_per_bar: int = 4) -> dict:
+    """Tempo (BPM), temps 0 (offset = premier temps FORT), confiance et « drop » d'un morceau à tempo fixe.
+
+    Méthode : (1) période par autocorrélation du flux spectral (large bande + basses), pondérée par un
+    a priori centré sur 120 BPM ; (2) période et phase affinées sur l'enveloppe de montée des basses à
+    1 ms (grosse caisse) ; (3) tempo divisé par deux si les basses ne frappent qu'un temps sur deux ;
+    (4) premier temps de mesure = position où les basses frappent le plus fort ; (5) drop = plus forte
+    hausse d'énergie (≥ 3 dB) d'une mesure à la suivante. Déterministe : même fichier -> même résultat.
+    """
+    y = _decode_mono(path)
+    duration = y.size / TEMPO_RATE
+    wide, low = _onset_strength(y)
+    fps_env = TEMPO_RATE / TEMPO_HOP
+    env = wide / (wide.max() or 1.0) + 2.0 * low / (low.max() or 1.0)
+
+    # 1. Période approximative (trames spectrales).
+    lag_min = int(math.floor(60.0 * fps_env / bpm_max))
+    lag_max = int(math.ceil(60.0 * fps_env / bpm_min))
+    e = env - env.mean()
+    ac = np.correlate(e, e, mode="full")[e.size - 1:]
+    ac = ac / (ac[0] or 1.0)
+    lags = np.arange(max(1, lag_min), min(lag_max, ac.size - 2) + 1)
+    if lags.size == 0:
+        raise AudioError("Extrait trop court pour la plage de tempo demandée.")
+    bpms = 60.0 * fps_env / lags
+    prior = np.exp(-0.5 * (np.log2(bpms / TEMPO_PRIOR_BPM) / TEMPO_PRIOR_OCTAVES) ** 2)
+    score = np.array([sum(ac[m * L] for m in (1, 2, 3, 4) if m * L < ac.size) for L in lags]) * prior
+    beat_s = float(lags[int(np.argmax(score))]) / fps_env
+
+    # 2. Affinage fin (1 ms) : période ± 2 % et phase sur l'enveloppe de montée (basses, puis large bande
+    # si le morceau n'a pas de basses marquées).
+    rise = _rise_envelope(y, TEMPO_RATE, 150.0)
+    if float(rise.sum()) <= 0.0:
+        rise = _rise_envelope(y, TEMPO_RATE, None)
+    ms = np.arange(rise.size, dtype=np.float64)
+    # Unité de l'enveloppe fine : un pas = step / rate s (0,998 ms à 11 025 Hz), PAS exactement 1 ms.
+    unit_s = _rise_step(TEMPO_RATE) / TEMPO_RATE
+    beat_units = beat_s / unit_s
+
+    def fit(period_ms: float) -> tuple[float, float]:
+        n = int((rise.size - 1) // period_ms)
+        if n < 2:
+            return -1.0, 0.0
+        grid = period_ms * np.arange(n)
+        best = (-1.0, 0.0)
+        for ph in np.arange(0.0, period_ms, 1.0):
+            v = float(np.interp(ph + grid, ms, rise).sum()) / n
+            if v > best[0]:
+                best = (v, ph)
+        return best
+
+    best = (-1.0, beat_units, 0.0)
+    for pm in np.linspace(beat_units * 0.98, beat_units * 1.02, 81):
+        v, ph = fit(pm)
+        if v > best[0]:
+            best = (v, pm, ph)
+    _, period_ms, phase_ms = best
+
+    # 3. Octave : si un temps sur deux porte l'essentiel des basses, le vrai tempo est moitié.
+    def beat_strengths(period: float, phase: float) -> np.ndarray:
+        n = int((rise.size - 1 - phase) // period)
+        return np.interp(phase + period * np.arange(n), ms, rise)
+
+    bs = beat_strengths(period_ms, phase_ms)
+    if bs.size >= 8 and 60.0 / (2 * period_ms * unit_s) >= bpm_min:
+        even, odd = float(bs[0::2].mean()), float(bs[1::2].mean())
+        if min(even, odd) < 0.35 * max(even, odd):
+            if odd > even:
+                phase_ms += period_ms
+            period_ms *= 2
+            bs = beat_strengths(period_ms, phase_ms)
+
+    # 4. Premier temps de la mesure : position où les basses frappent le plus fort.
+    bar_scores = [float(bs[k::beats_per_bar].mean()) if bs[k::beats_per_bar].size else 0.0
+                  for k in range(beats_per_bar)]
+    down = int(np.argmax(bar_scores))
+    beat_s = period_ms * unit_s
+    bpm = 60.0 / beat_s
+    bar_len = beat_s * beats_per_bar
+    offset = ((phase_ms + down * period_ms) * unit_s) % bar_len
+    # Temps fort à quelques ms AVANT 0 (arrondi de phase) : c'est 0, pas la fin de la 1re mesure.
+    if offset > bar_len - 0.02:
+        offset = max(0.0, offset - bar_len)
+
+    # Confiance : part des temps de la grille qui tombent sur l'attaque la plus forte de LEUR voisinage
+    # (± une demi-période) ; indépendante du niveau (une intro calme ne compte pas comme un raté).
+    hits, total_b = 0, 0
+    half, tol = period_ms / 2, max(2.0, 0.05 * period_ms)
+    b_pos = phase_ms
+    while b_pos + half < rise.size:
+        lo, hi = int(max(0, b_pos - half)), int(b_pos + half)
+        win = rise[lo:hi]
+        if win.size and win.max() > 0:
+            total_b += 1
+            if abs((lo + int(np.argmax(win))) - b_pos) <= tol:
+                hits += 1
+        b_pos += period_ms
+    confidence = hits / total_b if total_b else 0.0
+
+    # 5. Drop : plus forte hausse d'énergie RMS d'une mesure à la suivante (≥ 3 dB).
+    bar_s = beat_s * beats_per_bar
+    drop = None
+    n_bars = int((duration - offset) // bar_s)
+    if n_bars >= 3:
+        rms = []
+        for k in range(n_bars):
+            a = int((offset + k * bar_s) * TEMPO_RATE)
+            b = int((offset + (k + 1) * bar_s) * TEMPO_RATE)
+            seg = y[a:b].astype(np.float64)
+            rms.append(10 * math.log10(float(np.mean(seg * seg)) + 1e-12))
+        jumps = np.diff(rms)
+        k = int(np.argmax(jumps))
+        if jumps[k] >= 3.0:
+            drop = round(float(offset + (k + 1) * bar_s), 3)
+
+    return {"bpm": round(float(bpm), 2), "offset": round(float(offset), 3), "beats_per_bar": int(beats_per_bar),
+            "confidence": round(confidence, 3), "drop": drop, "duration": round(float(duration), 3)}

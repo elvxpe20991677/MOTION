@@ -1,0 +1,185 @@
+{
+  "$schema": "../schema/scene.schema.json",
+  "version": "1.0",
+  "id": "modele_produit_3d",
+  "title": "Objet 3D et titre",
+  "brief": "Objet 3D en pâte à modeler qui tourne sur un cyclorama, titre composité.",
+  "seed": 1,
+  "preset": "clay_3d",
+  "format": {
+    "aspect": "1:1",
+    "resolution": "1080p",
+    "fps": 24,
+    "alpha": false
+  },
+  "quality": {
+    "plate_scale": 0.5,
+    "blender_samples": 32
+  },
+  "storyboard": [
+    {
+      "shot": "objet",
+      "intent": "Présenter l'objet sous plusieurs angles.",
+      "notes": "Préversion : plate_scale 0.5 et 32 échantillons ; rendu final : plate_scale 1 et 96 échantillons."
+    }
+  ],
+  "outputs": [
+    {
+      "profile": "hevc_main10",
+      "crf": 18
+    },
+    {
+      "profile": "prores_422hq"
+    }
+  ],
+  "qc": {
+    "safe_zone": "title",
+    "safe_zone_tolerance_s": 0.5,
+    "allow_black_s": 0,
+    "determinism_frames": 8,
+    "loudness_target_lufs": -14
+  },
+  "shots": [
+    {
+      "id": "objet",
+      "duration": 3,
+      "plates": [
+        {
+          "id": "decor",
+          "world": {
+            "color": "bg",
+            "strength": 1.0
+          },
+          "camera": {
+            "location": [
+              0,
+              -9,
+              3.2
+            ],
+            "target": [
+              0,
+              0,
+              1.0
+            ],
+            "lens": 50,
+            "fstop": 5.6,
+            "anim": [
+              {
+                "prop": "location",
+                "keys": [
+                  {
+                    "t": 0,
+                    "v": [
+                      0,
+                      -9,
+                      3.2
+                    ]
+                  },
+                  {
+                    "t": 3.0,
+                    "v": [
+                      0.8,
+                      -7.8,
+                      2.8
+                    ],
+                    "ease": "sine.inOut"
+                  }
+                ]
+              }
+            ]
+          },
+          "objects": [
+            {
+              "id": "cyc",
+              "primitive": "cyclorama",
+              "size": 30,
+              "minor": 10,
+              "bevel": 3,
+              "location": [
+                0,
+                6,
+                0
+              ],
+              "material": "floor"
+            },
+            {
+              "id": "objet",
+              "primitive": "rounded_cube",
+              "size": 1.6,
+              "bevel": 0.25,
+              "location": [
+                0,
+                0,
+                0.8
+              ],
+              "material": "lilac",
+              "anim": [
+                {
+                  "prop": "rotation",
+                  "keys": [
+                    {
+                      "t": 0,
+                      "v": [
+                        0,
+                        0,
+                        -20
+                      ]
+                    },
+                    {
+                      "t": 3.0,
+                      "v": [
+                        0,
+                        0,
+                        70
+                      ],
+                      "ease": "sine.inOut"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "bille",
+              "primitive": "sphere",
+              "size": 0.7,
+              "location": [
+                1.7,
+                0.6,
+                0.35
+              ],
+              "material": "peach"
+            }
+          ]
+        }
+      ],
+      "layers": [
+        {
+          "id": "decor",
+          "type": "sequence",
+          "plate": "decor",
+          "w": 1080,
+          "h": 1080,
+          "x": 540,
+          "y": 540
+        },
+        {
+          "id": "titre",
+          "type": "text",
+          "text": "Votre produit",
+          "style": "display",
+          "size": 110,
+          "color": "fg",
+          "align": "center",
+          "x": "50%",
+          "y": "safe:88%",
+          "anim": [
+            {
+              "move": "chars_up",
+              "at": 0.5
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

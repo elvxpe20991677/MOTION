@@ -132,6 +132,7 @@
         "bpm": { "type": "number", "exclusiveMinimum": 0, "maximum": 400 },
         "offset": { "type": "number", "minimum": 0, "default": 0, "description": "Temps global (s) du beat:0." },
         "beats_per_bar": { "type": "integer", "minimum": 1, "maximum": 16, "default": 4 },
+        "normalize": { "type": "boolean", "default": false, "description": "Ramène le volume de la source à qc.loudness_target_lufs (true peak ≤ -1,5 dBTP) à l'encodage." },
         "markers": {
           "type": "array",
           "items": {
@@ -178,15 +179,17 @@
       }
     },
     "transition": {
+      "description": "Transition d'ENTRÉE du plan : cut, crossfade (fondu), wipe (volet) ou push (le plan entrant pousse le précédent). Les trois dernières chevauchent les deux plans pendant « dur ».",
       "anyOf": [
-        { "enum": ["cut", "crossfade"] },
+        { "enum": ["cut", "crossfade", "wipe", "push"] },
         {
           "type": "object",
           "additionalProperties": false,
           "required": ["type"],
           "properties": {
-            "type": { "enum": ["cut", "crossfade"] },
-            "dur": { "$ref": "#/$defs/durationRef", "description": "Durée du fondu (défaut : transitions.crossfade.dur du preset)." }
+            "type": { "enum": ["cut", "crossfade", "wipe", "push"] },
+            "dur": { "$ref": "#/$defs/durationRef", "description": "Durée du chevauchement (défaut : transitions.crossfade.dur du preset)." },
+            "direction": { "enum": ["left", "right", "up", "down"], "default": "left", "description": "wipe / push : sens du mouvement (left = le plan entrant arrive par la droite)." }
           }
         }
       ]
@@ -330,7 +333,7 @@
       "required": ["id", "type"],
       "properties": {
         "id": { "$ref": "#/$defs/id" },
-        "type": { "enum": ["text", "shape", "image", "sequence", "chart"] },
+        "type": { "enum": ["text", "shape", "image", "sequence", "chart", "video", "subtitles"] },
         "x": { "$ref": "#/$defs/position", "default": "50%" },
         "y": { "$ref": "#/$defs/position", "default": "50%" },
         "anchor": {
@@ -413,6 +416,40 @@
               "plate": { "$ref": "#/$defs/id", "description": "id d'une plaque 3D du même plan." },
               "w": { "type": "number", "exclusiveMinimum": 0, "description": "Défaut : largeur du canevas." },
               "h": { "type": "number", "exclusiveMinimum": 0, "description": "Défaut : hauteur du canevas." }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "video" } } },
+          "then": {
+            "required": ["src", "w", "h"],
+            "properties": {
+              "src": { "type": "string", "minLength": 1, "description": "Vidéo sous assets/ (mp4, mov, webm, mkv…), relative à la racine." },
+              "w": { "type": "number", "exclusiveMinimum": 0 },
+              "h": { "type": "number", "exclusiveMinimum": 0 },
+              "fit": { "enum": ["cover", "contain", "fill"], "default": "cover" },
+              "start": { "type": "number", "minimum": 0, "default": 0, "description": "Point d'entrée dans la source (s) : l'image 0 du plan montre la source à « start »." },
+              "loop": { "type": "boolean", "default": false, "description": "Reboucle une source plus courte que le plan (sinon la dernière image est tenue)." }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "subtitles" } } },
+          "then": {
+            "required": ["src"],
+            "properties": {
+              "src": { "type": "string", "minLength": 1, "description": "Fichier .srt ou .vtt sous assets/ ; temps GLOBAUX de la vidéo." },
+              "offset": { "type": "number", "default": 0, "description": "Décalage (s) ajouté à tous les sous-titres." },
+              "fade": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.12, "description": "Durée des fondus d'entrée et de sortie (s)." },
+              "style": { "enum": ["display", "body"], "default": "body" },
+              "size": { "type": "number", "exclusiveMinimum": 0 },
+              "weight": { "type": "integer", "minimum": 100, "maximum": 900 },
+              "color": { "$ref": "#/$defs/color" },
+              "align": { "enum": ["left", "center", "right"], "default": "center" },
+              "maxWidth": { "type": "number", "exclusiveMinimum": 0 },
+              "lineHeight": { "type": "number", "exclusiveMinimum": 0 },
+              "tracking": { "type": "number" },
+              "case": { "enum": ["none", "upper", "lower", "title"] }
             }
           }
         },

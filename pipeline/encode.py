@@ -140,9 +140,27 @@ def _video_codec_args(profile: str, fps: int, crf: int) -> list[str]:
                       f"{', '.join(config.PROFILES)}.")
 
 
-def _audio_args(profile: str, duration: str) -> list[str]:
+def loudnorm_prefix(src: Path, duration: str, target_lufs: float) -> str:
+    """Normalisation EBU R128 en 2 passes (audio.normalize) : mesure de la source coupée à D, puis
+    loudnorm LINÉAIRE (gain constant, aucune compression) vers la cible, true peak ≤ -1,5 dBTP.
+    Déterministe : mêmes mesures -> même gain. Renvoie le début de la chaîne -af."""
+    base = f"atrim=end={duration},loudnorm=I={target_lufs:g}:TP=-1.5:LRA=11"
+    argv = [config.FFMPEG, *_COMMON[1:], "-v", "info", "-i", _rel(src), "-vn", "-af",
+            f"{base}:print_format=json", "-f", "null", "-"]
+    r = subprocess.run(argv, cwd=config.ROOT, capture_output=True, text=True, errors="replace")
+    text = r.stderr
+    start = text.rfind("{")
+    if r.returncode != 0 or start < 0:
+        raise EncodeError(f"Mesure de loudness impossible pour {src} : {text.strip()[-300:]}")
+    m = json.loads(text[start:text.rfind("}") + 1])
+    return (f"{base}:measured_I={m['input_i']}:measured_TP={m['input_tp']}:measured_LRA={m['input_lra']}:"
+            f"measured_thresh={m['input_thresh']}:offset={m['target_offset']}:linear=true:print_format=none,"
+            f"aresample={config.AUDIO_RATE}")
+
+
+def _audio_args(profile: str, duration: str, prefix: str | None = None) -> list[str]:
     # apad complète le silence, atrim coupe l'excédent : la piste dure exactement D (= vidéo).
-    af = ["-af", f"apad=whole_dur={duration},atrim=end={duration}"]
+    af = ["-af", (f"{prefix}," if prefix else "") + f"apad=whole_dur={duration},atrim=end={duration}"]
     if profile == "hevc_main10":
         return af + ["-c:a", "aac", "-b:a", "320k", "-ar", str(config.AUDIO_RATE)]
     # ProRes : PCM 24 bits, le format de travail des logiciels de montage (aucune perte).
@@ -172,6 +190,9 @@ def build_commands(compiled: dict) -> list[dict]:
     pattern = config.master_dir(scene_id) / config.FRAME_PATTERN_FFMPEG
     audio = compiled.get("audio")
     audio_src = Path(audio["src"]) if audio and audio.get("src") else None
+    # Mesure faite UNE fois (même gain pour tous les livrables) et seulement si demandée.
+    norm = (loudnorm_prefix(audio_src, duration, float(audio["target_lufs"]))
+            if audio_src is not None and audio.get("normalize") else None)
 
     commands = []
     for out in compiled["outputs"]:
@@ -200,7 +221,7 @@ def build_commands(compiled: dict) -> list[dict]:
         argv += ["-frames:v", str(frames), "-vf", vf]
         argv += _video_codec_args(profile, fps, crf)
         if audio_src is not None:
-            argv += _audio_args(profile, duration)
+            argv += _audio_args(profile, duration, norm)
         argv.append(_rel(output))
         commands.append({"profile": profile, "output": str(output), "argv": argv})
     return commands
