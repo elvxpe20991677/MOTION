@@ -53,12 +53,14 @@ uv venv --python 3.11 .venv-blender && uv pip install --python .venv-blender/bin
 ### Vérifications rapides
 ```bash
 ffmpeg -hide_banner -filters | grep -E " zscale | premultiply | alphaextract | blackdetect | ebur128 "
-.venv-blender/Scripts/python.exe -c "import bpy; print(bpy.app.version_string)"   # 5.0.1
+.venv-blender/bin/python -c "import bpy; print(bpy.app.version_string)"   # 5.0.1 (Windows : .venv-blender/Scripts/python.exe)
 ```
 Les scripts `tests/verify_stepNN_*.py` rejouent la vérification de chaque étape :
 ```bash
-.venv/Scripts/python.exe tests/verify_step11_compiler.py
+.venv/bin/python tests/verify_step11_compiler.py      # Windows : .venv/Scripts/python.exe
 ```
+FFmpeg 6.1.1 (Ubuntu 24.04) convient : ses conversions d'alpha inexactes (swscale, zscale) sont
+contournées par l'encodeur (voir `docs/CONTRACT.md` §7), vérifié par `tests/verify_step15_encode.py`.
 
 Versions figées : `requirements.txt` (pip), `package.json` + `package-lock.json` (npm),
 `bpy==5.0.1`. Toute mise à jour peut changer des pixels : refaire la porte de déterminisme.
