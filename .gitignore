@@ -22,3 +22,5 @@ out/modele_*/
 out/*_draft/
 assets/audio/modele_*_beat.wav.synth.json
 assets/audio/*_draft_beat.wav.synth.json
+out/essai_*/
+assets/audio/essai_*_beat.wav.synth.json
