@@ -125,6 +125,8 @@
           "size": { "type": "number", "exclusiveMinimum": 0, "description": "Diamètre (sphère, cylindre, cône, tore : diamètre extérieur), arête (cube, rounded_cube, plane), largeur = profondeur du sol (cyclorama)." },
           "minor": { "type": "number", "exclusiveMinimum": 0, "description": "Tore : rayon du tube ; cyclorama : hauteur du mur de fond." },
           "bevel": { "type": "number", "minimum": 0, "description": "rounded_cube : largeur de biseau (6 segments) ; cyclorama : rayon du congé sol/mur." },
+          "segments": { "type": "integer", "minimum": 3, "maximum": 256, "description": "FACULTATIF (absent = résolution lisse du backend) : sphère u = segments, v = max(3, segments // 2) ; cylindre/cône : côtés ; tore : u = segments, v = max(3, (3 × segments + 4) // 8)." },
+          "shading": { "enum": ["smooth", "flat"], "description": "FACULTATIF (absent = smooth) : flat = aucun lissage, facettes visibles." },
           "location": { "$ref": "#/$defs/vec3" },
           "rotation": { "$ref": "#/$defs/vec3", "description": "DEGRÉS, ordre XYZ (le backend convertit en radians)." },
           "scale": { "$ref": "#/$defs/vec3" },

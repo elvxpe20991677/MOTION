@@ -13,6 +13,7 @@ Contrôles (SPEC étape 12) :
   (f) reprise : seules les images manquantes sont refaites, les autres restent intactes
   (g) réseau : toute requête hors http://mograph.render (et toute traversée de dossier) est bloquée
   (h) police manquante -> __MOGRAPH_ERROR__ et arrêt propre
+  (i) trait « line » de hauteur (ou largeur) nulle -> pixels non nuls, épaisseur centrée sur l'ancre
 """
 
 from __future__ import annotations
@@ -274,6 +275,30 @@ def main() -> int:
         msg = str(exc)
     check("(h) police manquante => __MOGRAPH_ERROR__ et arrêt avec message", bool(msg) and ("olice" in msg or "font" in msg.lower()),
           msg.splitlines()[0][:220] if msg else "aucune erreur levée")
+
+    # (i) traits de dimension nulle ------------------------------------------------------------------------
+    print("== (i) traits « line » de hauteur ou de largeur nulle ==")
+    # Fond transparent, sans texture : tout pixel d'alpha non nul appartient à un trait.
+    zero = scene.compile_scene({
+        "version": "1.0", "id": "web_line_zero", "title": "Traits de dimension nulle", "preset": "flat_riso",
+        "format": {"aspect": "16:9", "resolution": "1080p", "fps": 25, "alpha": True},
+        "outputs": [{"profile": "prores_4444"}],
+        "shots": [{"id": "traits", "duration": 0.4, "fx": {"grain": False, "paper": False}, "layers": [
+            {"id": "horizontal", "type": "shape", "shape": "line", "w": 400, "h": 0, "points": [[0, 0], [400, 0]],
+             "stroke": "primary", "strokeWidth": 6, "anchor": "left", "x": 100, "y": 300,
+             "anim": [{"at": 0, "dur": 0.2, "target": "shape", "from": {"draw": 0}, "to": {"draw": 1}, "ease": "expo.out"}]},
+            {"id": "vertical", "type": "shape", "shape": "line", "w": 0, "h": 300, "points": [[0, 0], [0, 300]],
+             "stroke": "primary", "strokeWidth": 6, "anchor": "top", "x": 800, "y": 400}]}]})
+    web_render.render_shot(zero, 0, workers=1, frames=[9], log=quiet)
+    a0 = cv2.imread(str(shot_dir(zero, 0) / "000009.png"), cv2.IMREAD_UNCHANGED)[..., 3]
+    # Lignes (colonnes) entièrement couvertes loin des extrémités arrondies : l'épaisseur réelle du trait.
+    rows = np.nonzero(a0[:, 150:450].max(axis=1) == 255)[0].tolist()
+    cols = np.nonzero(a0[450:650, :].max(axis=0) == 255)[0].tolist()
+    n_h, n_v = int((a0[:, :600] > 0).sum()), int((a0[:, 600:] > 0).sum())
+    check("(i) trait horizontal h = 0 (tracé draw) : pixels non nuls, 6 px centrés sur y = 300 (lignes 297 à 302)",
+          n_h > 0 and rows == list(range(297, 303)), f"{n_h} pixels non nuls, lignes pleines {rows}")
+    check("(i) trait vertical w = 0 : pixels non nuls, 6 px centrés sur x = 800 (colonnes 797 à 802)",
+          n_v > 0 and cols == list(range(797, 803)), f"{n_v} pixels non nuls, colonnes pleines {cols}")
 
     n_fail = RESULTS.count(False)
     print(f"\nRÉSUMÉ étape 12 : {RESULTS.count(True)} PASS, {n_fail} FAIL")

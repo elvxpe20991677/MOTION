@@ -630,6 +630,8 @@
               "size": { "type": "number", "exclusiveMinimum": 0, "default": 1, "description": "Encombrement : diamètre (sphère, cylindre, cône, tore), arête (cubes, plan), largeur (cyclorama)." },
               "minor": { "type": "number", "exclusiveMinimum": 0, "description": "Tore : rayon du tube ; cyclorama : hauteur du mur." },
               "bevel": { "type": "number", "minimum": 0, "description": "rounded_cube : largeur de biseau ; cyclorama : rayon du congé." },
+              "segments": { "type": "integer", "minimum": 3, "maximum": 256, "description": "Facettes des primitives courbes (défaut : lisse, 128) : sphère = méridiens (parallèles = segments / 2, au moins 3), cylindre et cône = côtés, tore = tours (tube = 3/8 des segments, au moins 3). Petit nombre = look low-poly ; ignoré pour cube, rounded_cube, plane, cyclorama." },
+              "shading": { "enum": ["smooth", "flat"], "description": "flat : facettes visibles (low-poly) ; défaut smooth (ombrage lissé, arêtes vives des capots conservées)." },
               "location": { "$ref": "#/$defs/vec3" },
               "rotation": { "$ref": "#/$defs/vec3", "description": "Degrés (XYZ)." },
               "scale": { "anyOf": [ { "$ref": "#/$defs/vec3" }, { "type": "number" } ] },

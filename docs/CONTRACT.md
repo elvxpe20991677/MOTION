@@ -235,6 +235,12 @@ Développement :
   LINEAR/AUTO ; ease absent → alias `default`. Linéaire sans allowLinear : REFUS.
 - Dernière clé : `out = null`. Canal à une seule clé : valeur constante.
 - `rotation` en degrés conservée telle quelle (le backend convertit). `scale` nombre → vec3.
+- Facettes : `segments` (sphere, cylinder, cone, torus ; ignoré ailleurs avec avertissement) et
+  `shading` (smooth|flat) ne sont écrits dans la tâche que si la scène les donne (les tâches des
+  scènes qui ne s'en servent pas restent identiques). Backend : sphère u = segments,
+  v = max(3, segments // 2) ; cylindre et cône : segments côtés ; tore : u = segments,
+  v = max(3, (3 × segments + 4) // 8) ; `flat` = aucun lissage (facettes visibles). Absents :
+  128×64, 128, 128×48, lissé. Journal : `géométrie : N face(s) …` si un objet les règle.
 - Matériau : nom → `preset.blender.materials[nom]` (inconnu : REFUS) ; objet en ligne fusionné
   sur les défauts : roughness 0.5, metallic 0, specular 0.5, sheen 0, sheen_roughness 0.5, coat 0,
   coat_roughness 0.03, subsurface 0, transmission 0, ior 1.45, anisotropic 0, emission #000000,
@@ -252,6 +258,11 @@ Développement :
   exposure défaut 0 ; bounces défaut total 8, diffuse 4, glossy 4, transmission 4,
   transparent 8, volume 0 ; caustics défaut false ; motion_blur_shutter défaut 0.5.
 - `transparent` = `plate.transparent` OU `format.alpha`.
+- Plan compilé : `spec.plates[<id>]` = `{url, frames, width, height, source}` ; `source` =
+  `sha256_json(tâche sans out_dir)` (out_dir : chemin absolu propre à la machine). Toute modification
+  qui fait re-rendre la plaque (matériau, caméra, lumière, échantillons...) change donc `spec_sha256`
+  et le plan est recomposé : la reprise du rendu web ne réutilise jamais des images composées sur une
+  ancienne plaque.
 
 ---------------------------------------------------------------------------------------------------
 ## 4. API Python (signatures exactes)
@@ -446,10 +457,14 @@ Chaque entrée de `shots[]` porte en plus (hors `spec` : les empreintes des plan
 - `media` : tâches d'extraction des calques vidéo `[{kind: "video", layer_id, plate_key, src, start,
   loop, fit, fps, frames, width, height, color_matrix, out_dir, digest}]`.
 `audio` gagne `normalize` (booléen).
+Dans `spec` (change l'empreinte des plans concernés) : chaque entrée de `spec.plates` porte `source`
+(obligatoire, SHA-256) — plaque 3D : empreinte de la tâche Blender (§3.10) ; calque vidéo : `digest`
+de sa tâche d'extraction (§10.2). Ajouté après coup pour les plaques 3D : les plans à plaque rendus
+auparavant sont recomposés une fois (les plaques elles-mêmes sont conservées, leur tâche est inchangée).
 
 ### 10.2 Calques ajoutés (développés par le compilateur, le runtime n'a pas de nouveau type)
-- `video` → calque `sequence` compilé dont `plate` = `video__<id>` ; `spec.plates["video__<id>"]` a
-  en plus `source` (= `digest` : SHA-256 de la source + réglages, invalide le plan s'il change).
+- `video` → calque `sequence` compilé dont `plate` = `video__<id>` ; `spec.plates["video__<id>"].source`
+  = `digest` (SHA-256 de la source + réglages, invalide le plan s'il change).
   Images dans `build/<scène>/media/<plan>__<calque>/NNNNNN.png` (`config.media_dir`), extraites par
   `pipeline/media.py` avant le rendu web du plan (`web_render.render_shot` l'appelle).
 - `subtitles` → un calque `text` par réplique (id `<id>-NNN`), développé après `_timing()` : temps

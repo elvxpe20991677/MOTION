@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <linearGradient id="peche" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFE3D1"/>
+      <stop offset="0.5" stop-color="#FFBFA6"/>
+      <stop offset="1" stop-color="#FF8F7B"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="0.5" cy="0.43" r="0.46">
+      <stop offset="0" stop-color="#FFF3EA" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#FFF3EA" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#peche)"/>
+  <rect width="1920" height="1080" fill="url(#halo)"/>
+</svg>

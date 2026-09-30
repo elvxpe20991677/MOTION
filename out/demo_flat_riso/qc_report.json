@@ -3,7 +3,7 @@
   "scene_id": "demo_flat_riso",
   "title": "Le rapport 2025 — explainer flat",
   "verdict": "CONFORME",
-  "generated_at": "2026-09-24T13:54:37+00:00",
+  "generated_at": "2026-09-24T16:14:43+00:00",
   "format": {
     "aspect": "16:9",
     "resolution": "1080p",
@@ -27,8 +27,8 @@
     {
       "name": "hevc_main10",
       "profile": "hevc_main10",
-      "path": "/home/user/MOTION/out/demo_flat_riso/demo_flat_riso_hevc_main10.mp4",
-      "size_bytes": 4686627,
+      "path": "C:\\Users\\perro\\Desktop\\MOTION\\out\\demo_flat_riso\\demo_flat_riso_hevc_main10.mp4",
+      "size_bytes": 4712253,
       "checks": [
         "hevc_main10.readable",
         "hevc_main10.codec",
@@ -50,8 +50,8 @@
     {
       "name": "prores_422hq",
       "profile": "prores_422hq",
-      "path": "/home/user/MOTION/out/demo_flat_riso/demo_flat_riso_prores_422hq.mov",
-      "size_bytes": 160486036,
+      "path": "C:\\Users\\perro\\Desktop\\MOTION\\out\\demo_flat_riso\\demo_flat_riso_prores_422hq.mov",
+      "size_bytes": 160485208,
       "checks": [
         "prores_422hq.readable",
         "prores_422hq.codec",
@@ -79,7 +79,7 @@
       "expected": "1 flux vidéo",
       "actual": "1 flux vidéo",
       "blocking": true,
-      "detail": "4686627 octets"
+      "detail": "4712253 octets"
     },
     {
       "id": "hevc_main10.codec",
@@ -187,15 +187,15 @@
         ]
       },
       "actual": {
-        "y_min": 113.0,
-        "y_max": 966.0,
-        "c_min": 222.0,
+        "y_min": 92.0,
+        "y_max": 951.0,
+        "c_min": 202.0,
         "c_max": 848.0,
         "frames_outside_r103": 0,
         "frames": 165
       },
       "blocking": false,
-      "detail": "Y 113..966, chroma 222..848 (10 bits)"
+      "detail": "Y 92..951, chroma 202..848 (10 bits)"
     },
     {
       "id": "hevc_main10.black",
@@ -238,7 +238,7 @@
       "expected": "1 flux vidéo",
       "actual": "1 flux vidéo",
       "blocking": true,
-      "detail": "160486036 octets"
+      "detail": "160485208 octets"
     },
     {
       "id": "prores_422hq.codec",
@@ -323,7 +323,7 @@
         "color_range": "tv"
       },
       "blocking": true,
-      "detail": "color_range lu(s) sur la 1re image décodée (absent(s) du flux : conteneur MOV « colr nclc » sans drapeau de plage, FFmpeg < 7)."
+      "detail": ""
     },
     {
       "id": "prores_422hq.levels",
@@ -337,15 +337,15 @@
         ]
       },
       "actual": {
-        "y_min": 125.0,
-        "y_max": 954.0,
-        "c_min": 228.0,
+        "y_min": 122.0,
+        "y_max": 950.0,
+        "c_min": 227.0,
         "c_max": 824.0,
         "frames_outside_r103": 0,
         "frames": 165
       },
       "blocking": false,
-      "detail": "Y 125..954, chroma 228..824 (10 bits)"
+      "detail": "Y 122..950, chroma 227..824 (10 bits)"
     },
     {
       "id": "prores_422hq.timecode",
@@ -440,11 +440,11 @@
     }
   ],
   "tools": {
-    "ffmpeg": "ffmpeg version 6.1.1-3ubuntu5",
-    "ffprobe": "ffprobe version 6.1.1-3ubuntu5"
+    "ffmpeg": "ffmpeg version 9.0.2-full_build-www.gyan.dev",
+    "ffprobe": "ffprobe version 9.0.2-full_build-www.gyan.dev"
   },
   "report_paths": {
-    "json": "/home/user/MOTION/out/demo_flat_riso/qc_report.json",
-    "md": "/home/user/MOTION/out/demo_flat_riso/qc_report.md"
+    "json": "C:\\Users\\perro\\Desktop\\MOTION\\out\\demo_flat_riso\\qc_report.json",
+    "md": "C:\\Users\\perro\\Desktop\\MOTION\\out\\demo_flat_riso\\qc_report.md"
   }
 }

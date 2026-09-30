@@ -5,14 +5,14 @@
 - Scène : Le rapport 2025 — explainer flat
 - Format : 16:9 1080p, 25 i/s, 165 images (6.6 s), sortie 1920x1080, alpha : non
 - Contrôles : 26 PASS, 0 FAIL, 0 WARN, 4 SKIP
-- Généré le 2026-09-24T13:54:37+00:00 ; ffmpeg version 6.1.1-3ubuntu5
+- Généré le 2026-09-24T16:14:43+00:00 ; ffmpeg version 9.0.2-full_build-www.gyan.dev
 
 ## Livrables
 
 | Profil | Fichier | Taille (octets) | Échecs bloquants |
 |---|---|---|---|
-| hevc_main10 | /home/user/MOTION/out/demo_flat_riso/demo_flat_riso_hevc_main10.mp4 | 4686627 | 0 |
-| prores_422hq | /home/user/MOTION/out/demo_flat_riso/demo_flat_riso_prores_422hq.mov | 160486036 | 0 |
+| hevc_main10 | C:\Users\perro\Desktop\MOTION\out\demo_flat_riso\demo_flat_riso_hevc_main10.mp4 | 4712253 | 0 |
+| prores_422hq | C:\Users\perro\Desktop\MOTION\out\demo_flat_riso\demo_flat_riso_prores_422hq.mov | 160485208 | 0 |
 
 ## Contrôles
 
@@ -28,7 +28,7 @@
 | **PASS** | `hevc_main10.duration` | hevc_main10 : durée vidéo (± 1/2 image) | seconds=6.6, tolerance_s=0.02 | 6.6 | oui |
 | **PASS** | `hevc_main10.hvc1` | hevc_main10 : étiquette HEVC hvc1 | hvc1 | hvc1 | oui |
 | **PASS** | `hevc_main10.color` | hevc_main10 : métadonnées couleur (bt709 x3, plage tv) | color_primaries=bt709, color_transfer=bt709, color_space=bt709, color_range=tv | color_primaries=bt709, color_transfer=bt709, color_space=bt709, color_range=tv | oui |
-| **PASS** | `hevc_main10.levels` | hevc_main10 : niveaux vidéo (signalstats) | reserved_codes=aucun (4..1019), luma_r103=[55, 966] | y_min=113, y_max=966, c_min=222, c_max=848, frames_outside_r103=0, frames=165 | non |
+| **PASS** | `hevc_main10.levels` | hevc_main10 : niveaux vidéo (signalstats) | reserved_codes=aucun (4..1019), luma_r103=[55, 966] | y_min=92, y_max=951, c_min=202, c_max=848, frames_outside_r103=0, frames=165 | non |
 | **PASS** | `hevc_main10.black` | hevc_main10 : noir non voulu (blackdetect) | max_black_s=0, pix_th=0.03, informative=non | black_s=0 | oui |
 | **SKIP** | `hevc_main10.audio` | hevc_main10 : piste audio | aucune (scène sans audio) | aucune | non |
 | **SKIP** | `hevc_main10.loudness` | hevc_main10 : loudness EBU R128 | — | — | non |
@@ -41,7 +41,7 @@
 | **PASS** | `prores_422hq.frames` | prores_422hq : nombre d'images compté (nb_read_frames) | 165 | 165 | oui |
 | **PASS** | `prores_422hq.duration` | prores_422hq : durée vidéo (± 1/2 image) | seconds=6.6, tolerance_s=0.02 | 6.6 | oui |
 | **PASS** | `prores_422hq.color` | prores_422hq : métadonnées couleur (bt709 x3, plage tv) | color_primaries=bt709, color_transfer=bt709, color_space=bt709, color_range=tv | color_primaries=bt709, color_transfer=bt709, color_space=bt709, color_range=tv | oui |
-| **PASS** | `prores_422hq.levels` | prores_422hq : niveaux vidéo (signalstats) | reserved_codes=aucun (4..1019), luma_r103=[55, 966] | y_min=125, y_max=954, c_min=228, c_max=824, frames_outside_r103=0, frames=165 | non |
+| **PASS** | `prores_422hq.levels` | prores_422hq : niveaux vidéo (signalstats) | reserved_codes=aucun (4..1019), luma_r103=[55, 966] | y_min=122, y_max=950, c_min=227, c_max=824, frames_outside_r103=0, frames=165 | non |
 | **PASS** | `prores_422hq.timecode` | prores_422hq : piste timecode tmcd | tmcd=oui, timecode=01:00:00:00 | tmcd=oui, timecode=01:00:00:00 | oui |
 | **PASS** | `prores_422hq.black` | prores_422hq : noir non voulu (blackdetect) | max_black_s=0, pix_th=0.03, informative=non | black_s=0 | oui |
 | **SKIP** | `prores_422hq.audio` | prores_422hq : piste audio | aucune (scène sans audio) | aucune | non |

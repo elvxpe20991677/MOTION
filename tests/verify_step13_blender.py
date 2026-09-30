@@ -11,6 +11,7 @@ Contrôles :
   4. rendu CPU de 3 images isolées          9. render_plate : tâche invalide, plaque incomplète, rendu réel,
   5. rendu OptiX + temps par image             render_scene_plates
  10. fixture « kit » : toutes primitives, ciel physique, lumières SUN/POINT/SPOT, DOF, alpha
+     10 bis. facettes réglées (segments, shading flat) : nombre de faces exact
  11. aperçus 8 bits à regarder (build/_tests/step13/preview/)
 """
 
@@ -419,6 +420,22 @@ def main() -> int:
         check("kit : alpha réel (fond transparent et objets opaques)", int(k0[..., 3].min()) == 0 and int(k0[..., 3].max()) == 65535)
         k11 = read16(kit_dir / "000011.png")
         check("kit : l'image 11 diffère de l'image 0", float(np.abs(k0.astype(np.int32) - k11.astype(np.int32)).mean()) > 100)
+
+    # 10 bis. Facettes réglées (low-poly) : segments + shading flat -----------------------------------
+    job_low = variant(kit, "kit_lowpoly", device="CPU")
+    facets = {"pillar": (6, None), "spike": (5, "flat"), "pebble": (8, "flat"), "hoop": (8, "flat"), "dice": (None, "flat")}
+    for o in job_low["objects"]:
+        segs, shading = facets.get(o["id"], (None, None))
+        if segs:
+            o["segments"] = segs
+        if shading:
+            o["shading"] = shading
+    code, out, err, _ = run_backend(job_low, "kit_lowpoly", "--frames", "0")
+    # sol 1 + cube 6 + cylindre 6 côtés (6 + 2 capots) + cône 5 côtés à pointe fusionnée (5 + 1) + sphère 8×4 (32)
+    # + rounded_cube 6 (avant biseau) + tore 8×3 (24) = 83 faces (lisses : plus de 20 000).
+    check("low-poly : rendu, 83 faces (segments appliqués), 4 objets en ombrage plat", code == 0
+          and "géométrie : 83 face(s) ; 5 objet(s) à facettes réglées, dont 4 en ombrage plat" in out,
+          tail(err) if code else next((l for l in out.splitlines() if "géométrie" in l), "ligne « géométrie » absente"))
 
     # 11. Aperçus à regarder ----------------------------------------------------------------------------
     sheets = []

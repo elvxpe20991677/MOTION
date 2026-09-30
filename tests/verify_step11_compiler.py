@@ -262,8 +262,10 @@ def main() -> int:
     # --- plaque 3D -------------------------------------------------------------------------------
     job = shots[1]["plates"][0]
     check(job["width"] == 960 and job["height"] == 540, "plaque : 1920×1080 × dsf 1 × plate_scale 0,5 = 960×540")
+    job_digest = hashlib.sha256(scene.canonical_json({k: v for k, v in job.items() if k != "out_dir"})).hexdigest()
     check(s1["plates"]["balle"] == {"url": "http://mograph.render/build/test_rich_flat/plates/chiffres__balle/",
-                                    "frames": 90, "width": 960, "height": 540}, "plates du plan : URL servie + dimensions réelles")
+                                    "frames": 90, "width": 960, "height": 540, "source": job_digest},
+          "plates du plan : URL servie + dimensions réelles + empreinte de la tâche Blender (hors out_dir)")
     check(Path(job["out_dir"]) == config.plate_dir("test_rich_flat", "chiffres", "balle") and job["frames"] == 90 and job["fps"] == 25,
           "tâche : out_dir absolu, 90 images, 25 i/s")
     check(job["seed"] == int(hashlib.sha256(b"42:chiffres:balle").hexdigest()[:8], 16) & 0x7FFFFFFF, "graine Blender de la plaque")
@@ -297,6 +299,17 @@ def main() -> int:
     check(sol["material"]["name"] == "sol_mat" and sol["material"]["base_color"] == "#F7F4EC" and sol["material"]["coat_roughness"] == 0.03,
           "matériau en ligne : nom <objet>_mat, couleur de palette résolue, défauts complétés")
     check(job["world"] == {"color": "#EEF1F6", "strength": 1.0, "sky": None} and job["transparent"] is False, "monde = palette.bg, opaque")
+    # Reprise du rendu web : un plan dont spec_sha256 n'a pas changé n'est pas recomposé. Une 3D modifiée
+    # (plaque re-rendue par Blender) doit donc changer le plan, sinon la vidéo garderait l'ancienne 3D.
+    from pipeline import web_render  # noqa: E402 - empreinte exacte utilisée par la reprise du rendu web
+    ref = [web_render.spec_sha256(s["spec"]) for s in shots]
+    remat = scene.compile_scene(mutated(rich, lambda r: r["shots"][1]["plates"][0]["objects"][1]["material"].update(roughness=0.2)))
+    after = [web_render.spec_sha256(s["spec"]) for s in remat["shots"]]
+    check(after[1] != ref[1] and after[0] == ref[0],
+          "matériau d'un objet de plaque modifié -> spec_sha256 du plan à plaque change (recomposé), pas celui de l'autre plan",
+          f"plan à plaque {ref[1][:12]}… -> {after[1][:12]}…, plan sans plaque {ref[0][:12]}… -> {after[0][:12]}…")
+    recam = scene.compile_scene(mutated(rich, lambda r: r["shots"][1]["plates"][0]["camera"].update(lens=35)))
+    check(web_render.spec_sha256(recam["shots"][1]["spec"]) != ref[1], "caméra de plaque modifiée -> spec_sha256 du plan change")
 
     check(compiled["audio"]["src"] == str((config.AUDIO_DIR / "test_rich_flat_beat.wav").resolve())
           and compiled["audio"]["target_lufs"] == -14 and compiled["audio"]["markers"] == [{"id": "drop", "time": 4.2}],
@@ -548,6 +561,24 @@ def main() -> int:
     check(mats["boitier"]["anisotropic"] == 0.65 and mats["bague"]["base_color"] == "#D4A373"
           and layer_by_id(cp["shots"][0]["spec"], "legende")["text"] == "SÉRIE LIMITÉE",
           "photoreal : aluminium anisotrope, laiton, légende en capitales (body case upper)")
+    check(all("segments" not in o and "shading" not in o for o in pj["objects"]),
+          "facettes non demandées : ni « segments » ni « shading » dans la tâche (tâches existantes inchangées)")
+    low = mutated(photo, lambda r: r["shots"][0]["plates"][0]["objects"].extend([
+        {"id": "cime", "primitive": "sphere", "segments": 8, "shading": "flat", "material": "brass"},
+        {"id": "tronc", "primitive": "cylinder", "segments": 6, "material": "brass"},
+        {"id": "socle", "primitive": "cube", "segments": 6, "shading": "flat", "material": "brass"}]))
+    cl = scene.compile_scene(low)
+    lo = {o["id"]: o for o in cl["shots"][0]["plates"][0]["objects"]}
+    check(lo["cime"].get("segments") == 8 and lo["cime"].get("shading") == "flat"
+          and lo["tronc"].get("segments") == 6 and "shading" not in lo["tronc"]
+          and "segments" not in lo["socle"] and lo["socle"].get("shading") == "flat"
+          and any("« segments » ignoré pour la primitive « cube »" in w for w in cl["warnings"]),
+          "low-poly : segments/shading transmis à la tâche, segments d'un cube ignoré avec avertissement",
+          str({k: (v.get("segments"), v.get("shading")) for k, v in lo.items()}))
+    bad_low = [e.message for e in job_validator.iter_errors(cl["shots"][0]["plates"][0])]
+    check(not bad_low, "low-poly : tâche conforme à blender_job.schema.json", "; ".join(bad_low[:3]))
+    expect_refused(mutated(photo, lambda r: r["shots"][0]["plates"][0]["objects"][0].update(segments=2)),
+                   "segments < 3 refusé par le schéma", ["segments"])
 
     print("== Calques image ==")
     # Aucune image n'existe sous assets/ et le test n'écrit que sous build/_tests/11 : on y redirige

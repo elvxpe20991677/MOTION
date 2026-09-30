@@ -224,9 +224,12 @@ allowLinear, sync (start|end)`.
 ### Plaques 3D (`plates`)
 `id, transparent, world {color, strength, sky}, camera {location, target, lens, fstop, anim},
 lights [AREA|SUN|POINT|SPOT], objects [{id, primitive (sphere|cube|rounded_cube|torus|cylinder|
-cone|plane|cyclorama), size, minor, bevel, location, rotation (degrés), scale, material, anim}]`.
+cone|plane|cyclorama), size, minor, bevel, segments, shading, location, rotation (degrés), scale,
+material, anim}]`.
 Canaux : `{prop: location|rotation|scale|target, keys: [{t, v, ease}]}` — `ease` s'applique au
 segment qui **arrive** sur la clé. Afficher une plaque : calque `{"type": "sequence", "plate": "<id>"}`.
+**Low-poly** : `"segments": 6, "shading": "flat"` (sphère, cylindre, cône, tore) donne des facettes
+visibles ; un petit nombre de segments allège aussi les scènes à milliers d'objets (particules).
 
 ### Effets (`fx` par plan)
 Surcharges des textures du preset (`grain, paper, vignette, scanlines, tracking` : `false`,

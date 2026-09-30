@@ -1,24 +1,25 @@
 ### Date (UTC)
-2026-09-24 13:54:23
+2026-09-24 16:14:36
 
 ### Système
-Linux-6.18.44-fc-v37-x86_64-with-glibc2.39 | x86_64 | 4 threads
+Windows-11-10.0.26200-SP0 | AMD64 Family 25 Model 97 Stepping 2, AuthenticAMD | 24 threads
 
 ### Python orchestrateur
-3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0]
+3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]
 
 ### ffmpeg -version
-ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers
-built with gcc 13 (Ubuntu 13.2.0-23ubuntu3)
-configuration: --prefix=/usr --extra-version=3ubuntu5 --toolchain=hardened --libdir=/usr/lib/x86_64-linux-gnu --incdir=/usr/include/x86_64-linux-gnu --arch=amd64 --enable-gpl --disable-stripping --disable-omx --enable-gnutls --enable-libaom --enable-libass --enable-libbs2b --enable-libcaca --enable-libcdio --enable-libcodec2 --enable-libdav1d --enable-libflite --enable-libfontconfig --enable-libfreetype --enable-libfribidi --enable-libglslang --enable-libgme --enable-libgsm --enable-libharfbuzz --enable-libmp3lame --enable-libmysofa --enable-libopenjpeg --enable-libopenmpt --enable-libopus --enable-librubberband --enable-libshine --enable-libsnappy --enable-libsoxr --enable-libspeex --enable-libtheora --enable-libtwolame --enable-libvidstab --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libx265 --enable-libxml2 --enable-libxvid --enable-libzimg --enable-openal --enable-opencl --enable-opengl --disable-sndio --enable-libvpl --disable-libmfx --enable-libdc1394 --enable-libdrm --enable-libiec61883 --enable-chromaprint --enable-frei0r --enable-ladspa --enable-libbluray --enable-libjack --enable-libpulse --enable-librabbitmq --enable-librist --enable-libsrt --enable-libssh --enable-libsvtav1 --enable-libx264 --enable-libzmq --enable-libzvbi --enable-lv2 --enable-sdl2 --enable-libplacebo --enable-librav1e --enable-pocketsphinx --enable-librsvg --enable-libjxl --enable-shared
-libavutil      58. 29.100 / 58. 29.100
-libavcodec     60. 31.102 / 60. 31.102
-libavformat    60. 16.100 / 60. 16.100
-libavdevice    60.  3.100 / 60.  3.100
-libavfilter     9. 12.100 /  9. 12.100
-libswscale      7.  5.100 /  7.  5.100
-libswresample   4. 12.100 /  4. 12.100
-libpostproc    57.  3.100 / 57.  3.100
+ffmpeg version 9.0.2-full_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers
+built with gcc 16.2.0 (Rev3, Built by MSYS2 project)
+configuration: --enable-gpl --enable-version3 --enable-static --disable-w32threads --disable-autodetect --enable-cairo --enable-fontconfig --enable-iconv --enable-gnutls --enable-lcms2 --enable-libxml2 --enable-gmp --enable-bzlib --enable-lzma --enable-libsnappy --enable-zlib --enable-librist --enable-libsrt --enable-libssh --enable-libzmq --enable-avisynth --enable-libbluray --enable-libcaca --enable-libdvdnav --enable-libdvdread --enable-sdl2 --enable-libaribb24 --enable-libaribcaption --enable-libdav1d --enable-libdavs2 --enable-libopenjpeg --enable-libquirc --enable-libuavs3d --enable-libxevd --enable-libzvbi --enable-liboapv --enable-libqrencode --enable-librav1e --enable-libsvtav1 --enable-libvvenc --enable-libwebp --enable-libx264 --enable-libx265 --enable-libxavs2 --enable-libxeve --enable-libxvid --enable-libaom --enable-libjxl --enable-libsvtjpegxs --enable-libvpx --enable-mediafoundation --enable-libass --enable-frei0r --enable-libfreetype --enable-libfribidi --enable-libharfbuzz --enable-liblensfun --enable-libvidstab --enable-libvmaf --enable-libzimg --enable-amf --enable-cuda-llvm --enable-cuvid --enable-dxva2 --enable-d3d11va --enable-d3d12va --enable-ffnvcodec --enable-libvpl --enable-nvdec --enable-nvenc --enable-vaapi --enable-vulkan --enable-libplacebo --enable-opencl --enable-libcdio --enable-openal --enable-libgme --enable-libmodplug --enable-libopenmpt --enable-libopencore-amrwb --enable-libmp3lame --enable-libshine --enable-libtheora --enable-libtwolame --enable-libvo-amrwbenc --enable-libcodec2 --enable-libilbc --enable-libgsm --enable-liblc3 --enable-libopencore-amrnb --enable-libopus --enable-libspeex --enable-libvorbis --enable-ladspa --enable-libbs2b --enable-libflite --enable-libmysofa --enable-librubberband --enable-libsoxr --enable-chromaprint --enable-whisper
+libavutil      61.  1.102 / 61.  1.102
+libavcodec     63.  1.102 / 63.  1.102
+libavformat    63.  1.102 / 63.  1.102
+libavdevice    63.  1.102 / 63.  1.102
+libavfilter    12.  1.102 / 12.  1.102
+libswscale     10.  1.102 / 10.  1.102
+libswresample   7.  1.102 /  7.  1.102
+
+Exiting with exit code 0
 
 ### pip freeze
 attrs==26.1.0
@@ -34,18 +35,18 @@ rpds-py==2026.6.3
 typing_extensions==4.16.0
 
 ### npm ls --depth=0
-mograph-runtime-libs@1.0.0 /home/user/MOTION
-├── @fontsource/anton@5.3.0
-├── @fontsource/bricolage-grotesque@5.3.0
-├── @fontsource/caveat@5.3.0
-├── @fontsource/dm-sans@5.3.0
-├── @fontsource/fraunces@5.3.0
-├── @fontsource/inter-tight@5.3.0
-├── @fontsource/patrick-hand@5.3.0
-├── @fontsource/space-grotesk@5.3.0
-├── @fontsource/space-mono@5.3.0
-├── @fontsource/vt323@5.3.0
-└── gsap@3.15.0
+mograph-runtime-libs@1.0.0 C:\Users\perro\Desktop\MOTION
++-- @fontsource/anton@5.3.0
++-- @fontsource/bricolage-grotesque@5.3.0
++-- @fontsource/caveat@5.3.0
++-- @fontsource/dm-sans@5.3.0
++-- @fontsource/fraunces@5.3.0
++-- @fontsource/inter-tight@5.3.0
++-- @fontsource/patrick-hand@5.3.0
++-- @fontsource/space-grotesk@5.3.0
++-- @fontsource/space-mono@5.3.0
++-- @fontsource/vt323@5.3.0
+`-- gsap@3.15.0
 
 ### bpy
 bpy 5.0.1 | python 3.11.15
@@ -54,5 +55,5 @@ bpy 5.0.1 | python 3.11.15
 141.0.7390.37
 
 ### git
-c3654c2db0df2b166cebc91ccb613a007c4eb20d Thu Sep 24 13:53:57 2026 +0000
+4956ece71d80d7a4528013d330b32ac6397de70a Thu Sep 24 14:34:13 2026 +0000
 

@@ -621,10 +621,21 @@
     const w = Number(L.w) || 0;
     const h = Number(L.h) || 0;
     const where = `calque ${L.id}`;
-    // Pas de viewBox : unités utilisateur = px CSS, ce qui reste valable pour h = 0 (trait horizontal).
-    const svgEl = svgNode("svg", { class: "mg-shape", width: w, height: h });
-    svgEl.style.width = px(w);
-    svgEl.style.height = px(h);
+    // Pas de viewBox : unités utilisateur = px CSS. Chromium ne peint rien d'un <svg> dont la zone
+    // d'affichage est vide, même en overflow visible (mesuré : trait h = 0 ou w = 0 invisible). Une
+    // dimension nulle passe donc à 1 px, compensé par une marge négative de 1 px : la boîte du calque
+    // (ancre, origine des transformations) reste w x h. Autres formes : DOM inchangé.
+    const vw = w > 0 ? w : 1;
+    const vh = h > 0 ? h : 1;
+    const svgEl = svgNode("svg", { class: "mg-shape", width: vw, height: vh });
+    svgEl.style.width = px(vw);
+    svgEl.style.height = px(vh);
+    if (vw !== w) {
+      svgEl.style.marginRight = px(w - vw);
+    }
+    if (vh !== h) {
+      svgEl.style.marginBottom = px(h - vh);
+    }
     const pts = Array.isArray(L.points) ? L.points : null;
     const ptsAttr = (list) => list.map((p) => `${Number(p[0])},${Number(p[1])}`).join(" ");
     let g;

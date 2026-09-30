@@ -345,8 +345,14 @@ def test_parallel_plates() -> None:
     if web and plates:
         first_web = min(f.stat().st_mtime for f in web)
         last_plate = max(f.stat().st_mtime for f in plates)
-        check("render : images web écrites avant la fin des plaques (chevauchement réel)", first_web < last_plate,
-              f"1re image web {first_web - last_plate:+.1f} s par rapport à la dernière plaque")
+        span = last_plate - min(f.stat().st_mtime for f in plates)
+        # Plaque écrite en moins d'1 s (OptiX : 12 images en ~0,2 s) : plus courte que la 1re image d'un
+        # navigateur, aucun recouvrement n'est observable. On exige alors que la 1re image web suive la plaque
+        # de moins de 0,5 s (rendu web lancé APRÈS Blender : +2,1 s mesuré sur RTX 4060 Laptop).
+        check("render : images web écrites avant la fin des plaques (chevauchement réel)",
+              first_web < last_plate or (span < 1.0 and first_web - last_plate < 0.5),
+              f"1re image web {first_web - last_plate:+.1f} s par rapport à la dernière plaque "
+              f"(plaque écrite en {span:.2f} s)")
     check("render : plan à plaque rendu après la plaque (12 images)",
           len(list((BUILD / sid / "shots" / "trois_d").glob("[0-9]" * 6 + ".png"))) == 12)
     info(f"(indices dans le journal : web {i_web}, fin plaque {i_plate_done})")

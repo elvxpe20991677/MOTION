@@ -7,6 +7,7 @@ Chaque commande est aussi écrite dans out/<scene>/encode_commands.sh (bash, dep
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import shlex
@@ -45,6 +46,19 @@ def _alpha_as_rgb(depth: int) -> str:
     return _ALPHA_AS_RGB.format(packed=packed, planar=planar, alpha=alpha)
 
 
+@functools.lru_cache(maxsize=None)
+def _straight_alpha() -> str:
+    """FFmpeg ≥ 9 (propriété d'image alpha_mode) : premultiply laisse passer intactes les images qui
+    ne sont pas marquées « alpha droit » (mesuré sur 9.0.2 : aplatissement sans effet). L'option
+    n'existe pas dans FFmpeg 6.1 : on ne l'ajoute que si le setparams du FFmpeg utilisé la connaît."""
+    try:
+        r = subprocess.run([config.FFMPEG, "-hide_banner", "-h", "filter=setparams"], capture_output=True,
+                           text=True, encoding="utf-8", errors="replace", timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return ",setparams=alpha_mode=straight" if "alpha_mode" in r.stdout else ""
+
+
 def _flatten_graph(depth: int, tail: str) -> str:
     """Aplatissement sur noir (livrable opaque d'une scène à alpha) puis `tail` (ZSCALE, format).
 
@@ -53,7 +67,7 @@ def _flatten_graph(depth: int, tail: str) -> str:
     entrées (RVB × alpha / 65535, plan 0 du 2e flux = alpha).
     """
     planar = _MASTER_FMT[depth][1]
-    return (f"split[c][a];[c]format={planar},{_FULL},format=gbrp16le[c16];"
+    return (f"split[c][a];[c]format={planar},{_FULL},format=gbrp16le{_straight_alpha()}[c16];"
             f"[a]{_alpha_as_rgb(depth)},{_FULL},format=gbrp16le[a16];"
             f"[c16][a16]premultiply=inplace=0,{tail}")
 
@@ -62,13 +76,17 @@ def _alpha_graph(depth: int) -> str:
     """ProRes 4444 : couleur par config.ZSCALE, alpha plein 10 bits exact, fusionnés en yuva444p10le.
 
     Alpha dans R = G = B puis matrice 709 en plage pleine : Y = alpha (Kr + Kg + Kb = 1).
-    mergeplanes impose le même format à ses deux entrées : yuv444p10le.
+    mergeplanes impose le même format à ses deux entrées : yuv444p10le. FFmpeg ≥ 7.1 négocie aussi
+    la plage : sans l'étiquette range=tv (réétiquetage, valeurs intactes), il convertit le porteur
+    d'alpha en plage limitée (0..1023 -> 64..940, mesuré sur 9.0.2). Les images fusionnées perdent
+    primaires et transfert, que -color_primaries/-color_trc ne rétablissent plus : setparams final.
     """
     planar = _MASTER_FMT[depth][1]
     return (f"split[c][a];[c]format={planar},{config.ZSCALE},format=yuv444p10le[yuv];"
-            f"[a]{_alpha_as_rgb(depth)},{_FULL}:matrix=709,format=yuv444p10le[a10];"
+            f"[a]{_alpha_as_rgb(depth)},{_FULL}:matrix=709,format=yuv444p10le,setparams=range=tv[a10];"
             f"[yuv][a10]mergeplanes=map0s=0:map0p=0:map1s=0:map1p=1:map2s=0:map2p=2:"
-            f"map3s=1:map3p=0:format=yuva444p10le")
+            f"map3s=1:map3p=0:format=yuva444p10le,"
+            f"setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv,format=yuva444p10le")
 
 
 class EncodeError(RuntimeError):

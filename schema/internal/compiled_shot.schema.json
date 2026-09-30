@@ -102,13 +102,13 @@
       "additionalProperties": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["url", "frames", "width", "height"],
+        "required": ["url", "frames", "width", "height", "source"],
         "properties": {
           "url": { "type": "string", "pattern": "^http://mograph\\.render/build/.+/$", "description": "Dossier ; image i = url + format('%06d.png', i)." },
           "frames": { "type": "integer", "minimum": 1 },
           "width": { "type": "integer", "description": "Pixels réels de la plaque (peut être < w*dsf si plate_scale < 1)." },
           "height": { "type": "integer" },
-          "source": { "type": "string", "description": "Calque vidéo : empreinte de la source et des réglages d'extraction (invalide le plan si elle change)." }
+          "source": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "Empreinte SHA-256 de ce qui produit les images (invalide le plan si elle change) : plaque 3D = tâche Blender canonique hors out_dir ; calque vidéo = digest de la tâche d'extraction (source + réglages)." }
         }
       }
     },

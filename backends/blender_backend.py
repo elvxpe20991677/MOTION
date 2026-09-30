@@ -484,12 +484,11 @@ def smooth(me: bpy.types.Mesh, *, sharp_angle_deg: float | None = None) -> None:
         me.set_sharp_from_angle(angle=math.radians(sharp_angle_deg))
 
 
-def build_torus(size: float, minor: float, where: str) -> bmesh.types.BMesh:
+def build_torus(size: float, minor: float, where: str, nu: int = TORUS_SEGMENTS[0], nv: int = TORUS_SEGMENTS[1]) -> bmesh.types.BMesh:
     # Pas d'opérateur bmesh pour le tore : construction directe, déterministe et indépendante des opérateurs Python.
     major = size / 2.0 - minor
     if major <= 0:
         raise JobError(f"{where} : tore impossible, rayon du tube (minor={minor}) ≥ rayon extérieur (size/2={size / 2}). Réduisez minor.")
-    nu, nv = TORUS_SEGMENTS
     bm = bmesh.new()
     grid = []
     for i in range(nu):
@@ -545,31 +544,40 @@ def build_mesh(obj_job: dict) -> tuple[bpy.types.Mesh, bool]:
     size = float(obj_job["size"])
     minor = float(obj_job["minor"])
     bevel = float(obj_job["bevel"])
+    # Facettes (facultatif) : absent = résolution lisse ci-dessus ; « flat » = aucun lissage (look low-poly).
+    segs = int(obj_job["segments"]) if "segments" in obj_job else None
+    flat = obj_job.get("shading") == "flat"
     bm = bmesh.new()
     if prim == "sphere":
-        bmesh.ops.create_uvsphere(bm, u_segments=SPHERE_SEGMENTS[0], v_segments=SPHERE_SEGMENTS[1], radius=size / 2.0)
+        u, v = (segs, max(3, segs // 2)) if segs else SPHERE_SEGMENTS
+        bmesh.ops.create_uvsphere(bm, u_segments=u, v_segments=v, radius=size / 2.0)
         me = mesh_from_bmesh(oid, bm, recalc_normals=True)
-        smooth(me)
+        if not flat:
+            smooth(me)
         return me, False
     if prim in ("cube", "rounded_cube"):
         bmesh.ops.create_cube(bm, size=size)
         me = mesh_from_bmesh(oid, bm, recalc_normals=True)
         if prim == "rounded_cube" and bevel > 0:
             # Lissage + normales durcies par le modificateur : faces planes nettes, arrondis doux.
-            smooth(me)
+            if not flat:
+                smooth(me)
             return me, True
         return me, False
     if prim == "torus":
         bm.free()
-        me = mesh_from_bmesh(oid, build_torus(size, minor, where), recalc_normals=True)
-        smooth(me)
+        nu, nv = (segs, max(3, (3 * segs + 4) // 8)) if segs else TORUS_SEGMENTS
+        me = mesh_from_bmesh(oid, build_torus(size, minor, where, nu, nv), recalc_normals=True)
+        if not flat:
+            smooth(me)
         return me, False
     if prim in ("cylinder", "cone"):
         # Hauteur = size (le contrat ne prévoit pas de hauteur propre) ; l'échelle de l'objet ajuste les proportions.
-        bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=ROUND_SEGMENTS,
+        bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=segs or ROUND_SEGMENTS,
                               radius1=size / 2.0, radius2=(size / 2.0 if prim == "cylinder" else 0.0), depth=size)
         me = mesh_from_bmesh(oid, bm, recalc_normals=True)
-        smooth(me, sharp_angle_deg=SHARP_ANGLE_DEG)
+        if not flat:
+            smooth(me, sharp_angle_deg=SHARP_ANGLE_DEG)
         return me, False
     if prim == "plane":
         h = size / 2.0
@@ -579,7 +587,7 @@ def build_mesh(obj_job: dict) -> tuple[bpy.types.Mesh, bool]:
     if prim == "cyclorama":
         bm.free()
         me = mesh_from_bmesh(oid, build_cyclorama(size, minor, bevel, where), recalc_normals=False)
-        if bevel > 0:
+        if bevel > 0 and not flat:
             smooth(me)  # sans congé l'angle sol/mur doit rester vif : ombrage plat
         return me, False
     bm.free()
@@ -906,6 +914,12 @@ def main(argv: list[str]) -> int:
     t0 = time.perf_counter()
     scene, animated, _look = build_scene(job)
     log(f"scène construite en {time.perf_counter() - t0:.2f} s ({len(animated)} objet(s) animé(s))")
+    faceted = [o for o in job["objects"] if "segments" in o or "shading" in o]
+    if faceted:
+        # Géométrie avant modificateurs : vérifie que les facettes demandées sont appliquées (tests, diagnostics).
+        faces = sum(len(o.data.polygons) for o in scene.objects if o.type == "MESH")
+        n_flat = sum(1 for o in faceted if o.get("shading") == "flat")
+        log(f"géométrie : {faces} face(s) ; {len(faceted)} objet(s) à facettes réglées, dont {n_flat} en ombrage plat")
     if args.print_values:
         print_values(scene, animated, frames)
         return 0

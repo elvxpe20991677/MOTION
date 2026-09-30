@@ -106,6 +106,8 @@ _SENSOR_WIDTH_MM = 36.0     # plein format 24x36 : la focale donnée a son sens 
 _MINOR_FACTOR = {"torus": 0.125, "cyclorama": 0.5}
 _MINOR_FACTOR_OTHER = 0.25
 _BEVEL_FACTOR = {"rounded_cube": 0.08, "cyclorama": 0.15}
+# Primitives courbes dont « segments » règle les facettes (les autres n'ont que des faces planes).
+_SEGMENTED_PRIMITIVES = ("sphere", "cylinder", "cone", "torus")
 _ANCHORS = {
     "center": [0.5, 0.5], "top-left": [0.0, 0.0], "top": [0.5, 0.0], "top-right": [1.0, 0.0],
     "left": [0.0, 0.5], "right": [1.0, 0.5], "bottom-left": [0.0, 1.0], "bottom": [0.5, 1.0],
@@ -1459,6 +1461,9 @@ class _Compiler:
                 "frames": job["frames"],
                 "width": job["width"],
                 "height": job["height"],
+                # Empreinte de la tâche Blender (hors out_dir, chemin absolu propre à la machine) : toute
+                # modification qui fait re-rendre la plaque (matériau, caméra...) invalide aussi le plan.
+                "source": sha256_json({k: v for k, v in job.items() if k != "out_dir"}),
             }
         for job in self._media:
             # Clé « video__<calque> » : jamais en collision avec un id de plaque (qui n'a pas « __ »).
@@ -2373,7 +2378,7 @@ class _Compiler:
                 material = self._material(obj.get("material"), obj["id"], op + (("material",) if "material" in obj else ()))
             except _Skip:
                 continue
-            objects.append({
+            entry = {
                 "id": obj["id"], "primitive": prim, "size": size,
                 "minor": float(obj.get("minor", size * _MINOR_FACTOR.get(prim, _MINOR_FACTOR_OTHER))),
                 "bevel": float(obj.get("bevel", size * _BEVEL_FACTOR.get(prim, 0.0))),
@@ -2382,7 +2387,18 @@ class _Compiler:
                 "scale": [float(scale)] * 3 if isinstance(scale, (int, float)) else [float(x) for x in scale],
                 "material": material,
                 "channels": self._channels(st, obj.get("anim") or [], ("location", "rotation", "scale"), op),
-            })
+            }
+            # Facettes : clés écrites seulement si la scène les donne (tâches des scènes existantes inchangées,
+            # donc ni plaque ni plan à refaire).
+            if "segments" in obj:
+                if prim in _SEGMENTED_PRIMITIVES:
+                    entry["segments"] = int(obj["segments"])
+                else:
+                    self.warn(op + ("segments",), f"« segments » ignoré pour la primitive « {prim} » (facettes planes) ; "
+                                                  f"il ne concerne que {_names(_SEGMENTED_PRIMITIVES)}.")
+            if "shading" in obj:
+                entry["shading"] = obj["shading"]
+            objects.append(entry)
 
         seed = int(hashlib.sha256(f"{self.seed}:{shot['id']}:{pid}".encode("utf-8")).hexdigest()[:8], 16) & 0x7FFFFFFF
         return {
