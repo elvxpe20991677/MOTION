@@ -12,7 +12,7 @@ Les schémas JSON dans `schema/` et `schema/internal/` sont normatifs.
 | OS | Windows 11 Famille 10.0.26200, **natif** (pas de WSL : son installation exige admin + redémarrage) |
 | CPU / RAM | AMD Ryzen 9 7845HX, 12 cœurs / 24 threads, 64 Go |
 | GPU | NVIDIA GeForce RTX 4060 Laptop 8 Go, pilote 616.92 (OptiX fonctionne dans bpy) |
-| Disque | C: 303 Go libres le 30/09/2026 (98,6 Go à l'intégration ; build/ déplaçable via `MOGRAPH_BUILD_DIR`) |
+| Disque | C: 321,6 Go (= 299,5 Gio) libres le 30/09/2026, mesuré par `Get-PSDrive` (98,6 Go à l'intégration ; build/ déplaçable via `MOGRAPH_BUILD_DIR`) |
 | FFmpeg | **9.0.2** build gyan.dev « full » (`winget install Gyan.FFmpeg` ; 8.1.2 à l'intégration) : libx265, prores_ks, libzimg/zscale, premultiply, alphaextract, blackdetect, ebur128 |
 | Python orchestrateur | 3.12.10 — venv `.venv` → **`.venv/Scripts/python.exe`** |
 | Paquets pip | playwright 1.56.0, jsonschema 4.23.0, opencv-python-headless 4.12.0.88, numpy 2.2.6 (`requirements.txt`) |
