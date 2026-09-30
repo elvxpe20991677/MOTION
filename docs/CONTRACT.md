@@ -12,15 +12,16 @@ Les schémas JSON dans `schema/` et `schema/internal/` sont normatifs.
 | OS | Windows 11 Famille 10.0.26200, **natif** (pas de WSL : son installation exige admin + redémarrage) |
 | CPU / RAM | AMD Ryzen 9 7845HX, 12 cœurs / 24 threads, 64 Go |
 | GPU | NVIDIA GeForce RTX 4060 Laptop 8 Go, pilote 616.92 (OptiX fonctionne dans bpy) |
-| Disque | C: 98,6 Go libres (build/ déplaçable via `MOGRAPH_BUILD_DIR`) |
-| FFmpeg | 8.1.2 build gyan.dev « full » (libx265, prores_ks, libzimg/zscale, premultiply, alphaextract, blackdetect, ebur128) |
+| Disque | C: 303 Go libres le 30/09/2026 (98,6 Go à l'intégration ; build/ déplaçable via `MOGRAPH_BUILD_DIR`) |
+| FFmpeg | **9.0.2** build gyan.dev « full » (`winget install Gyan.FFmpeg` ; 8.1.2 à l'intégration) : libx265, prores_ks, libzimg/zscale, premultiply, alphaextract, blackdetect, ebur128 |
 | Python orchestrateur | 3.12.10 — venv `.venv` → **`.venv/Scripts/python.exe`** |
 | Paquets pip | playwright 1.56.0, jsonschema 4.23.0, opencv-python-headless 4.12.0.88, numpy 2.2.6 (`requirements.txt`) |
 | Chromium | Chromium Headless Shell 141.0.7390.37 (playwright build v1194) |
-| Node / npm | 24.17.0 / 12.0.2 (sert uniquement à récupérer des fichiers figés : sans effet sur les pixels) |
+| Node / npm | 24.19.0 / 12.0.2 (sert uniquement à récupérer des fichiers figés : sans effet sur les pixels) |
 | npm | gsap 3.15.0, @fontsource/* 5.3.0 (`package.json` + `package-lock.json`) |
-| Blender | bpy 5.0.1 sous CPython 3.11 — venv `.venv-blender` → **`.venv-blender/Scripts/python.exe`** |
+| Blender | bpy 5.0.1 sous CPython 3.11.15 (uv 0.11.7) — venv `.venv-blender` → **`.venv-blender/Scripts/python.exe`** |
 | Référence Cycles | cube 540², 16 éch., OIDN : **1,09 s/image CPU (24 threads)**, 2,10 s OptiX (surcoût d'init sur scène triviale) |
+| Baseline | `docs/BASELINE.md` + `docs/baseline/phase-0.json` (versions exactes, tests, empreintes de `demo_flat_riso`), rejouable par `scripts/baseline.py` |
 
 ### Machine 2 : conteneur Linux (reprise du travail, étapes 18 à 20)
 | Élément | Valeur |

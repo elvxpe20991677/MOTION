@@ -19,7 +19,8 @@ scène.json ──► compilateur ──► plans compilés ──► Chromium h
 - **Un seul format de scène JSON.** DaVinci Resolve : finition et scopes, hors boucle.
 
 Documents : `docs/SPEC.md` (mission), `docs/CONTRACT.md` (décisions et API entre modules, normatif),
-`QC_CHECKLIST.md` (contrôle humain).
+`QC_CHECKLIST.md` (contrôle humain), `docs/BASELINE.md` (état de référence mesuré : tests, déterminisme,
+versions).
 
 ---------------------------------------------------------------------------------------------------
 ## 1. Installation
@@ -68,6 +69,11 @@ Les scripts `tests/verify_stepNN_*.py` rejouent la vérification de chaque étap
 ```bash
 .venv/bin/python tests/verify_step11_compiler.py      # Windows : .venv/Scripts/python.exe
 ```
+**Baseline** : `scripts/baseline.py run --label <nom>` rejoue les 9 scripts de vérification, rend
+`demo_flat_riso` de bout en bout (porte de déterminisme, maître, encodage, QC) et relève toutes les
+empreintes ; `scripts/baseline.py compare docs/baseline/phase-0.json build/_baseline/<nom>/baseline.json`
+signale toute régression (code ≠ 0). Référence : `docs/BASELINE.md`.
+
 FFmpeg 6.1.1 (Ubuntu 24.04) convient : ses conversions d'alpha inexactes (swscale, zscale) sont
 contournées par l'encodeur (voir `docs/CONTRACT.md` §7), vérifié par `tests/verify_step15_encode.py`.
 
