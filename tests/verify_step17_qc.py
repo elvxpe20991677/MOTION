@@ -366,6 +366,80 @@ def unit_safe_zone_tests() -> None:
            f"{[(e['id'], e['seconds']) for e in ex_nc]}")
 
 
+def _r103_clip(name: str, frames: list) -> Path:
+    """Clip SANS PERTE (FFV1, yuv444p10le) écrit depuis des plans Y, Cb, Cr en codes 10 bits : la mesure
+    R103 relit exactement les valeurs voulues (aucune compression, aucun sous-échantillonnage)."""
+    import numpy as np
+
+    out = MEDIA / f"r103_{name}.mkv"
+    h, w = frames[0][0].shape
+    raw = b"".join(np.stack(f).astype("<u2").tobytes() for f in frames)
+    argv = [config.FFMPEG, "-hide_banner", "-nostats", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt",
+            "yuv444p10le", "-s", f"{w}x{h}", "-r", str(FPS), "-i", "-", "-c:v", "ffv1", "-level", "3", str(out)]
+    res = subprocess.run(argv, input=raw, capture_output=True)
+    if res.returncode != 0:
+        raise RuntimeError(f"FFmpeg (FFV1) a échoué : {res.stderr.decode('utf-8', 'replace')}")
+    return out
+
+
+def unit_r103_tests() -> None:
+    """Mesure EBU R103 v3.0 (qc._gamut_r103) : filtre passe-bas + seuil de 1 % de l'image, Y ET R'G'B'."""
+    import numpy as np
+
+    MEDIA.mkdir(parents=True, exist_ok=True)
+    w, h = 320, 180                                       # 57 600 pixels : 1 % = 576 pixels
+
+    def plane(v: float):
+        return np.full((h, w), v, np.float64)
+
+    def frame(y=502.0, cb=512.0, cr=512.0, block=None):
+        f = [plane(y), plane(cb), plane(cr)]
+        if block:                                         # (hauteur, largeur, composante, valeur)
+            bh, bw, comp, val = block
+            f[comp][60:60 + bh, 100:100 + bw] = val
+        return f
+
+    def spike():
+        f = frame()
+        f[0][90, 160] = 1015.0                            # pointe isolée d'un pixel (dépassement de compression)
+        f[0][20, 20] = 10.0
+        return f
+
+    lo, hi = config.LEVELS_R103_PREFERRED_10BIT
+    cases = {
+        # gris légal : rien hors plage
+        "legal": ([frame()] * 3, 0),
+        # pointes d'un pixel hors 4..1019 en brut, ramenées dans la plage par le filtre R103
+        "pointe": ([spike()] * 3, 0),
+        # bloc Y = 1000 sur 0,5 % de l'image (16 x 18 px) : hors plage, mais sous le seuil de 1 %
+        "petite_zone": ([frame(block=(16, 18, 0, 1000.0))] * 3, 0),
+        # bloc Y = 1000 sur 5 % de l'image (48 x 60 px) : hors gamut sur les 3 images
+        "grande_zone": ([frame(block=(48, 60, 0, 1000.0))] * 3, 3),
+        # Y légal (400) mais Cr = 1000 sur 5 % : R' ~ 1151 hors plage -> hors gamut par R'G'B' seulement
+        "rouge_sature": ([frame(y=400.0, block=(48, 60, 2, 1000.0))] * 3, 3),
+    }
+    res = {}
+    for name, (frames, want) in cases.items():
+        r = qc._gamut_r103(_r103_clip(name, frames), w, h, timeout=120)
+        res[name] = r
+        record(r["r103_frames"] == 3 and r["r103_frames_out_of_gamut"] == want,
+               f"R103 v3.0 (unitaire) : « {name} » => {want} image(s) hors gamut sur 3",
+               f"hors gamut={r['r103_frames_out_of_gamut']} zone max={r['r103_max_area_pct']} % "
+               f"Y filtré={r['y_filtered']} R'G'B' filtrés={r['rgb_filtered']}")
+    p = res["pointe"]
+    record(lo <= p["y_filtered"][0] and p["y_filtered"][1] <= hi and p["r103_max_area_pct"] == 0.0,
+           "R103 v3.0 (unitaire) : le filtre ramène les pointes d'un pixel dans la plage préférée",
+           f"Y filtré={p['y_filtered']}")
+    s = res["petite_zone"]
+    record(0.0 < s["r103_max_area_pct"] <= 100.0 * config.LEVELS_R103_AREA_MAX,
+           "R103 v3.0 (unitaire) : une zone hors plage < 1 % est mesurée mais tolérée",
+           f"zone max={s['r103_max_area_pct']} %")
+    rs = res["rouge_sature"]
+    record(lo <= rs["y_filtered"][0] and rs["y_filtered"][1] <= hi and rs["rgb_filtered"][1] > hi,
+           "R103 v3.0 (unitaire) : un rouge saturé à Y légal est détecté par les composantes R'G'B'",
+           f"Y filtré={rs['y_filtered']} R'G'B' filtrés={rs['rgb_filtered']}")
+
+
 def main() -> int:
     t_all = time.perf_counter()
     if not str(config.BUILD_DIR).startswith(str(TEST_DIR)) or not str(config.OUT_DIR).startswith(str(TEST_DIR)):
@@ -393,8 +467,9 @@ def main() -> int:
         record("introuvable" in str(exc), "probe() sur un fichier absent lève QCError (message actionnable)", str(exc))
 
     unit_safe_zone_tests()
+    unit_r103_tests()
 
-    ok3 = [("hevc_main10", media["ok_hevc"]), ("prores_422hq", media["ok_hq"]), ("prores_4444", media["ok_4444"])]
+    ok3 =[("hevc_main10", media["ok_hevc"]), ("prores_422hq", media["ok_hq"]), ("prores_4444", media["ok_4444"])]
     ok2 = [("hevc_main10", media["ok_hevc"]), ("prores_422hq", media["ok_hq"])]
 
     def swap(base: list, profile: str, path: Path) -> list:

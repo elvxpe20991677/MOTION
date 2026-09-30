@@ -27,6 +27,9 @@ RUNTIME_DIR: Path = ROOT / "runtime"
 NODE_MODULES: Path = ROOT / "node_modules"
 ASSETS_DIR: Path = ROOT / "assets"
 AUDIO_DIR: Path = ASSETS_DIR / "audio"
+# Assets produits par une IA (gelés, hashés et verrouillés : phase 3). Une scène qui en référence un
+# doit déclarer provenance.ai_disclosure (contrôle QC scene.ai_disclosure).
+AI_ASSETS_DIR: Path = ASSETS_DIR / "ai"
 BACKENDS_DIR: Path = ROOT / "backends"
 
 # build/ et out/ peuvent être déplacés sur un disque plus grand sans toucher au code
@@ -299,9 +302,20 @@ AUDIO_RATE: int = 48_000
 
 # QC
 BLACKDETECT_PIX_TH: float = 0.03          # 0.06 pénalise les fonds sombres voulus (vhs, ardoise)
-# Plage de luminance recommandée EBU R103 en codes 10 bits (-1 % .. +103 % de 64..940) : au-delà,
-# avertissement ; les codes réservés (< 4, > 1019) sont un échec.
+# Plage BRUTE de luminance (min/max signalstats, codes 10 bits) utilisée par le QC jusqu'à la phase 1 :
+# conservée comme indicateur informatif (nombre d'images qui la dépassent), sans effet sur le statut.
 LEVELS_R103_Y: tuple[float, float] = (55.0, 966.0)
+# EBU R103 v3.0 (mai 2020, tech.ebu.ch/publications/r103), Table 1 en 10 bits : plage « préférée »
+# de Y ET de chaque composante R'G'B' ; mesure après le filtre passe-bas recommandé (H 1,2,3,4,3,2,1
+# /16, V 1,2,1 /4) ; « hors gamut » seulement si l'erreur dépasse 1 % de l'image (les pointes de
+# compression aux arêtes vives et la chroma sous-échantillonnée ne sont pas des erreurs de gamut).
+LEVELS_R103_PREFERRED_10BIT: tuple[float, float] = (20.0, 984.0)
+LEVELS_R103_FILTER_H: tuple[int, ...] = (1, 2, 3, 4, 3, 2, 1)
+LEVELS_R103_FILTER_V: tuple[int, ...] = (1, 2, 1)
+LEVELS_R103_AREA_MAX: float = 0.01
+# Codes réservés au transport en 10 bits (plage totale R103 : 4..1019) : avertissement informatif
+# (jamais bloquant : une mire plein écran de test les atteint volontairement).
+LEVELS_RESERVED_10BIT: tuple[float, float] = (4.0, 1019.0)
 LOUDNESS_TOLERANCE_LU: float = 1.0
 TRUE_PEAK_MAX_DBTP: float = -1.0
 AAC_PRIMING_S: float = 0.025              # amorçage AAC toléré en plus d'une image sur la durée audio

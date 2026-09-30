@@ -432,7 +432,8 @@ alpha réel (4444, alphaextract image médiane : min < 255), blackdetect `pix_th
 (bloquant si noir > allow_black_s, informatif si `format.alpha`), audio (codec aac|pcm_s24le,
 48 kHz, durée ± (1 image + 25 ms)), loudness ±1 LU + true peak ≤ −1 dBTP, zones sûres (master
 manifest, bloquant au-delà de `safe_zone_tolerance_s` continu hors zone), déterminisme
-(`determinism.json` ok). Rapport `out/<scene>/qc_report.json` + `.md` (verdict en tête).
+(`determinism.json` ok), niveaux vidéo (informatif, jamais bloquant : voir §11.1).
+Rapport `out/<scene>/qc_report.json` + `.md` (verdict en tête).
 
 ---------------------------------------------------------------------------------------------------
 ## 9. Qui écrit quoi (parallélisation)
@@ -488,7 +489,7 @@ def loudnorm_prefix(src, duration: str, target_lufs: float) -> str   # 2 passes,
 def ensure_shot_media(compiled, shot_index, *, log=print) -> list[Path]
 # pipeline/qc.py
 def preflight_layout(compiled, *, margin_px=None) -> dict   # relevés des plans, avant composition
-# check_output : contrôle « levels » (signalstats) si expected["levels"]
+# check_output : contrôle « levels » (EBU R103 v3.0, voir §11.1) si expected["levels"]
 # pipeline/sheets.py
 def pick_frames(compiled, max_tiles=16) -> list[tuple[int, str]]
 def write_contact_sheets(compiled, *, log=print) -> list[Path]
@@ -501,7 +502,8 @@ def write_report(results, *, draft: bool) -> Path
 
 ### 10.5 Réglages (`pipeline/config.py`)
 `WEB_MAX_WORKERS` (env `MOGRAPH_MAX_WORKERS`, défaut 4) ; `_default_workers` = un navigateur par
-cœur jusqu'à ce plafond. `LEVELS_R103_Y = (55, 966)`. `TEMPLATES_DIR`, `VIDEO_EXTENSIONS`,
+cœur jusqu'à ce plafond. `LEVELS_R103_Y = (55, 966)` (indicateur brut informatif depuis la phase 1,
+voir §11.1). `TEMPLATES_DIR`, `VIDEO_EXTENSIONS`,
 `SUBTITLE_EXTENSIONS`, `media_dir()`. MIME audio ajoutés (aperçu).
 
 ### 10.6 CLI
@@ -513,3 +515,33 @@ pendant Blender (`step_plates_and_web`).
 ### 10.7 Tests
 `tests/verify_features.py` (isolé dans `build/_tests/features/`, médias dans `assets/_tests/`),
 rejoué par la CI (`.github/workflows/tests.yml`) avec les étapes 9 à 17.
+
+---------------------------------------------------------------------------------------------------
+## 11. Évolutions de la feuille de route (phases) — normatives
+
+Chaque phase se termine par `scripts/baseline.py run` comparé à `docs/baseline/phase-0.json`
+(`docs/BASELINE.md`) : aucune régression tolérée.
+
+### 11.1 Phase 1 — niveaux vidéo selon EBU R103 v3.0
+Source : EBU R 103 v3.0 (mai 2020), https://tech.ebu.ch/publications/r103, Table 1 et § « Video
+Signal Filtering » / « Signal Issues ». Contrôle `<livrable>.levels`, **informatif** (`blocking:
+false`, comme avant) :
+- **codes réservés** : Y ou chroma brut (signalstats) hors `config.LEVELS_RESERVED_10BIT` (4..1019)
+  → WARN ;
+- sinon **gamut R103 v3.0** (`qc._gamut_r103`) : chaque image est décodée en 4:4:4 10 bits ; Y et
+  R'G'B' (matrice BT.709 inverse, plage limitée, sans écrêtage) sont filtrés par
+  `config.LEVELS_R103_FILTER_H` (1,2,3,4,3,2,1 /16) et `LEVELS_R103_FILTER_V` (1,2,1 /4) ; une image
+  est **hors gamut** si la part de ses pixels hors `config.LEVELS_R103_PREFERRED_10BIT` (20..984)
+  dépasse `config.LEVELS_R103_AREA_MAX` (1 %) → WARN s'il y en a au moins une, sinon PASS ;
+- toujours relevés dans `actual` : min/max bruts Y/chroma/R'G'B', nombre d'images à Y brut hors
+  `config.LEVELS_R103_Y` (55..966, ancienne mesure, indicateur seulement), plages filtrées, pire
+  image et sa surface hors plage.
+
+Diagnostic qui a motivé ce changement (Éclosion Urbaine, 744 images) : avant codec, la chaîne
+`config.ZSCALE` donne Y 76..940 (0 image hors 55..966) ; en 4:4:4 sans codec, R'G'B' reste dans
+63,6..942,5. Les 105 images HEVC (Y brut 52..1001) et 31 images ProRes (76..987) signalées hors
+55..966 viennent donc de la **compression** (pointes aux arêtes vives), et les R'G'B' bruts hors
+plage du **sous-échantillonnage de la chroma** (4:2:0 / 4:2:2) sur les arêtes saturées. Selon
+R103 v3.0, 0 image hors gamut (surface maximale 0,014 % en HEVC, 0,0023 % en ProRes). L'encodeur
+n'est pas modifié : R103 déconseille les légaliseurs avant la fin du traitement, et aucun pixel
+livré ne change.

@@ -286,8 +286,9 @@ _BLACK_RE = re.compile(r"black_start:\s*([-\d.eE+]+)\s+black_end:\s*([-\d.eE+]+)
 
 
 def _levels(path: Path, bits: int, timeout: float) -> dict:
-    """Min/max Y, U, V sur TOUTES les images (signalstats), ramenés à l'échelle 10 bits, et nombre
-    d'images dont la luminance sort de la plage EBU R103 (config.LEVELS_R103_Y)."""
+    """Min/max BRUTS Y, U, V sur TOUTES les images (signalstats), ramenés à l'échelle 10 bits, et nombre
+    d'images dont la luminance brute sort de config.LEVELS_R103_Y (indicateur informatif : le statut
+    du contrôle vient de _gamut_r103, mesure conforme à EBU R103 v3.0)."""
     argv = [config.FFMPEG, "-hide_banner", "-nostats", "-v", "error", "-i", str(path), "-map", "0:v:0",
             "-vf", "signalstats,metadata=mode=print:file=-", "-f", "null", "-"]
     res = _run(argv, timeout=timeout)
@@ -308,7 +309,99 @@ def _levels(path: Path, bits: int, timeout: float) -> dict:
         "y_min": round(min(stats["YMIN"]), 1), "y_max": round(max(stats["YMAX"]), 1),
         "c_min": round(min(min(stats["UMIN"]), min(stats["VMIN"])), 1),
         "c_max": round(max(max(stats["UMAX"]), max(stats["VMAX"])), 1),
-        "frames_outside_r103": out_frames, "frames": len(stats["YMIN"]),
+        "frames_raw_outside_55_966": out_frames, "frames": len(stats["YMIN"]),
+    }
+
+
+# BT.709 (ITU-R BT.709-6, matrice Y'CbCr) : coefficients normatifs de la matrice de luminance.
+_BT709_KR, _BT709_KB = 0.2126, 0.0722
+
+
+def _gamut_r103(path: Path, width: int, height: int, timeout: float) -> dict:
+    """Gamut EBU R103 v3.0 sur TOUTES les images (config.LEVELS_R103_*).
+
+    Chaque image est décodée en 4:4:4 10 bits (chroma suréchantillonnée par swscale en arrondi
+    exact), Y et R'G'B' (matrice BT.709 inverse, plage limitée, SANS écrêtage) sont exprimés en codes
+    10 bits, filtrés par le passe-bas recommandé par R103, puis la part de l'image hors de la plage
+    préférée est mesurée : une image n'est « hors gamut » qu'au-delà de config.LEVELS_R103_AREA_MAX.
+    """
+    import time
+
+    import cv2
+
+    if width <= 0 or height <= 0:
+        raise QCError(f"mesure R103 impossible sur {path.name} : dimensions inconnues ({width}x{height}).")
+    lo, hi = config.LEVELS_R103_PREFERRED_10BIT
+    kh = np.asarray(config.LEVELS_R103_FILTER_H, np.float32)
+    kv = np.asarray(config.LEVELS_R103_FILTER_V, np.float32)
+    kh, kv = kh / kh.sum(), kv / kv.sum()
+    kg = 1.0 - _BT709_KR - _BT709_KB
+    argv = [config.FFMPEG, "-hide_banner", "-nostats", "-v", "error", "-i", str(path), "-map", "0:v:0",
+            "-sws_flags", "bicubic+accurate_rnd+full_chroma_int", "-pix_fmt", "yuv444p10le",
+            "-f", "rawvideo", "-"]
+    kwargs: dict[str, Any] = {"creationflags": subprocess.CREATE_NO_WINDOW} if config.IS_WINDOWS else {}
+    try:
+        # stderr vers un fichier temporaire du système : lu à la fin, il ne peut pas bloquer le tube vidéo.
+        import tempfile
+        errf = tempfile.TemporaryFile()
+        proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=errf, **kwargs)
+    except FileNotFoundError as exc:
+        raise QCError(f"Outil introuvable : {config.FFMPEG!r} (FFmpeg requis pour la mesure R103).") from exc
+    fsize = width * height * 3 * 2
+    deadline = time.monotonic() + timeout
+    n = bad_frames = 0
+    worst_frac, worst_frame = 0.0, None
+    y_f = [np.inf, -np.inf]
+    rgb_f = [np.inf, -np.inf]
+    rgb_raw = [np.inf, -np.inf]
+    try:
+        while True:
+            buf = proc.stdout.read(fsize)
+            if len(buf) < fsize:
+                break
+            if time.monotonic() > deadline:
+                raise QCError(f"Délai dépassé ({timeout:.0f} s) pour la mesure R103 de {path.name}.")
+            y, cb, cr = np.frombuffer(buf, "<u2").reshape(3, height, width).astype(np.float32)
+            # Composantes normalisées (0..1 = noir..blanc nominal) puis retour en codes 10 bits.
+            yn = (y - 64.0) / 876.0
+            pb, pr = (cb - 512.0) / 896.0, (cr - 512.0) / 896.0
+            r = yn + 2.0 * (1.0 - _BT709_KR) * pr
+            b = yn + 2.0 * (1.0 - _BT709_KB) * pb
+            g = (yn - _BT709_KR * r - _BT709_KB * b) / kg
+            outside = np.zeros((height, width), bool)
+            for is_luma, comp in ((True, y), (False, r * 876.0 + 64.0), (False, g * 876.0 + 64.0),
+                                  (False, b * 876.0 + 64.0)):
+                if not is_luma:
+                    rgb_raw[0] = min(rgb_raw[0], float(comp.min()))
+                    rgb_raw[1] = max(rgb_raw[1], float(comp.max()))
+                f = cv2.sepFilter2D(comp, -1, kh, kv, borderType=cv2.BORDER_REPLICATE)
+                acc = y_f if is_luma else rgb_f
+                acc[0] = min(acc[0], float(f.min()))
+                acc[1] = max(acc[1], float(f.max()))
+                outside |= (f < lo) | (f > hi)
+            frac = float(outside.mean())
+            if frac > config.LEVELS_R103_AREA_MAX:
+                bad_frames += 1
+            if worst_frame is None or frac > worst_frac:
+                worst_frac, worst_frame = frac, n
+            n += 1
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+        proc.wait()
+        errf.seek(0)
+        err = errf.read()
+        errf.close()
+    if n == 0:
+        raise QCError(f"mesure R103 impossible sur {path.name} : aucune image décodée ({_tail(_text(err))}).")
+    return {
+        "r103_frames_out_of_gamut": bad_frames,
+        "r103_max_area_pct": round(100.0 * worst_frac, 4),
+        "r103_worst_frame": worst_frame,
+        "y_filtered": [round(y_f[0], 1), round(y_f[1], 1)],
+        "rgb_filtered": [round(rgb_f[0], 1), round(rgb_f[1], 1)],
+        "rgb_raw": [round(rgb_raw[0], 1), round(rgb_raw[1], 1)],
+        "r103_frames": n,
     }
 
 
@@ -426,7 +519,7 @@ def expected_for_output(compiled: dict, output: dict) -> dict:
         "timecode": prof["codec"] == "prores",
         "timecode_value": config.TIMECODE_START,
         "color": dict(_COLOR_EXPECTED),
-        # Niveaux vidéo (signalstats) : codes réservés interdits, plage EBU R103 recommandée.
+        # Niveaux vidéo : codes réservés et gamut EBU R103 v3.0 (Y et R'G'B' filtrés), informatifs.
         "levels": True,
         # Alpha réel exigé pour tout format de pixel avec plan alpha (prores_4444).
         "alpha": prof["pix_fmt"].startswith("yuva"),
@@ -578,28 +671,41 @@ def check_output(path, expected: dict) -> list[dict]:
     if expected.get("levels"):
         pix = str(v.get("pix_fmt") or "")
         bits = 12 if "12" in pix else (10 if "10" in pix else 8)
-        lo, hi = config.LEVELS_R103_Y
-        exp_lv = {"reserved_codes": "aucun (4..1019)", "luma_r103": [lo, hi]}
+        rlo, rhi = config.LEVELS_RESERVED_10BIT
+        plo, phi = config.LEVELS_R103_PREFERRED_10BIT
+        area = 100.0 * config.LEVELS_R103_AREA_MAX
+        exp_lv = {"reserved_codes": f"aucun ({rlo:g}..{rhi:g})",
+                  "ebu_r103_v3": f"Y et R'G'B' filtrés dans {plo:g}..{phi:g} sur au moins {100 - area:g} % de chaque image"}
         try:
             lv = _levels(p, bits, timeout)
+            lv.update(_gamut_r103(p, int(v.get("width") or 0), int(v.get("height") or 0), timeout))
         except QCError as exc:
-            add("levels", "niveaux vidéo (signalstats)", "WARN", exp_lv, None, False, str(exc))
+            add("levels", "niveaux vidéo (EBU R103 v3.0)", "WARN", exp_lv, None, False, str(exc))
         else:
-            reserved = min(lv["y_min"], lv["c_min"]) < 4 or max(lv["y_max"], lv["c_max"]) > 1019
-            # Informatif (jamais bloquant) : un dépassement ponctuel de compression aux arêtes vives ne
-            # doit pas bloquer une livraison web ; la diffusion broadcast se valide aux scopes (Resolve).
+            reserved = min(lv["y_min"], lv["c_min"]) < rlo or max(lv["y_max"], lv["c_max"]) > rhi
+            raw_note = (f"Mesure brute (sans filtre) : Y {lv['y_min']:g}..{lv['y_max']:g}, chroma {lv['c_min']:g}.."
+                        f"{lv['c_max']:g}, R'G'B' {lv['rgb_raw'][0]:g}..{lv['rgb_raw'][1]:g} ; "
+                        f"{lv['frames_raw_outside_55_966']} image(s) à Y brut hors 55..966.")
+            # Informatif (jamais bloquant) : la diffusion broadcast se valide aux scopes (Resolve) ; le
+            # web tolère ces écarts. Le statut suit la méthode R103 v3.0 (filtre + seuil de surface).
             if reserved:
-                add("levels", "niveaux vidéo (signalstats)", "WARN", exp_lv, lv, False,
-                    "Codes réservés atteints (< 4 ou > 1019 en 10 bits) : à corriger pour la DIFFUSION (légaliseur "
-                    "ou étalonnage) ; si toute l'image est concernée, la source n'a pas été convertie en plage "
-                    "limitée (config.ZSCALE).")
-            elif lv["frames_outside_r103"]:
-                add("levels", "niveaux vidéo (signalstats)", "WARN", exp_lv, lv, False,
-                    f"{lv['frames_outside_r103']} image(s) hors plage EBU R103 (Y {lo}..{hi}) : acceptable sur le web, "
-                    "à corriger pour la diffusion (dépassements de compression ou couleurs saturées).")
+                add("levels", "niveaux vidéo (EBU R103 v3.0)", "WARN", exp_lv, lv, False,
+                    f"Codes réservés atteints (< {rlo:g} ou > {rhi:g} en 10 bits) : à corriger pour la DIFFUSION "
+                    "(légaliseur ou étalonnage) ; si toute l'image est concernée, la source n'a pas été convertie "
+                    "en plage limitée (config.ZSCALE). " + raw_note)
+            elif lv["r103_frames_out_of_gamut"]:
+                add("levels", "niveaux vidéo (EBU R103 v3.0)", "WARN", exp_lv, lv, False,
+                    f"{lv['r103_frames_out_of_gamut']} image(s) hors gamut EBU R103 v3.0 (plus de {area:g} % de l'image "
+                    f"hors {plo:g}..{phi:g} après filtrage ; pire image {lv['r103_worst_frame']} : "
+                    f"{lv['r103_max_area_pct']:g} %) : couleurs trop saturées ou trop lumineuses pour la diffusion, "
+                    "à reprendre à l'étalonnage (palette, fond). " + raw_note)
             else:
-                add("levels", "niveaux vidéo (signalstats)", "PASS", exp_lv, lv, False,
-                    f"Y {lv['y_min']:g}..{lv['y_max']:g}, chroma {lv['c_min']:g}..{lv['c_max']:g} (10 bits)")
+                add("levels", "niveaux vidéo (EBU R103 v3.0)", "PASS", exp_lv, lv, False,
+                    f"0 image hors gamut EBU R103 v3.0 (pire image {lv['r103_worst_frame']} : {lv['r103_max_area_pct']:g} % "
+                    f"hors plage après filtrage, seuil {area:g} %) ; Y filtré {lv['y_filtered'][0]:g}..{lv['y_filtered'][1]:g}, "
+                    f"R'G'B' filtrés {lv['rgb_filtered'][0]:g}..{lv['rgb_filtered'][1]:g}. " + raw_note
+                    + " Les dépassements bruts sont des pointes de compression aux arêtes vives et de chroma "
+                      "sous-échantillonnée, que R103 v3.0 exclut par son filtre et son seuil de surface.")
 
     # --- Piste timecode tmcd (ProRes) ------------------------------------------------------------
     if expected.get("timecode"):
