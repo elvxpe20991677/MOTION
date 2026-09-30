@@ -24,3 +24,8 @@ assets/audio/modele_*_beat.wav.synth.json
 assets/audio/*_draft_beat.wav.synth.json
 out/essai_*/
 assets/audio/essai_*_beat.wav.synth.json
+
+# Secrets (clé API ElevenLabs…) : jamais versionnés. Modèle sans valeurs : .env.example
+.env
+.env.*
+!.env.example
