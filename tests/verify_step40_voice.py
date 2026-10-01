@@ -67,6 +67,7 @@ class Fake:
     limit = 10_000
     used = 0
     calls: list[dict] = []
+    history: list[dict] = []
     fail_next: int | None = None
 
 
@@ -93,6 +94,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.headers.get("xi-api-key") != KEY:
             return self._send(401, {"detail": {"status": "invalid_api_key", "message": "Invalid API key"}})
+        if self.path.startswith("/v1/history"):
+            return self._send(200, {"history": list(reversed(Fake.history))})
         if self.path.startswith("/v1/user/subscription"):
             return self._send(200, {"tier": "test", "character_count": Fake.used, "character_limit": Fake.limit,
                                     "next_character_count_reset_unix": 1792600000, "can_extend_character_limit": False,
@@ -109,7 +112,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(code, {"detail": {"message": "erreur simulée"}})
         Fake.calls.append({"path": self.path, "body": body})
         text = body["text"]
-        Fake.used += len(text)
+        # Comme le vrai service : le décompte (ici la moitié) diffère du nombre de caractères envoyés,
+        # et le compteur agrégé de l'abonnement n'est PAS mis à jour tout de suite.
+        billed = (len(text) + 1) // 2
+        Fake.history.append({"text": text, "model_id": body.get("model_id"), "date_unix": int(time.time()),
+                             "character_count_change_from": Fake.used, "character_count_change_to": Fake.used + billed})
         starts = [round(i * CHAR_S, 3) for i in range(len(text))]
         ends = [round((i + 1) * CHAR_S, 3) for i in range(len(text))]
         align = {"characters": list(text), "character_start_times_seconds": starts, "character_end_times_seconds": ends}
@@ -216,12 +223,13 @@ def test_generate() -> Path:
           len(w) == 7 and w[2]["text"] == "Ondea." and abs(w[2]["start"] - 0.9) < 1e-6 and abs(w[2]["end"] - 1.26) < 1e-6
           and w[3]["char_start"] == 22, str(w[:4]))
     u = usage()[-1]
-    check("journal : 42 caractères estimés et décomptés, quota restant, pas de cache",
-          u["chars_estimated"] == 42 and u["chars_consumed"] == 42 and u["cache"] is False and "quota_remaining" in u, str(u))
+    check("journal : 42 caractères estimés, 21 décomptés lus dans l'historique (compteur agrégé en retard), pas de cache",
+          u["chars_estimated"] == 42 and u["chars_billed"] == 21 and u["cache"] is False and "quota_remaining_before" in u
+          and "21 caractères ElevenLabs décomptés (42 envoyés)" in (ea["provenance"].get("cost") or ""), str(u))
     n_calls = len(Fake.calls)
     cp = mograph("voice", str(p))
     check("rejeu : cache, 0 caractère consommé, aucun nouvel appel",
-          cp.returncode == 0 and "cache" in cp.stdout and len(Fake.calls) == n_calls and usage()[-1]["chars_consumed"] == 0,
+          cp.returncode == 0 and "cache" in cp.stdout and len(Fake.calls) == n_calls and usage()[-1]["chars_billed"] == 0,
           tail(cp, 1))
     return p
 

@@ -1,0 +1,59 @@
+### Date (UTC)
+2026-10-01 18:40:15
+
+### Système
+Windows-11-10.0.26200-SP0 | AMD64 Family 25 Model 97 Stepping 2, AuthenticAMD | 24 threads
+
+### Python orchestrateur
+3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]
+
+### ffmpeg -version
+ffmpeg version 9.0.2-full_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers
+built with gcc 16.2.0 (Rev3, Built by MSYS2 project)
+configuration: --enable-gpl --enable-version3 --enable-static --disable-w32threads --disable-autodetect --enable-cairo --enable-fontconfig --enable-iconv --enable-gnutls --enable-lcms2 --enable-libxml2 --enable-gmp --enable-bzlib --enable-lzma --enable-libsnappy --enable-zlib --enable-librist --enable-libsrt --enable-libssh --enable-libzmq --enable-avisynth --enable-libbluray --enable-libcaca --enable-libdvdnav --enable-libdvdread --enable-sdl2 --enable-libaribb24 --enable-libaribcaption --enable-libdav1d --enable-libdavs2 --enable-libopenjpeg --enable-libquirc --enable-libuavs3d --enable-libxevd --enable-libzvbi --enable-liboapv --enable-libqrencode --enable-librav1e --enable-libsvtav1 --enable-libvvenc --enable-libwebp --enable-libx264 --enable-libx265 --enable-libxavs2 --enable-libxeve --enable-libxvid --enable-libaom --enable-libjxl --enable-libsvtjpegxs --enable-libvpx --enable-mediafoundation --enable-libass --enable-frei0r --enable-libfreetype --enable-libfribidi --enable-libharfbuzz --enable-liblensfun --enable-libvidstab --enable-libvmaf --enable-libzimg --enable-amf --enable-cuda-llvm --enable-cuvid --enable-dxva2 --enable-d3d11va --enable-d3d12va --enable-ffnvcodec --enable-libvpl --enable-nvdec --enable-nvenc --enable-vaapi --enable-vulkan --enable-libplacebo --enable-opencl --enable-libcdio --enable-openal --enable-libgme --enable-libmodplug --enable-libopenmpt --enable-libopencore-amrwb --enable-libmp3lame --enable-libshine --enable-libtheora --enable-libtwolame --enable-libvo-amrwbenc --enable-libcodec2 --enable-libilbc --enable-libgsm --enable-liblc3 --enable-libopencore-amrnb --enable-libopus --enable-libspeex --enable-libvorbis --enable-ladspa --enable-libbs2b --enable-libflite --enable-libmysofa --enable-librubberband --enable-libsoxr --enable-chromaprint --enable-whisper
+libavutil      61.  1.102 / 61.  1.102
+libavcodec     63.  1.102 / 63.  1.102
+libavformat    63.  1.102 / 63.  1.102
+libavdevice    63.  1.102 / 63.  1.102
+libavfilter    12.  1.102 / 12.  1.102
+libswscale     10.  1.102 / 10.  1.102
+libswresample   7.  1.102 /  7.  1.102
+
+Exiting with exit code 0
+
+### pip freeze
+attrs==26.1.0
+greenlet==3.5.6
+jsonschema==4.23.0
+jsonschema-specifications==2025.9.1
+numpy==2.2.6
+opencv-python-headless==4.12.0.88
+playwright==1.56.0
+pyee==13.0.1
+referencing==0.37.0
+rpds-py==2026.6.3
+typing_extensions==4.16.0
+
+### npm ls --depth=0
+mograph-runtime-libs@1.0.0 C:\Users\perro\Desktop\MOTION\.claude\worktrees\motion-pipeline-evolution-582d24
++-- @fontsource/anton@5.3.0
++-- @fontsource/bricolage-grotesque@5.3.0
++-- @fontsource/caveat@5.3.0
++-- @fontsource/dm-sans@5.3.0
++-- @fontsource/fraunces@5.3.0
++-- @fontsource/inter-tight@5.3.0
++-- @fontsource/patrick-hand@5.3.0
++-- @fontsource/space-grotesk@5.3.0
++-- @fontsource/space-mono@5.3.0
++-- @fontsource/vt323@5.3.0
+`-- gsap@3.15.0
+
+### bpy
+bpy 5.0.1 | python 3.11.15
+
+### Chromium (playwright)
+141.0.7390.37
+
+### git
+38f66ad57c363f5cdd530bcee1e51939e672c781 Thu Oct 1 20:36:55 2026 +0200
+

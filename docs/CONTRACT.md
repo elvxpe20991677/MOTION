@@ -700,6 +700,7 @@ class VoiceError(RuntimeError)
 def split_markers(text) -> tuple[str, list[tuple[str, int]]]
 def request_params(vo) -> tuple[dict, str, bool] ; def request_key(params) -> str ; def billed_chars(params) -> int
 def subscription(key) -> dict                      # lecture seule : tier, used, limit, remaining, reset, can_extend
+def billed_from_history(key, params, since_unix) -> int | None   # décompte réel (historique du compte)
 def words_from_alignment(text, alignment) -> list[dict]   # {text, start, end, char_start, char_end}
 def cues_from_words(words) -> list[tuple[float, float, str]]
 def generate(scene_path, *, yes=False, dry_run=False, budget=None, log=print, ask=None) -> dict
@@ -714,7 +715,12 @@ le compte ; confirmation au-delà de `config.VOICE_CONFIRM_ABOVE` (env `MOGRAPH_
 sauf `--yes` (refus sans vraie console). Un seul appel, puis gel des deux fichiers (`assets.add`,
 source `api`, outil ElevenLabs, prompt = texte, coût, empreinte de la voix), chemins écrits dans la
 scène, ligne JSON ajoutée à `config.VOICE_USAGE_LOG` (`voice_usage.jsonl`, versionné : date, scène,
-caractères estimés et décomptés par le compte, cache, quota restant). **Secrets** : clé lue dans
+caractères envoyés `chars_estimated`, caractères décomptés `chars_billed`, cache, quota restant avant
+l'appel). Le décompte réel est lu dans l'historique du compte (`GET /v1/history` :
+`character_count_change_from` → `_to`, élément de même texte et modèle) : mesuré le 01/10/2026, le
+compteur agrégé de `/v1/user/subscription` reste en retard après un appel, et le décompte peut être
+inférieur au nombre de caractères envoyés (27 envoyés, 11 décomptés) ; `chars_estimated` est donc un
+majorant utilisé par les garde-fous. **Secrets** : clé lue dans
 l'environnement puis `config.ENV_FILE` (`.env`, env `MOGRAPH_ENV_FILE`), jamais affichée ni écrite ;
 un identifiant de voix venu de `.env` n'est consigné que par son empreinte (y compris dans les
 messages d'erreur). API redirigeable (`MOGRAPH_ELEVENLABS_API`) : les tests utilisent un faux serveur

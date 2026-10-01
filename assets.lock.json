@@ -1,4 +1,43 @@
 {
-  "assets": {},
+  "assets": {
+    "assets/ai/voice/demo_voix_da284e889ada.mp3": {
+      "added": "2026-10-01T18:37:30Z",
+      "bytes": 25539,
+      "kind": "audio",
+      "media": {
+        "codec": "mp3",
+        "duration_s": 1.532517
+      },
+      "provenance": {
+        "cost": "11 caractères ElevenLabs décomptés (27 envoyés)",
+        "date": "2026-10-01",
+        "license": "Conditions d'utilisation ElevenLabs (offre starter)",
+        "model": "eleven_multilingual_v2",
+        "notes": "voix par défaut de .env (empreinte 3cd2f90a52) ; requête da284e889ada ; with-timestamps",
+        "prompt": "Bonjour, ceci est un essai.",
+        "seed": null,
+        "source": "api",
+        "tool": "ElevenLabs"
+      },
+      "sha256": "7010acc8e7dfb3668bc3ac1c5b9ace908b8f67a2fd86816a3e2a7c9c2e904666"
+    },
+    "assets/ai/voice/demo_voix_da284e889ada.words.json": {
+      "added": "2026-10-01T18:37:30Z",
+      "bytes": 982,
+      "kind": "text",
+      "provenance": {
+        "cost": "11 caractères ElevenLabs décomptés (27 envoyés)",
+        "date": "2026-10-01",
+        "license": "Conditions d'utilisation ElevenLabs (offre starter)",
+        "model": "eleven_multilingual_v2",
+        "notes": "voix par défaut de .env (empreinte 3cd2f90a52) ; requête da284e889ada ; with-timestamps",
+        "prompt": "Bonjour, ceci est un essai.",
+        "seed": null,
+        "source": "api",
+        "tool": "ElevenLabs"
+      },
+      "sha256": "6edf6eaa023b57872374a4d697582c916ee2c7d4aa68754174543275a1128bab"
+    }
+  },
   "contract": "mograph-assets-lock/1"
 }

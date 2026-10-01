@@ -169,6 +169,26 @@ def subscription(key: str) -> dict:
             "can_extend": bool(s.get("can_extend_character_limit"))}
 
 
+def billed_from_history(key: str, params: dict, since_unix: float) -> int | None:
+    """Caractères RÉELLEMENT décomptés pour cette génération, lus dans l'historique du compte
+    (GET /v1/history : character_count_change_from / _to) ; None si l'élément n'y figure pas encore.
+
+    Le compteur agrégé de /v1/user/subscription peut rester en retard plusieurs minutes (mesuré le
+    01/10/2026 : inchangé juste après un appel décompté 11 caractères) : il ne sert pas à mesurer.
+    """
+    try:
+        h = _http("GET", "/v1/history?page_size=10", key)
+    except VoiceError:
+        return None
+    for item in h.get("history") or []:
+        if (item.get("text") == params["text"] and item.get("model_id") == params["model_id"]
+                and float(item.get("date_unix") or 0) >= since_unix - 120):
+            a, b = item.get("character_count_change_from"), item.get("character_count_change_to")
+            if isinstance(a, int) and isinstance(b, int):
+                return b - a
+    return None
+
+
 def _tts(key: str, params: dict) -> tuple[bytes, dict]:
     body = {k: v for k, v in params.items() if k not in ("voice_id", "output_format")}
     path = (f"/v1/text-to-speech/{urllib.parse.quote(params['voice_id'], safe='')}/with-timestamps"
@@ -330,7 +350,7 @@ def generate(scene_path: Path, *, yes: bool = False, dry_run: bool = False, budg
                 # Fichiers écrits mais gel interrompu : ce sont bien les sorties de cette requête, on les gèle.
                 _freeze(p, params, voice_label, chars, key, tier=None)
         _write_scene(scene_path, raw, rel(audio_path), rel(align_path))
-        _log_usage({**base_entry, "cache": True, "chars_consumed": 0})
+        _log_usage({**base_entry, "cache": True, "chars_billed": 0})
         log(f"cache : voix déjà générée ({rel(audio_path)}) — 0 caractère consommé.")
         return {"status": "cache", "chars": 0, "asset": rel(audio_path), "alignment": rel(align_path)}
 
@@ -342,7 +362,7 @@ def generate(scene_path: Path, *, yes: bool = False, dry_run: bool = False, budg
         f"{quota['remaining']} restant(s) sur {quota['limit']} (remise à zéro le {quota['reset']}) ; budget de la "
         f"commande : {limit}.")
     if dry_run:
-        _log_usage({**base_entry, "cache": False, "chars_consumed": 0, "dry_run": True, "quota_remaining": quota["remaining"]})
+        _log_usage({**base_entry, "cache": False, "chars_billed": 0, "dry_run": True, "quota_remaining_before": quota["remaining"]})
         return {"status": "estimation", "chars": chars, "quota": quota}
     if chars > limit:
         raise VoiceError(f"{chars} caractères dépassent le budget de la commande ({limit}) : raccourcissez le texte ou "
@@ -363,6 +383,7 @@ def generate(scene_path: Path, *, yes: bool = False, dry_run: bool = False, budg
             raise VoiceError("Génération annulée : rien n'a été consommé.")
 
     # 3) Appel unique, gel, inscription dans la scène, journal.
+    t_call = _dt.datetime.now(_dt.timezone.utc).timestamp()
     audio, alignment = _tts(key_api, params)
     words = words_from_alignment(params["text"], alignment)
     doc = {"contract": ALIGN_CONTRACT, "text": params["text"], "request_sha256": key, "model": params["model_id"],
@@ -370,24 +391,28 @@ def generate(scene_path: Path, *, yes: bool = False, dry_run: bool = False, budg
            "duration": round(max(w["end"] for w in words), 6), "characters_billed": chars, "words": words}
     _write_atomic(audio_path, audio)
     _write_atomic(align_path, (json.dumps(doc, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
-    after = subscription(key_api)
-    measured = after["used"] - quota["used"]
+    billed = billed_from_history(key_api, params, t_call)
     for p in (audio_path, align_path):
-        _freeze(p, params, voice_label, chars, key, tier=quota["tier"])
+        _freeze(p, params, voice_label, chars, key, tier=quota["tier"], billed=billed)
     _write_scene(scene_path, raw, rel(audio_path), rel(align_path))
-    _log_usage({**base_entry, "cache": False, "chars_consumed": measured, "quota_remaining": after["remaining"]})
-    log(f"généré : {rel(audio_path)} ({len(words)} mots, {doc['duration']} s) — {measured} caractère(s) "
-        f"décompté(s) par ElevenLabs ; restant : {after['remaining']}.")
-    return {"status": "généré", "chars": measured, "estimated": chars, "asset": rel(audio_path),
-            "alignment": rel(align_path), "words": len(words), "remaining": after["remaining"]}
+    _log_usage({**base_entry, "cache": False, "chars_billed": billed, "quota_remaining_before": quota["remaining"]})
+    log(f"généré : {rel(audio_path)} ({len(words)} mots, {doc['duration']} s) — "
+        + (f"{billed} caractère(s) décompté(s) par ElevenLabs (historique du compte)" if billed is not None
+           else f"au plus {chars} caractère(s) (décompte pas encore visible dans l'historique)")
+        + f" ; restant avant l'appel : {quota['remaining']}.")
+    return {"status": "généré", "chars": billed if billed is not None else chars, "billed": billed, "estimated": chars,
+            "asset": rel(audio_path), "alignment": rel(align_path), "words": len(words)}
 
 
-def _freeze(path: Path, params: dict, voice_label: str, chars: int, key: str, tier: str | None) -> None:
+def _freeze(path: Path, params: dict, voice_label: str, chars: int, key: str, tier: str | None,
+            billed: int | None = None) -> None:
     from pipeline import assets
 
+    cost = (f"{billed} caractères ElevenLabs décomptés ({chars} envoyés)" if billed is not None
+            else f"au plus {chars} caractères ElevenLabs (décompte non lu)")
     assets.add(path, tool="ElevenLabs", model=params["model_id"], prompt=params["text"],
                license=f"Conditions d'utilisation ElevenLabs{f' (offre {tier})' if tier else ''}",
-               seed=params.get("seed"), cost=f"{chars} caractères ElevenLabs (estimation)", source="api",
+               seed=params.get("seed"), cost=cost, source="api",
                notes=f"{voice_label} ; requête {key[:12]} ; with-timestamps")
 
 

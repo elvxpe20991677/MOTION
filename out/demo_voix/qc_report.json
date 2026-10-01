@@ -1,0 +1,394 @@
+{
+  "contract": "mograph-qc/1",
+  "scene_id": "demo_voix",
+  "title": "Démo voix off (phase 4)",
+  "verdict": "CONFORME",
+  "generated_at": "2026-10-01T18:40:25+00:00",
+  "format": {
+    "aspect": "16:9",
+    "resolution": "1080p",
+    "fps": 25,
+    "alpha": false
+  },
+  "output": {
+    "width": 1920,
+    "height": 1080
+  },
+  "frames": 75,
+  "duration_s": 3.0,
+  "counts": {
+    "PASS": 18,
+    "FAIL": 0,
+    "WARN": 0,
+    "SKIP": 0
+  },
+  "blocking_failures": [],
+  "deliverables": [
+    {
+      "name": "hevc_main10",
+      "profile": "hevc_main10",
+      "path": "C:\\Users\\perro\\Desktop\\MOTION\\.claude\\worktrees\\motion-pipeline-evolution-582d24\\out\\demo_voix\\demo_voix_hevc_main10.mp4",
+      "size_bytes": 1429305,
+      "checks": [
+        "hevc_main10.readable",
+        "hevc_main10.codec",
+        "hevc_main10.profile",
+        "hevc_main10.pix_fmt",
+        "hevc_main10.resolution",
+        "hevc_main10.fps",
+        "hevc_main10.frames",
+        "hevc_main10.duration",
+        "hevc_main10.hvc1",
+        "hevc_main10.color",
+        "hevc_main10.levels",
+        "hevc_main10.black",
+        "hevc_main10.audio",
+        "hevc_main10.loudness"
+      ],
+      "blocking_failures": 0
+    }
+  ],
+  "provenance": {
+    "authors": [],
+    "tools": [],
+    "ai_disclosure": {
+      "ai_used": true,
+      "roles": [
+        "voice"
+      ],
+      "tools": [
+        {
+          "name": "ElevenLabs",
+          "model": "eleven_multilingual_v2",
+          "role": "voix off"
+        }
+      ],
+      "date": "2026-10-01",
+      "statement": "Voix off synthétique (ElevenLabs)."
+    }
+  },
+  "ai_assets": [
+    "assets/ai/voice/demo_voix_da284e889ada.mp3",
+    "assets/ai/voice/demo_voix_da284e889ada.words.json"
+  ],
+  "ai_assets_lock": {
+    "assets/ai/voice/demo_voix_da284e889ada.mp3": {
+      "added": "2026-10-01T18:37:30Z",
+      "bytes": 25539,
+      "kind": "audio",
+      "media": {
+        "codec": "mp3",
+        "duration_s": 1.532517
+      },
+      "provenance": {
+        "cost": "11 caractères ElevenLabs décomptés (27 envoyés)",
+        "date": "2026-10-01",
+        "license": "Conditions d'utilisation ElevenLabs (offre starter)",
+        "model": "eleven_multilingual_v2",
+        "notes": "voix par défaut de .env (empreinte 3cd2f90a52) ; requête da284e889ada ; with-timestamps",
+        "prompt": "Bonjour, ceci est un essai.",
+        "seed": null,
+        "source": "api",
+        "tool": "ElevenLabs"
+      },
+      "sha256": "7010acc8e7dfb3668bc3ac1c5b9ace908b8f67a2fd86816a3e2a7c9c2e904666"
+    },
+    "assets/ai/voice/demo_voix_da284e889ada.words.json": {
+      "added": "2026-10-01T18:37:30Z",
+      "bytes": 982,
+      "kind": "text",
+      "provenance": {
+        "cost": "11 caractères ElevenLabs décomptés (27 envoyés)",
+        "date": "2026-10-01",
+        "license": "Conditions d'utilisation ElevenLabs (offre starter)",
+        "model": "eleven_multilingual_v2",
+        "notes": "voix par défaut de .env (empreinte 3cd2f90a52) ; requête da284e889ada ; with-timestamps",
+        "prompt": "Bonjour, ceci est un essai.",
+        "seed": null,
+        "source": "api",
+        "tool": "ElevenLabs"
+      },
+      "sha256": "6edf6eaa023b57872374a4d697582c916ee2c7d4aa68754174543275a1128bab"
+    }
+  },
+  "checks": [
+    {
+      "id": "hevc_main10.readable",
+      "label": "hevc_main10 : fichier présent et lisible",
+      "status": "PASS",
+      "expected": "1 flux vidéo",
+      "actual": "1 flux vidéo",
+      "blocking": true,
+      "detail": "1429305 octets"
+    },
+    {
+      "id": "hevc_main10.codec",
+      "label": "hevc_main10 : codec vidéo",
+      "status": "PASS",
+      "expected": "hevc",
+      "actual": "hevc",
+      "blocking": true,
+      "detail": ""
+    },
+    {
+      "id": "hevc_main10.profile",
+      "label": "hevc_main10 : profil du codec",
+      "status": "PASS",
+      "expected": "Main 10",
+      "actual": "Main 10",
+      "blocking": true,
+      "detail": ""
+    },
+    {
+      "id": "hevc_main10.pix_fmt",
+      "label": "hevc_main10 : format de pixel",
+      "status": "PASS",
+      "expected": "yuv420p10le",
+      "actual": "yuv420p10le",
+      "blocking": true,
+      "detail": ""
+    },
+    {
+      "id": "hevc_main10.resolution",
+      "label": "hevc_main10 : résolution",
+      "status": "PASS",
+      "expected": "1920x1080",
+      "actual": "1920x1080",
+      "blocking": true,
+      "detail": ""
+    },
+    {
+      "id": "hevc_main10.fps",
+      "label": "hevc_main10 : cadence r_frame_rate et avg_frame_rate",
+      "status": "PASS",
+      "expected": "25/1",
+      "actual": "r_frame_rate=25/1 avg_frame_rate=25/1",
+      "blocking": true,
+      "detail": ""
+    },
+    {
+      "id": "hevc_main10.frames",
+      "label": "hevc_main10 : nombre d'images compté (nb_read_frames)",
+      "status": "PASS",
+      "expected": 75,
+      "actual": 75,
+      "blocking": true,
+      "detail": ""
+    },
+    {
+      "id": "hevc_main10.duration",
+      "label": "hevc_main10 : durée vidéo (± 1/2 image)",
+      "status": "PASS",
+      "expected": {
+        "seconds": 3.0,
+        "tolerance_s": 0.02
+      },
+      "actual": 3.0,
+      "blocking": true,
+      "detail": ""
+    },
+    {
+      "id": "hevc_main10.hvc1",
+      "label": "hevc_main10 : étiquette HEVC hvc1",
+      "status": "PASS",
+      "expected": "hvc1",
+      "actual": "hvc1",
+      "blocking": true,
+      "detail": ""
+    },
+    {
+      "id": "hevc_main10.color",
+      "label": "hevc_main10 : métadonnées couleur (bt709 x3, plage tv)",
+      "status": "PASS",
+      "expected": {
+        "color_primaries": "bt709",
+        "color_transfer": "bt709",
+        "color_space": "bt709",
+        "color_range": "tv"
+      },
+      "actual": {
+        "color_primaries": "bt709",
+        "color_transfer": "bt709",
+        "color_space": "bt709",
+        "color_range": "tv"
+      },
+      "blocking": true,
+      "detail": ""
+    },
+    {
+      "id": "hevc_main10.levels",
+      "label": "hevc_main10 : niveaux vidéo (EBU R103 v3.0)",
+      "status": "PASS",
+      "expected": {
+        "reserved_codes": "aucun (4..1019)",
+        "ebu_r103_v3_gamut": "Y et R'G'B' filtrés dans 20..984 sur au moins 99 % de chaque image",
+        "ebu_r103_v3_nominal": "Y et R'G'B' filtrés dans 64..940 ± 1 % sur au moins 99 % de chaque image (programme pré-produit)"
+      },
+      "actual": {
+        "y_min": 154.0,
+        "y_max": 940.0,
+        "c_min": 392.0,
+        "c_max": 825.0,
+        "frames_raw_outside_55_966": 0,
+        "frames": 75,
+        "r103_frames_out_of_gamut": 0,
+        "r103_max_area_pct": 0.0005,
+        "r103_worst_frame": 11,
+        "nominal_frames_out": 0,
+        "nominal_max_area_pct": 0.0285,
+        "nominal_worst_frame": 16,
+        "nominal_range": [
+          55.24,
+          948.76
+        ],
+        "y_filtered": [
+          175.7,
+          895.6
+        ],
+        "rgb_filtered": [
+          153.7,
+          1012.5
+        ],
+        "rgb_raw": [
+          135.5,
+          1212.0
+        ],
+        "r103_frames": 75
+      },
+      "blocking": false,
+      "detail": "Aucune image hors gamut ni hors plage nominale au sens de R103 v3.0 (surface maximale hors 20..984 : 0.0005 %, image 11 ; hors 55.24..948.76 : 0.0285 %, image 16 ; seuil de signalement 1 %). Y filtré 175.7..895.6, R'G'B' filtrés 153.7..1012.5. Mesure brute (sans filtre) : Y 154..940, chroma 392..825, R'G'B' 135.5..1212 ; 0 image(s) à Y brut hors 55..966."
+    },
+    {
+      "id": "hevc_main10.black",
+      "label": "hevc_main10 : noir non voulu (blackdetect)",
+      "status": "PASS",
+      "expected": {
+        "max_black_s": 0.0,
+        "pix_th": 0.03,
+        "informative": false
+      },
+      "actual": {
+        "black_s": 0.0,
+        "segments": []
+      },
+      "blocking": true,
+      "detail": ""
+    },
+    {
+      "id": "hevc_main10.audio",
+      "label": "hevc_main10 : piste audio (codec, 48 kHz, durée)",
+      "status": "PASS",
+      "expected": {
+        "codec": "aac",
+        "sample_rate": 48000,
+        "duration_s": 3.0,
+        "tolerance_s": 0.065
+      },
+      "actual": {
+        "codec": "aac",
+        "sample_rate": 48000,
+        "duration_s": 3.0
+      },
+      "blocking": true,
+      "detail": ""
+    },
+    {
+      "id": "hevc_main10.loudness",
+      "label": "hevc_main10 : loudness EBU R128 (intégré, true peak)",
+      "status": "PASS",
+      "expected": {
+        "integrated_lufs": -14.0,
+        "tolerance_lu": 1.0,
+        "true_peak_max_dbtp": -1.0
+      },
+      "actual": {
+        "integrated_lufs": -13.1,
+        "true_peak_dbtp": -1.5,
+        "lra": 20.0
+      },
+      "blocking": true,
+      "detail": ""
+    },
+    {
+      "id": "scene.safe_zone",
+      "label": "scène : zones sûres (relevés __layout)",
+      "status": "PASS",
+      "expected": {
+        "zone": "title",
+        "rect_px": [
+          96.0,
+          54.0,
+          1824.0,
+          1026.0
+        ],
+        "max_continuous_out_s": 0.5,
+        "epsilon_px": 1.0
+      },
+      "actual": {
+        "max_continuous_out_s": 0.0,
+        "excursions": 0,
+        "records": 32,
+        "worst": []
+      },
+      "blocking": true,
+      "detail": ""
+    },
+    {
+      "id": "scene.determinism",
+      "label": "scène : déterminisme (rendu témoin dans un navigateur neuf)",
+      "status": "PASS",
+      "expected": {
+        "ok": true,
+        "total_min": 1,
+        "matches_equal_total": true
+      },
+      "actual": {
+        "ok": true,
+        "total": 4,
+        "matches": 4,
+        "checked": 4
+      },
+      "blocking": true,
+      "detail": "4/4 images témoins identiques au bit près (qc.determinism_frames = 4)."
+    },
+    {
+      "id": "scene.ai_disclosure",
+      "label": "scène : déclaration d'usage de l'IA",
+      "status": "PASS",
+      "expected": "provenance.ai_disclosure (ai_used: true, rôles, outils, date) dès qu'un asset de assets/ai/ est utilisé",
+      "actual": {
+        "ai_assets": [
+          "assets/ai/voice/demo_voix_da284e889ada.mp3",
+          "assets/ai/voice/demo_voix_da284e889ada.words.json"
+        ],
+        "declared": true,
+        "ai_used": true,
+        "roles": [
+          "voice"
+        ]
+      },
+      "blocking": false,
+      "detail": "IA déclarée le 2026-10-01 : rôles voice ; outils ElevenLabs eleven_multilingual_v2 ; 2 asset(s) de assets/ai/."
+    },
+    {
+      "id": "scene.ai_lock",
+      "label": "scène : assets IA gelés (assets.lock.json)",
+      "status": "PASS",
+      "expected": "chaque asset de assets/ai/ utilisé est verrouillé, présent et d'empreinte identique",
+      "actual": {
+        "ai_assets": 2,
+        "problems": 0
+      },
+      "blocking": true,
+      "detail": "2 asset(s) IA gelé(s), empreintes conformes au verrou."
+    }
+  ],
+  "tools": {
+    "ffmpeg": "ffmpeg version 9.0.2-full_build-www.gyan.dev",
+    "ffprobe": "ffprobe version 9.0.2-full_build-www.gyan.dev"
+  },
+  "report_paths": {
+    "json": "C:\\Users\\perro\\Desktop\\MOTION\\.claude\\worktrees\\motion-pipeline-evolution-582d24\\out\\demo_voix\\qc_report.json",
+    "md": "C:\\Users\\perro\\Desktop\\MOTION\\.claude\\worktrees\\motion-pipeline-evolution-582d24\\out\\demo_voix\\qc_report.md"
+  }
+}

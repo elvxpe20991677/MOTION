@@ -1,0 +1,98 @@
+{
+  "version": "1.0",
+  "id": "demo_voix",
+  "title": "Démo voix off (phase 4)",
+  "brief": "Essai réel minimal de la voix off ElevenLabs gelée : animation calée sur un mot et sous-titres automatiques.",
+  "seed": 7,
+  "preset": "flat_riso",
+  "format": {
+    "aspect": "16:9",
+    "resolution": "1080p",
+    "fps": 25,
+    "alpha": false
+  },
+  "outputs": [
+    {
+      "profile": "hevc_main10"
+    }
+  ],
+  "qc": {
+    "safe_zone": "title",
+    "safe_zone_tolerance_s": 0.5,
+    "allow_black_s": 0,
+    "determinism_frames": 4,
+    "loudness_target_lufs": -14
+  },
+  "voiceover": {
+    "text": "Bonjour, ceci est [[essai]] un essai.",
+    "start": 0.3,
+    "asset": "assets/ai/voice/demo_voix_da284e889ada.mp3",
+    "alignment": "assets/ai/voice/demo_voix_da284e889ada.words.json"
+  },
+  "provenance": {
+    "ai_disclosure": {
+      "ai_used": true,
+      "roles": [
+        "voice"
+      ],
+      "date": "2026-10-01",
+      "tools": [
+        {
+          "name": "ElevenLabs",
+          "model": "eleven_multilingual_v2",
+          "role": "voix off"
+        }
+      ],
+      "statement": "Voix off synthétique (ElevenLabs)."
+    }
+  },
+  "shots": [
+    {
+      "id": "titre",
+      "duration": 3.0,
+      "background": "bg",
+      "layers": [
+        {
+          "id": "mot",
+          "type": "text",
+          "text": "Bonjour",
+          "style": "display",
+          "size": 140,
+          "color": "primary",
+          "anim": [
+            {
+              "move": "pop",
+              "at": "word:0"
+            }
+          ]
+        },
+        {
+          "id": "essai",
+          "type": "text",
+          "text": "essai",
+          "y": "35%",
+          "style": "body",
+          "size": 60,
+          "color": "secondary",
+          "anim": [
+            {
+              "at": "marker:essai",
+              "dur": 0.3,
+              "from": {
+                "opacity": 0
+              },
+              "to": {
+                "opacity": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "st",
+          "type": "subtitles",
+          "voice": true
+        }
+      ]
+    }
+  ]
+}
