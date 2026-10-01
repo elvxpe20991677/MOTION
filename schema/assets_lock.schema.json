@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "assets_lock.schema.json",
+  "title": "Verrou des assets IA gelés (assets.lock.json)",
+  "description": "Chaque sortie d'IA (clip, image, musique, voix, mesh, matte, texte) est un ASSET GELÉ : généré une fois, rangé sous assets/ai/, identifié par son SHA-256 et sa provenance. Le rendu n'appelle jamais une IA et échoue si un asset IA utilisé n'est pas ici ou si son empreinte diffère (CONTRACT §11.4).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract", "assets"],
+  "properties": {
+    "contract": { "const": "mograph-assets-lock/1" },
+    "assets": {
+      "type": "object",
+      "description": "Clé = chemin du fichier relatif à la racine du projet, séparateurs « / » (ex. assets/ai/video/foret.mp4).",
+      "propertyNames": {"pattern": "^(?!.*(^|/)\\.\\.(/|$))[^/\\\\:][^\\\\:]*$", "description": "Chemin RELATIF à la racine, « / » comme séparateur, sans « .. », antislash ni lettre de lecteur ; l'emplacement (sous config.AI_ASSETS_DIR) est vérifié par pipeline/assets.py."},
+      "additionalProperties": { "$ref": "#/$defs/entry" }
+    }
+  },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "bytes", "kind", "added", "provenance"],
+      "properties": {
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "SHA-256 du fichier (octets)." },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "kind": { "enum": ["video", "image", "audio", "subtitles", "mesh", "text", "other"] },
+        "added": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$", "description": "Date d'enregistrement dans le verrou (UTC)." },
+        "replaces": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "Empreinte de la version précédente si l'asset a été remplacé (assets add --replace)." },
+        "media": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Caractéristiques relevées par ffprobe (vidéo et audio), à titre d'information.",
+          "properties": {
+            "width": { "type": "integer" },
+            "height": { "type": "integer" },
+            "fps": { "type": "string" },
+            "duration_s": { "type": "number" },
+            "codec": { "type": "string" },
+            "pix_fmt": { "type": "string" },
+            "alpha": { "type": "boolean" }
+          }
+        },
+        "provenance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tool", "model", "date", "prompt", "license"],
+          "properties": {
+            "tool": { "type": "string", "minLength": 1, "description": "Outil ou service (ex. Gemini/Flow, ElevenLabs, ACE-Step)." },
+            "tool_version": { "type": "string" },
+            "model": { "type": "string", "minLength": 1, "description": "Modèle (ex. veo-3, eleven_multilingual_v2)." },
+            "date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "description": "Date de génération (AAAA-MM-JJ)." },
+            "prompt": { "type": "string", "minLength": 1, "description": "Prompt (ou texte source) utilisé pour la génération." },
+            "seed": { "type": ["integer", "string", "null"], "description": "Graine si l'outil la fournit." },
+            "license": { "type": "string", "minLength": 1, "description": "Licence ou conditions d'utilisation de la sortie." },
+            "cost": { "type": ["string", "null"], "description": "Coût ou quota consommé (ex. « 20 crédits Flow », « 120 caractères ElevenLabs »)." },
+            "source": { "enum": ["manual_import", "api", "local"], "description": "manual_import : téléchargé à la main depuis le service ; api : produit par un module de mograph ; local : modèle exécuté sur la machine." },
+            "notes": { "type": ["string", "null"] }
+          }
+        }
+      }
+    }
+  }
+}

@@ -567,7 +567,7 @@ statement?}`, `roles` ⊂ {scene, text, image, video, music, voice, subtitles, 3
 
 Scène compilée, clés ajoutées (§4) :
 - `assets` : `[{path (relatif à la racine, « / » ; absolu seulement pour une piste audio hors du
-  projet), kinds ⊂ {image, video, subtitles, audio}, ai}]`,
+  projet), kinds ⊂ {image, video, subtitles, audio}, ai, sha256 (assets IA verrouillés, phase 3)}]`,
   trié par chemin ; `ai` = fichier sous `config.AI_ASSETS_DIR`. Relevé des fichiers réellement
   utilisés (images, vidéos, sous-titres, piste audio, y compris la piste test générée).
 - `provenance` : bloc normalisé (`authors`, `tools`, `ai_disclosure`) ou `null`.
@@ -602,3 +602,57 @@ porte `provenance` et `ai_assets` (JSON) et une section « Provenance » (Markdo
   01/10/2026) et `MOGRAPH_FFMPEG` / `MOGRAPH_FFPROBE` pointés dessus, qui rejoue les 9 scripts.
   Chaque job lance `check_versions.py` avant les tests. Les empreintes d'images ne sont pas comparées
   entre machines (déterminisme garanti par machine, §6).
+
+### 11.4 Phase 3 — assets IA gelés
+Principe : toute sortie d'IA (clip, image, musique, voix, mesh, matte, texte) est un **asset gelé** :
+générée une fois, rangée sous `config.AI_ASSETS_DIR` (`assets/ai/`, env `MOGRAPH_AI_ASSETS_DIR`),
+identifiée dans `config.ASSETS_LOCK` (`assets.lock.json` à la racine, env `MOGRAPH_ASSETS_LOCK`). Le
+rendu n'appelle **jamais** une IA. La porte de déterminisme ne couvre que ce qui suit le gel.
+
+Verrou (`schema/assets_lock.schema.json`, contrat `mograph-assets-lock/1`) : `assets` = objet clé →
+entrée ; clé = chemin relatif à la racine, « / » ; entrée = `{sha256, bytes, kind ∈ {video, image,
+audio, subtitles, mesh, text, other}, added (UTC), replaces?, media? (ffprobe : width, height, fps,
+duration_s, codec, pix_fmt, alpha), provenance {tool, tool_version?, model, date (AAAA-MM-JJ),
+prompt, seed?, license, cost?, source ∈ {manual_import, api, local}, notes?}}`. Écrit trié, de façon
+atomique, validé à la lecture et à l'écriture.
+
+`pipeline/assets.py` :
+```python
+class AssetError(RuntimeError)
+def file_sha256(path) -> str
+def is_ai_path(path) -> bool ; def lock_key(path) -> str ; def kind_for(path) -> str
+def load_lock(lock_path=None) -> dict ; def save_lock(lock, lock_path=None) -> Path
+def add(src, *, tool, model, prompt, license, date=None, seed=None, cost=None, notes=None,
+        tool_version=None, source="manual_import", kind=None, dest=None, replace=False,
+        lock_path=None) -> tuple[str, dict, str]          # statut : ajouté | inchangé | remplacé | provenance mise à jour
+def problems_for(paths, lock=None, lock_path=None) -> list[str]   # non verrouillé, absent, modifié
+def ai_paths_of(compiled) -> list[str] ; def check_compiled(compiled, *, stage) -> None   # AssetError
+def verify(lock_path=None) -> list[dict] ; def entries_for(paths, lock_path=None) -> dict
+```
+`add` copie un fichier extérieur sous `assets/ai/<nature>/<nom>` (ou `--dest`) ; un asset gelé n'est
+jamais écrasé par un autre contenu sans `--replace` (l'ancienne empreinte est gardée dans `replaces`).
+
+Contrôles (refus explicite, message actionnable) : à la **compilation** (`_asset_list` : tout asset
+de `assets/ai/` utilisé, quel que soit le calque, doit être verrouillé, présent et d'empreinte
+identique — REFUS sinon) ; avant le **rendu web de chaque plan** (`media.ensure_shot_media`) et avant
+l'**encodage** (`encode.encode_scene`) : `assets.check_compiled` (un fichier modifié pendant un rendu
+détaché est refusé) ; au **QC** : contrôle de scène `scene.ai_lock`, **bloquant** (SKIP si le compilé
+n'a pas de relevé `assets`). Le rapport porte `ai_assets_lock` (JSON) et, dans la section
+« Provenance », pour chaque asset IA : nature, SHA-256, outil/modèle, date, licence, graine, coût,
+source, prompt (tronqué à 300 caractères).
+
+Calque `ai_clip` (`schema/scene.schema.json`) : `{asset, w, h, fit, start, loop}` ; `asset` sous
+`assets/ai/`, verrouillé, de nature `video`. Compilé par `_video_fields` (chemin « video » :
+extraction FFmpeg exacte de l'image k = clip à `start + k / fps`, alpha conservé — vérifié sur un
+ProRes 4444 —, calque runtime `sequence`) ; le job média porte en plus `ai_sha256` (ajouté APRÈS le
+calcul de `digest` : les jobs vidéo existants gardent leur empreinte, aucun re-rendu).
+
+CLI : `mograph assets add <fichier> --tool --model (--prompt | --prompt-file) --license [--seed]
+[--date] [--cost] [--notes] [--tool-version] [--source] [--kind] [--dest] [--replace]` ;
+`mograph assets verify` (code 1 si un asset est absent, modifié ou non gelé) ; `mograph assets list
+[--json]`.
+
+Versionnement : `assets.lock.json` est versionné ; les médias de `assets/ai/` **ne le sont pas**
+(`.gitignore` : dépôt public, conditions des services, poids) — sur une autre machine, `assets verify`
+liste ceux à replacer. Tests : `tests/verify_step30_assets.py` (numérotation des tests de phase :
+`verify_step<phase>0_*.py`).

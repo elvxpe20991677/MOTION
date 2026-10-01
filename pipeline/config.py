@@ -28,8 +28,21 @@ NODE_MODULES: Path = ROOT / "node_modules"
 ASSETS_DIR: Path = ROOT / "assets"
 AUDIO_DIR: Path = ASSETS_DIR / "audio"
 # Assets produits par une IA (gelés, hashés et verrouillés : phase 3). Une scène qui en référence un
-# doit déclarer provenance.ai_disclosure (contrôle QC scene.ai_disclosure).
-AI_ASSETS_DIR: Path = ASSETS_DIR / "ai"
+# doit déclarer provenance.ai_disclosure (contrôle QC scene.ai_disclosure). Déplaçable par variable
+# d'environnement (tests isolés), mais toujours SOUS assets/ : seul dossier servi au navigateur.
+AI_ASSETS_DIR: Path = Path(os.environ.get("MOGRAPH_AI_ASSETS_DIR", ASSETS_DIR / "ai")).resolve()
+# Verrou des assets IA gelés : empreinte SHA-256 + provenance de chaque fichier de AI_ASSETS_DIR.
+# Versionné avec les scènes ; le rendu ÉCHOUE si un asset IA n'y figure pas ou si son empreinte diffère.
+ASSETS_LOCK: Path = Path(os.environ.get("MOGRAPH_ASSETS_LOCK", ROOT / "assets.lock.json")).resolve()
+# Nature d'un asset IA déduite de son extension (verrou, CLI « assets add »).
+AI_ASSET_KINDS: dict[str, tuple[str, ...]] = {
+    "video": (".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi", ".mxf"),
+    "image": (".png", ".jpg", ".jpeg", ".webp", ".svg"),
+    "audio": (".wav", ".mp3", ".m4a", ".flac", ".ogg", ".aac"),
+    "subtitles": (".srt", ".vtt"),
+    "mesh": (".glb", ".gltf", ".obj", ".fbx", ".stl", ".ply", ".usd", ".usdz"),
+    "text": (".txt", ".md", ".json"),
+}
 BACKENDS_DIR: Path = ROOT / "backends"
 
 # build/ et out/ peuvent être déplacés sur un disque plus grand sans toucher au code

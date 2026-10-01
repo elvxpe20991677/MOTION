@@ -594,15 +594,39 @@ def main() -> int:
            and "Assets produits par IA (assets/ai/) : aucun" in md,
            "ok_alpha : scene.ai_disclosure PASS (aucun asset IA) et section Provenance dans qc_report.md",
            f"{ai.get('status')} ; {ai.get('detail')}")
-    with_ai = {**setup_scene("ai_undeclared", ok2, alpha=False),
-               "assets": [{"path": "assets/ai/plan.mp4", "kinds": ["video"], "ai": True}]}
-    rep_ai = qc.run_qc(with_ai, log=lambda m: None)
-    c_ai = check_statuses(rep_ai).get("scene.ai_disclosure", {})
-    md_ai = (config.scene_out_dir("ai_undeclared") / "qc_report.md").read_text(encoding="utf-8")
-    record(c_ai.get("status") == "WARN" and rep_ai["verdict"] == qc.VERDICT_OK and rep_ai["ai_assets"] == ["assets/ai/plan.mp4"]
-           and "`assets/ai/plan.mp4`" in md_ai,
-           "asset IA sans déclaration : scene.ai_disclosure WARN, verdict inchangé (CONFORME), asset listé au rapport",
-           f"{c_ai.get('status')} ; {rep_ai['verdict']}")
+    # Phase 3 : l'asset IA doit être GELÉ (verrou) ; dossier IA et verrou de test sous assets/_tests et build/_tests.
+    from pipeline import assets
+    saved_ai = (config.AI_ASSETS_DIR, config.ASSETS_LOCK)
+    ai_dir = (ROOT / "assets" / "_tests" / "ai17").resolve()
+    shutil.rmtree(ai_dir, ignore_errors=True)
+    ai_dir.mkdir(parents=True)
+    config.AI_ASSETS_DIR, config.ASSETS_LOCK = ai_dir, (TEST_DIR / "assets.lock.json").resolve()
+    try:
+        shutil.copyfile(media["ok_hevc"], ai_dir / "plan.mp4")
+        assets.add(ai_dir / "plan.mp4", tool="Test", model="lavfi", prompt="mire", license="test")
+        plan = (ai_dir / "plan.mp4").relative_to(ROOT).as_posix()
+        with_ai = {**setup_scene("ai_undeclared", ok2, alpha=False),
+                   "assets": [{"path": plan, "kinds": ["video"], "ai": True}]}
+        rep_ai = qc.run_qc(with_ai, log=lambda m: None)
+        st = check_statuses(rep_ai)
+        c_ai = st.get("scene.ai_disclosure", {})
+        md_ai = (config.scene_out_dir("ai_undeclared") / "qc_report.md").read_text(encoding="utf-8")
+        record(c_ai.get("status") == "WARN" and rep_ai["verdict"] == qc.VERDICT_OK and rep_ai["ai_assets"] == [plan]
+               and f"`{plan}`" in md_ai and st.get("scene.ai_lock", {}).get("status") == "PASS",
+               "asset IA gelé sans déclaration : scene.ai_disclosure WARN, scene.ai_lock PASS, verdict CONFORME, "
+               "asset listé au rapport", f"{c_ai.get('status')} ; {rep_ai['verdict']}")
+        shutil.copyfile(media["ok_hevc"], ai_dir / "libre.mp4")
+        unlocked = {**with_ai, "assets": [{"path": (ai_dir / "libre.mp4").relative_to(ROOT).as_posix(),
+                                           "kinds": ["video"], "ai": True}]}
+        rep_ul = qc.run_qc(unlocked, log=lambda m: None)
+        ul = check_statuses(rep_ul).get("scene.ai_lock", {})
+        record(ul.get("status") == "FAIL" and ul.get("blocking") is True and rep_ul["verdict"] == qc.VERDICT_KO
+               and rep_ul["blocking_failures"] == ["scene.ai_lock"],
+               "asset IA NON gelé : scene.ai_lock FAIL bloquant, seul échec, verdict NON CONFORME",
+               f"{ul.get('status')} ; {rep_ul['blocking_failures']}")
+    finally:
+        config.AI_ASSETS_DIR, config.ASSETS_LOCK = saved_ai
+        shutil.rmtree(ai_dir, ignore_errors=True)
     old = {k: v for k, v in with_ai.items() if k not in ("assets", "provenance")}
     skip = qc.check_ai_disclosure(old)
     record(skip["status"] == "SKIP" and skip["blocking"] is False,

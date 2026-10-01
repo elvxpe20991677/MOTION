@@ -18,6 +18,7 @@ Commandes :
     batch        <scènes>  rend plusieurs scènes, ou une scène modèle × un CSV (--data)
     beats        <audio>   détecte tempo, premier temps et drop d'une musique (--scene … --write)
     sheets       <scène>   planches contact (out/<scène>/planche_contact.png)
+    assets       add|verify|list   assets IA gelés : verrou assets.lock.json (empreinte + provenance)
 
 Options utiles : validate --layout (zones sûres vérifiées sur quelques images, avant le rendu) ;
 all/render --draft (préversion rapide : 1080p, plaques 3D réduites, sans flou, sans QC).
@@ -695,6 +696,59 @@ def cmd_versions(args) -> int:
     return EXIT_OK
 
 
+def cmd_assets(args) -> int:
+    """Assets IA gelés (CONTRACT §11.4) : add (geler une sortie d'IA), verify, list."""
+    from pipeline import assets
+
+    try:
+        if args.assets_cmd == "add":
+            prompt = args.prompt
+            if args.prompt_file:
+                pf = Path(args.prompt_file)
+                prompt = pf.read_text(encoding="utf-8").strip() if pf.is_file() else None
+                if prompt is None:
+                    print(f"Fichier de prompt introuvable : {pf}", file=sys.stderr)
+                    return EXIT_FAIL
+            key, entry, status = assets.add(
+                args.file, tool=args.tool, model=args.model, prompt=prompt or "", license=args.license,
+                date=args.date, seed=args.seed, cost=args.cost, notes=args.notes, tool_version=args.tool_version,
+                source=args.source, kind=args.kind, dest=args.dest, replace=args.replace)
+            print(f"{status} : {key}")
+            print(f"  SHA-256 {entry['sha256']} ({entry['bytes']} octets, {entry['kind']})")
+            pv = entry["provenance"]
+            print(f"  {pv['tool']} / {pv['model']}, {pv['date']}, licence : {pv['license']}")
+            print(f"  Verrou : {config.ASSETS_LOCK} (à committer avec la scène ; le média lui-même n'est pas versionné)")
+            return EXIT_OK
+        if args.assets_cmd == "verify":
+            rows = assets.verify()
+            bad = [r for r in rows if r["status"] != "ok"]
+            for r in rows:
+                print(f"{'PASS' if r['status'] == 'ok' else 'FAIL'} {r['path']} : {r['status']}"
+                      + (f" -- {r['detail']}" if r["detail"] else ""))
+            print(f"\n{len(rows) - len(bad)}/{len(rows)} asset(s) IA conforme(s) au verrou {config.ASSETS_LOCK.name}"
+                  if rows else f"Aucun asset IA (verrou {config.ASSETS_LOCK.name} vide, dossier {config.AI_ASSETS_DIR} vide).")
+            return EXIT_OK if not bad else EXIT_FAIL
+        rows = assets.verify()
+        if args.json:
+            print(json.dumps(rows, ensure_ascii=False, indent=2))
+            return EXIT_OK
+        if not rows:
+            print(f"Aucun asset IA gelé ({config.ASSETS_LOCK}).")
+            return EXIT_OK
+        for r in rows:
+            e = r["entry"] or {}
+            pv = e.get("provenance") or {}
+            size = f"{e['bytes'] / 1e6:.1f} Mo" if e else "—"
+            print(f"{r['path']}  [{r['status']}]  {e.get('kind', '?')}, {size}")
+            if pv:
+                print(f"    {pv.get('tool')} / {pv.get('model')} — {pv.get('date')} — licence : {pv.get('license')}"
+                      + (f" — coût : {pv['cost']}" if pv.get("cost") else ""))
+        return EXIT_OK
+    except assets.AssetError as exc:
+        print(f"ERREUR : {exc}", file=sys.stderr)
+        return EXIT_FAIL
+
+
 # ---------------------------------------------------------------------------------------------
 # Analyse des arguments
 # ---------------------------------------------------------------------------------------------
@@ -766,6 +820,33 @@ def build_parser() -> argparse.ArgumentParser:
     s = scene_cmd("status", cmd_status, "avancement d'un rendu")
     s.add_argument("--lines", type=int, default=8, help="lignes de journal affichées")
     scene_cmd("versions", cmd_versions, "archiver les versions des outils")
+
+    asp = sub.add_parser("assets", help="assets IA gelés : add (geler), verify, list (assets.lock.json)")
+    asub = asp.add_subparsers(dest="assets_cmd", required=True)
+    aa = asub.add_parser("add", help="geler une sortie d'IA : copie sous assets/ai/, empreinte, provenance")
+    aa.add_argument("file", help="fichier produit par l'IA (copié sous assets/ai/<nature>/ s'il est ailleurs)")
+    aa.add_argument("--tool", required=True, help="outil ou service (ex. « Gemini/Flow », « ElevenLabs »)")
+    aa.add_argument("--model", required=True, help="modèle (ex. « veo-3 »)")
+    pg = aa.add_mutually_exclusive_group(required=True)
+    pg.add_argument("--prompt", help="prompt ou texte source")
+    pg.add_argument("--prompt-file", help="fichier texte contenant le prompt (prompts longs)")
+    aa.add_argument("--license", required=True, help="licence ou conditions d'utilisation de la sortie")
+    aa.add_argument("--seed", default=None, help="graine si l'outil la fournit")
+    aa.add_argument("--date", default=None, help="date de génération AAAA-MM-JJ (défaut : aujourd'hui)")
+    aa.add_argument("--cost", default=None, help="coût ou quota consommé (ex. « 20 crédits Flow »)")
+    aa.add_argument("--notes", default=None)
+    aa.add_argument("--tool-version", default=None)
+    aa.add_argument("--source", default="manual_import", choices=("manual_import", "api", "local"),
+                    help="manual_import (défaut) : téléchargé à la main ; api : module mograph ; local : modèle local")
+    aa.add_argument("--kind", default=None, choices=("video", "image", "audio", "subtitles", "mesh", "text", "other"),
+                    help="nature (défaut : déduite de l'extension)")
+    aa.add_argument("--dest", default=None, help="sous-chemin sous assets/ai/ (défaut : <nature>/<nom du fichier>)")
+    aa.add_argument("--replace", action="store_true",
+                    help="remplacer un asset déjà gelé par une autre version (les scènes concernées seront re-rendues)")
+    asub.add_parser("verify", help="vérifier chaque asset IA : présent, empreinte identique ; fichiers non gelés")
+    al = asub.add_parser("list", help="lister les assets IA gelés et leur provenance")
+    al.add_argument("--json", action="store_true", help="sortie JSON")
+    asp.set_defaults(func=cmd_assets)
 
     sb = sub.add_parser("synth-beat", help="générer une piste de test déterministe")
     sb.add_argument("--bpm", type=float, required=True)

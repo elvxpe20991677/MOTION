@@ -2,8 +2,9 @@
 
 Chaque livrable de ``compiled["outputs"]`` est inspecté par ffprobe (avec ``-count_frames`` : les
 images sont COMPTÉES en décodant, pas lues dans l'en-tête) puis par des passes FFmpeg de contenu
-(alphaextract, blackdetect, ebur128). S'y ajoutent trois contrôles de scène : zones sûres (relevés
-``__layout`` du manifeste maître), résultat du test de déterminisme et déclaration d'usage de l'IA.
+(alphaextract, blackdetect, ebur128). S'y ajoutent quatre contrôles de scène : zones sûres (relevés
+``__layout`` du manifeste maître), résultat du test de déterminisme, déclaration d'usage de l'IA et
+assets IA gelés (verrou assets.lock.json, bloquant).
 
 Format d'un contrôle (CONTRACT §4) :
     {"id", "label", "status": "PASS"|"FAIL"|"WARN"|"SKIP", "expected", "actual", "blocking", "detail"}
@@ -1192,6 +1193,33 @@ def check_ai_disclosure(compiled: dict) -> dict:
                   "Aucun asset de assets/ai/ utilisé" + (" ; aucune IA déclarée." if disc else " : aucune déclaration requise."))
 
 
+def check_ai_lock(compiled: dict) -> dict:
+    """Assets IA gelés (CONTRACT §11.4) : chacun verrouillé, présent, empreinte identique. BLOQUANT.
+
+    Le rendu a déjà refusé tout asset non gelé ; ce contrôle garantit en plus que la provenance
+    reportée correspond bien aux fichiers présents au moment du QC.
+    """
+    from pipeline import assets
+
+    label = "scène : assets IA gelés (assets.lock.json)"
+    expected = "chaque asset de assets/ai/ utilisé est verrouillé, présent et d'empreinte identique"
+    if "assets" not in compiled:
+        return _check("scene.ai_lock", label, "SKIP", expected, None, False,
+                      "Relevé des assets absent du compilé (scène compilée avant la phase 1) : recompilez la scène.")
+    paths = assets.ai_paths_of(compiled)
+    if not paths:
+        return _check("scene.ai_lock", label, "PASS", expected, {"ai_assets": 0}, True, "Aucun asset IA utilisé.")
+    try:
+        problems = assets.problems_for(paths)
+    except assets.AssetError as exc:
+        problems = [str(exc)]
+    actual = {"ai_assets": len(paths), "problems": len(problems)}
+    if problems:
+        return _check("scene.ai_lock", label, "FAIL", expected, actual, True, " ; ".join(problems))
+    return _check("scene.ai_lock", label, "PASS", expected, actual, True,
+                  f"{len(paths)} asset(s) IA gelé(s), empreintes conformes au verrou.")
+
+
 def _md_text(value: Any) -> str:
     """Texte libre sur une seule ligne : un retour à la ligne ne peut pas créer de titre Markdown."""
     return " ".join(str(value).split())
@@ -1232,6 +1260,23 @@ def _provenance_lines(report: dict) -> list[str]:
     ai_assets = report.get("ai_assets") or []
     lines.append("- Assets produits par IA (assets/ai/) : "
                  + (", ".join(f"`{_md_text(a)}`" for a in ai_assets) if ai_assets else "aucun"))
+    locked = report.get("ai_assets_lock") or {}
+    for path in ai_assets:
+        entry = locked.get(path)
+        if not entry:
+            lines.append(f"  - `{_md_text(path)}` : **absent du verrou** (provenance inconnue)")
+            continue
+        pv = entry.get("provenance") or {}
+        prompt = _md_text(pv.get("prompt", ""))
+        extra = [f"graine {_md_text(pv['seed'])}" if pv.get("seed") is not None else "",
+                 f"coût {_md_text(pv['cost'])}" if pv.get("cost") else "",
+                 f"source {pv['source']}" if pv.get("source") else ""]
+        lines.append(f"  - `{_md_text(path)}` ({entry.get('kind')}, SHA-256 `{entry.get('sha256', '')[:16]}…`) : "
+                     f"{_md_text(pv.get('tool', '?'))}"
+                     + (f" {_md_text(pv['tool_version'])}" if pv.get("tool_version") else "")
+                     + f" / {_md_text(pv.get('model', '?'))}, généré le {_md_text(pv.get('date', '?'))}, licence : "
+                     f"{_md_text(pv.get('license', '?'))}" + "".join(f", {e}" for e in extra if e)
+                     + f" ; prompt : « {prompt[:300]}{'…' if len(prompt) > 300 else ''} »")
     return lines
 
 
@@ -1313,6 +1358,18 @@ def render_markdown(report: dict) -> str:
     return "\n".join(lines)
 
 
+def _lock_entries(compiled: dict) -> dict:
+    from pipeline import assets
+
+    paths = assets.ai_paths_of(compiled)
+    if not paths:
+        return {}
+    try:
+        return assets.entries_for(paths)
+    except assets.AssetError:
+        return {p: None for p in paths}
+
+
 def run_qc(compiled: dict, *, log: Callable[[str], Any] = print) -> dict:
     """Contrôle TOUS les livrables + zones sûres + déterminisme ; écrit qc_report.json et .md."""
     _validate_compiled(compiled)
@@ -1351,7 +1408,8 @@ def run_qc(compiled: dict, *, log: Callable[[str], Any] = print) -> dict:
     checks.append(check_safe_zones(compiled))
     checks.append(check_determinism(compiled))
     checks.append(check_ai_disclosure(compiled))
-    say("  " + " ; ".join(f"{c['id']} : {c['status']}" for c in checks[-3:]))
+    checks.append(check_ai_lock(compiled))
+    say("  " + " ; ".join(f"{c['id']} : {c['status']}" for c in checks[-4:]))
 
     blocking_failures = [c["id"] for c in checks if c["status"] == "FAIL" and c["blocking"]]
     verdict = VERDICT_KO if blocking_failures else VERDICT_OK
@@ -1385,6 +1443,8 @@ def run_qc(compiled: dict, *, log: Callable[[str], Any] = print) -> dict:
         # Provenance déclarée et assets IA utilisés (CONTRACT §11.2), repris dans la section Provenance.
         "provenance": compiled.get("provenance"),
         "ai_assets": [a["path"] for a in (compiled.get("assets") or []) if a.get("ai")],
+        # Provenance des assets IA gelés (CONTRACT §11.4), lue dans le verrou.
+        "ai_assets_lock": _lock_entries(compiled),
         "checks": checks,
         "tools": {"ffmpeg": _tool_version(config.FFMPEG), "ffprobe": _tool_version(config.FFPROBE)},
         "report_paths": {"json": str(json_path), "md": str(md_path)},

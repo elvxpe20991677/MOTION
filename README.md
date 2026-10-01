@@ -113,6 +113,8 @@ build que la machine de rendu) ; chaque job vérifie d'abord les versions (`scri
 | `python mograph.py batch <modèle> --data lignes.csv` | **déclinaisons** : une vidéo par ligne du CSV |
 | `python mograph.py beats <musique> [--scene <scène> --write]` | tempo, premier temps fort et drop détectés |
 | `python mograph.py sheets <scène>` | planches contact (`out/<scène>/planche_contact.png`, `planche_alpha.png`) |
+| `python mograph.py assets add <fichier> --tool … --model … --prompt … --license …` | **geler** une sortie d'IA (copie sous `assets/ai/`, SHA-256 + provenance dans `assets.lock.json`) |
+| `python mograph.py assets verify` / `assets list` | assets IA présents et intacts / provenance |
 | `python mograph.py synth-beat --bpm 120 --duration 5 --out assets/audio/beat.wav` | piste test |
 | `python mograph.py status <scène>` | avancement (y compris d'un rendu détaché) |
 | `python mograph.py versions <scène>` | archive les versions dans `out/<scène>/versions.txt` |
@@ -222,6 +224,10 @@ safe, boil, anim`.
   texte (fondus d'entrée/sortie `fade`, 0,12 s par défaut), placé par défaut en bas de la zone sûre
   titre, largeur 90 % de la zone ; balises `<i>`, `{\an8}` retirées. Glyphes vérifiés comme tout
   texte (aucune police de repli).
+- `ai_clip` : `asset (assets/ai/….mp4|mov…), w, h, fit, start, loop` — clip vidéo produit par une IA
+  et **gelé** (`assets add`) ; rendu exactement comme `video` (extraction FFmpeg image par image, alpha
+  conservé). Le rendu **échoue** si le clip n'est pas dans `assets.lock.json` ou si son empreinte a
+  changé.
 
 ### Tweens (`anim`)
 `move, at, dur, from, to, ease, stagger, target (self|chars|words|lines|shape|bars), revealDir,
@@ -257,6 +263,14 @@ voice, subtitles, 3d, matte, other). Tout fichier placé sous `assets/ai/` est c
 par une IA : sans déclaration `ai_used: true`, la compilation avertit et le QC émet un WARN (non
 bloquant) `scene.ai_disclosure`. La déclaration est reprise dans la section « Provenance » de
 `qc_report.md`.
+
+**Assets IA gelés** : une sortie d'IA est générée UNE fois puis gelée par `mograph assets add` (copie
+sous `assets/ai/<nature>/`, SHA-256 et provenance — outil, modèle, date, prompt, graine, licence,
+coût — dans `assets.lock.json`). Le rendu n'appelle jamais une IA. Tout fichier de `assets/ai/`
+utilisé par une scène (calque `ai_clip`, `video`, `image`, sous-titres, audio) doit être gelé et
+intact : sinon la compilation, le rendu, l'encodage et le QC (`scene.ai_lock`, bloquant) échouent.
+La provenance de chaque asset figure dans `qc_report.md`. Seul le verrou est versionné : les médias
+de `assets/ai/` ne le sont pas (dépôt public, licences) — voir `assets/ai/README.md`.
 
 ### Livrables
 `hevc_main10` (.mp4, `hvc1`, yuv420p10le), `prores_422hq` (.mov, timecode 01:00:00:00),

@@ -331,6 +331,10 @@ def encode_scene(compiled: dict, *, log=print) -> list[Path]:
     """Encode tous les livrables ; écrit out/<scene>/encode_commands.sh ; renvoie les chemins produits."""
     scene_id = compiled["scene_id"]
     _check_master(compiled)
+    # Assets IA gelés (CONTRACT §11.4) : une piste ou un média IA modifié depuis le gel arrête l'encodage.
+    from pipeline import assets
+
+    assets.check_compiled(compiled, stage="Encodage")
     audio = compiled.get("audio")
     if audio and audio.get("src") and not Path(audio["src"]).is_file():
         raise EncodeError(f"Piste audio absente : {audio['src']}. Générez-la (audio.synth + "

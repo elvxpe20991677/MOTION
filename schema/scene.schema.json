@@ -373,7 +373,7 @@
       "required": ["id", "type"],
       "properties": {
         "id": { "$ref": "#/$defs/id" },
-        "type": { "enum": ["text", "shape", "image", "sequence", "chart", "video", "subtitles"] },
+        "type": { "enum": ["text", "shape", "image", "sequence", "chart", "video", "subtitles", "ai_clip"] },
         "x": { "$ref": "#/$defs/position", "default": "50%" },
         "y": { "$ref": "#/$defs/position", "default": "50%" },
         "anchor": {
@@ -470,6 +470,20 @@
               "fit": { "enum": ["cover", "contain", "fill"], "default": "cover" },
               "start": { "type": "number", "minimum": 0, "default": 0, "description": "Point d'entrée dans la source (s) : l'image 0 du plan montre la source à « start »." },
               "loop": { "type": "boolean", "default": false, "description": "Reboucle une source plus courte que le plan (sinon la dernière image est tenue)." }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "ai_clip" } } },
+          "then": {
+            "required": ["asset", "w", "h"],
+            "properties": {
+              "asset": { "type": "string", "minLength": 1, "description": "Clip vidéo produit par une IA, GELÉ : fichier sous assets/ai/ enregistré dans assets.lock.json (python mograph.py assets add). Rendu par le même chemin que « video » (image k = asset à start + k / fps, alpha conservé)." },
+              "w": { "type": "number", "exclusiveMinimum": 0 },
+              "h": { "type": "number", "exclusiveMinimum": 0 },
+              "fit": { "enum": ["cover", "contain", "fill"], "default": "cover" },
+              "start": { "type": "number", "minimum": 0, "default": 0, "description": "Point d'entrée dans le clip (s)." },
+              "loop": { "type": "boolean", "default": false, "description": "Reboucle un clip plus court que le plan (sinon la dernière image est tenue)." }
             }
           }
         },

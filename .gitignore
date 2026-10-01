@@ -29,3 +29,8 @@ assets/audio/essai_*_beat.wav.synth.json
 .env
 .env.*
 !.env.example
+
+# Médias des assets IA gelés : NON versionnés par défaut (dépôt public, licences des services, poids).
+# Leur empreinte SHA-256 et leur provenance le sont, dans assets.lock.json (CONTRACT §11.4).
+assets/ai/*
+!assets/ai/README.md

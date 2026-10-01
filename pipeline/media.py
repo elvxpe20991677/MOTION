@@ -102,5 +102,13 @@ def ensure_job(job: dict, *, log=print) -> Path:
 
 
 def ensure_shot_media(compiled: dict, shot_index: int, *, log=print) -> list[Path]:
-    """Toutes les vidéos d'un plan, prêtes avant son rendu web."""
+    """Toutes les vidéos d'un plan, prêtes avant son rendu web.
+
+    Avant tout, les assets IA de la scène sont revérifiés contre le verrou (CONTRACT §11.4) : un
+    fichier gelé modifié depuis la compilation (rendu détaché long, aperçu) arrête le rendu.
+    """
+    from pipeline import assets
+
+    shot_id = compiled["shots"][shot_index]["id"]
+    assets.check_compiled(compiled, stage=f"Rendu du plan « {shot_id} »")
     return [ensure_job(job, log=log) for job in compiled["shots"][shot_index].get("media") or []]

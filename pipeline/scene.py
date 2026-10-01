@@ -35,6 +35,7 @@ import jsonschema
 import referencing
 from referencing.jsonschema import DRAFT202012
 
+from pipeline import assets as assets_mod
 from pipeline import config
 
 __all__ = [
@@ -1676,6 +1677,8 @@ class _Compiler:
             self._chart_fields(st, lp, layer, cl)
         elif typ == "video":
             self._video_fields(st, lp, layer, cl)
+        elif typ == "ai_clip":
+            self._ai_clip_fields(st, lp, layer, cl)
         tweens, initial, targets = self._compile_tweens(st, lp, layer, cl)
         cl["initial"] = initial
         cl["tweens"] = tweens
@@ -1806,6 +1809,37 @@ class _Compiler:
         self._media.append(job)
         # Pour le runtime, c'est une séquence d'images comme une plaque 3D (même code, même décodage).
         cl.update({"type": "sequence", "plate": job["plate_key"], "w": w, "h": h})
+
+    def _ai_clip_fields(self, st: _ShotTiming, lp: tuple, layer: dict, cl: dict) -> None:
+        """Calque « ai_clip » : clip vidéo IA GELÉ, rendu par le chemin « video » (CONTRACT §11.4).
+
+        Même extraction exacte que « video » (image k = clip à start + k / fps, alpha conservé, la
+        page ne lit jamais la vidéo) ; en plus, le clip doit figurer dans le verrou des assets IA
+        avec sa provenance (l'empreinte est contrôlée avec tous les assets IA, dans _asset_list).
+        """
+        asset = layer["asset"]
+        path = (config.ROOT / asset).resolve()
+        ai_dir = assets_mod._rel(config.AI_ASSETS_DIR)
+        if not assets_mod.is_ai_path(path):
+            self.fail(lp + ("asset",), f"le clip IA {_q(asset)} doit se trouver sous {ai_dir}/ : gelez-le avec « python "
+                                       "mograph.py assets add <fichier> --tool … --model … --prompt … --license … », qui "
+                                       "l'y range et l'enregistre dans le verrou.")
+        try:
+            entry = assets_mod.load_lock()["assets"].get(assets_mod.lock_key(path))
+        except assets_mod.AssetError as exc:
+            self.fail(lp + ("asset",), str(exc))
+        if entry is None:
+            self.fail(lp + ("asset",), f"le clip IA {_q(asset)} n'est pas gelé (absent de {config.ASSETS_LOCK.name}) : "
+                                       f"python mograph.py assets add {asset} --tool … --model … --prompt … --license …")
+        if entry["kind"] != "video":
+            self.fail(lp + ("asset",), f"{_q(asset)} est gelé comme « {entry['kind']} » : un calque ai_clip attend une "
+                                       "vidéo (une image IA s'affiche avec un calque « image »).")
+        if not path.is_file():
+            self.fail(lp + ("asset",), f"clip IA {_q(asset)} introuvable sur le disque (gelé le {entry['added'][:10]}) : "
+                                       "les médias de assets/ai/ ne sont pas versionnés, replacez le fichier d'origine.")
+        self._video_fields(st, lp, {**layer, "src": asset}, cl)
+        # Après le calcul de l'empreinte du job : les jobs vidéo existants gardent exactement la leur.
+        self._media[-1]["ai_sha256"] = entry["sha256"]
 
     def _expand_subtitles(self) -> None:
         """Remplace chaque calque « subtitles » par un calque texte par réplique (fondus d'entrée/sortie)."""
@@ -2541,6 +2575,19 @@ class _Compiler:
             path = (config.ROOT / rel).resolve()
             items.append({"path": rel, "kinds": sorted(self._assets[rel]), "ai": path.is_relative_to(ai_root)})
         ai_items = [a["path"] for a in items if a["ai"]]
+        if ai_items:
+            # Assets gelés (CONTRACT §11.4) : verrouillés, présents, empreinte identique, sinon REFUS ; le
+            # rendu n'appelle jamais une IA et ne doit jamais utiliser une sortie d'IA non tracée.
+            try:
+                lock = assets_mod.load_lock()
+                for msg in assets_mod.problems_for(ai_items, lock):
+                    self.err("assets", msg)
+                for a in items:
+                    entry = lock["assets"].get(a["path"]) if a["ai"] else None
+                    if entry is not None:
+                        a["sha256"] = entry["sha256"]
+            except assets_mod.AssetError as exc:
+                self.err("assets", str(exc))
         disclosure = (provenance or {}).get("ai_disclosure")
         listed = f"{', '.join(ai_items[:3])}{'…' if len(ai_items) > 3 else ''}"
         # Avertissements dès la compilation : le QC les signalera aussi (scene.ai_disclosure).

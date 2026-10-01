@@ -615,11 +615,13 @@ def main() -> int:
     fake_ai = TEST_DIR / "assets" / "ai"
     fake_ai.mkdir(parents=True, exist_ok=True)
     cv2.imwrite(str(fake_ai / "fond_ia.png"), np.full((8, 8, 3), 90, np.uint8))
-    saved = (config.ASSETS_DIR, config.SERVED_PREFIXES["/assets/"], config.AI_ASSETS_DIR)
-    # assets/ et assets/ai/ redirigés vers build/_tests/11 : aucun fichier de test dans le vrai dossier.
+    saved = (config.ASSETS_DIR, config.SERVED_PREFIXES["/assets/"], config.AI_ASSETS_DIR, config.ASSETS_LOCK)
+    # assets/, assets/ai/ et le verrou redirigés vers build/_tests/11 : rien n'est écrit dans les vrais.
     config.ASSETS_DIR = TEST_DIR / "assets"
     config.SERVED_PREFIXES["/assets/"] = TEST_DIR / "assets"
-    config.AI_ASSETS_DIR = fake_ai
+    config.AI_ASSETS_DIR = fake_ai.resolve()
+    config.ASSETS_LOCK = (TEST_DIR / "assets.lock.json").resolve()
+    config.ASSETS_LOCK.unlink(missing_ok=True)
     decl = {"ai_used": True, "roles": ["image"], "tools": [{"name": "Gemini", "model": "imagen", "role": "fond"}],
             "date": "2026-10-01", "statement": "Fond généré par IA"}
     try:
@@ -631,6 +633,10 @@ def main() -> int:
                     r["provenance"] = prov
             return mutated(rich, fn)
 
+        # Phase 3 : un asset de assets/ai/ non gelé est REFUSÉ ; une fois gelé, la provenance s'applique.
+        expect_refused(with_ai(None), "asset IA non gelé (phase 3)", ["absent du verrou"])
+        from pipeline import assets as assets_mod
+        assets_mod.add(fake_ai / "fond_ia.png", tool="Gemini", model="imagen", prompt="fond gris uni", license="test")
         c0 = scene.compile_scene(with_ai(None))
         a0 = [a for a in c0["assets"] if a["ai"]]
         check(len(a0) == 1 and a0[0]["kinds"] == ["image"] and a0[0]["path"].endswith("assets/ai/fond_ia.png")
@@ -662,7 +668,7 @@ def main() -> int:
               "QC scene.ai_disclosure : WARN sans déclaration ou si ai_used est faux, PASS si déclarée, jamais bloquant",
               f"{q0['status']} {q1['status']} {q2['status']}")
     finally:
-        config.ASSETS_DIR, config.SERVED_PREFIXES["/assets/"], config.AI_ASSETS_DIR = saved
+        config.ASSETS_DIR, config.SERVED_PREFIXES["/assets/"], config.AI_ASSETS_DIR, config.ASSETS_LOCK = saved
 
     print()
     if failures:

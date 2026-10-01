@@ -44,6 +44,9 @@ python mograph.py preview ma_video                 # aperçu en direct, recharg�
 - **Musique** : `python mograph.py beats assets/audio/musique.wav --scene ma_video --write` écrit
   `bpm`, `offset` et le marqueur `drop` ; `"normalize": true` règle le volume.
 - **Déclinaisons** : `{{colonne}}` dans le modèle + `batch modele.json --data lignes.csv`.
+- **Clip vidéo généré par une IA** (Gemini/Flow…) : le geler une fois (`python mograph.py assets add
+  clip.mp4 --tool "Gemini/Flow" --model "veo-3" --prompt "…" --license "…"`), puis calque
+  `{"id": "plan", "type": "ai_clip", "asset": "assets/ai/video/clip.mp4", "w": 1920, "h": 1080}`.
 - **Média produit par une IA** (voix, musique, clip, image) : le ranger sous `assets/ai/` et déclarer
   `"provenance": {"ai_disclosure": {"ai_used": true, "roles": ["music"], "tools": [{"name": "…",
   "role": "…"}], "date": "AAAA-MM-JJ"}}` (sinon avertissement à la compilation et au QC).

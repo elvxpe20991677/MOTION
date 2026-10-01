@@ -101,6 +101,8 @@ jobs:
         run: .venv/bin/python tests/verify_step13_blender.py
       - name: Nouveautés — de bout en bout
         run: .venv/bin/python tests/verify_features.py
+      - name: Phase 3 — assets IA gelés
+        run: .venv/bin/python tests/verify_step30_assets.py
       - name: Journaux et images de test (en cas d'échec)
         if: failure()
         uses: actions/upload-artifact@v4
