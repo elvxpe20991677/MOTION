@@ -140,8 +140,11 @@ def test_transitions() -> None:
 
 def test_video_subtitles_audio() -> None:
     print("== C. Calque vidéo + sous-titres + normalisation audio ==")
+    from pipeline import config
+
     ASSETS.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=25:duration=3",
+    # config.FFMPEG (et non « ffmpeg » du PATH) : le FFmpeg épinglé imposé par MOGRAPH_FFMPEG en CI.
+    subprocess.run([config.FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=25:duration=3",
                     "-c:v", "libx264", "-pix_fmt", "yuv420p", "-colorspace", "bt709", str(ASSETS / "mire.mp4")], check=True)
     (ASSETS / "st.srt").write_text("1\n00:00:00,400 --> 00:00:01,200\nPremière <i>réplique</i>\n\n"
                                    "2\n00:00:01,600 --> 00:00:02,400\nSeconde réplique\n", encoding="utf-8")

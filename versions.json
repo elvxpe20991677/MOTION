@@ -1,0 +1,21 @@
+{
+  "$comment": "Versions de référence de mograph (CONTRACT §0, docs/BASELINE.md). Lu par scripts/check_versions.py (machine de rendu et CI). Toute mise à jour peut changer des pixels : la valider par scripts/baseline.py puis modifier ce fichier dans le même commit.",
+  "ffmpeg": {
+    "reference": "9.0.2",
+    "reference_build": "gyan.dev full_build (Windows : winget install Gyan.FFmpeg, ou choco install ffmpeg-full --version=9.0.2)",
+    "ci_linux": "6.1.1",
+    "ci_linux_note": "paquet Ubuntu 24.04 (aucune build officielle épinglable de la 9.0.2 pour Linux) : écart documenté, sorties validées par les tests (CONTRACT §7, §11.3)",
+    "required_filters": ["zscale", "premultiply", "alphaextract", "blackdetect", "ebur128", "signalstats"],
+    "required_encoders": ["libx265", "prores_ks"]
+  },
+  "python": "3.12.10",
+  "pip_constraints": "constraints.txt",
+  "blender_python": "3.11.15",
+  "bpy": "5.0.1",
+  "blender_constraints": "constraints-blender.txt",
+  "chromium": "141.0.7390.37",
+  "npm_lock": "package-lock.json",
+  "node": "24.19.0",
+  "uv": "0.11.7",
+  "no_pixel_effect": ["node", "uv"]
+}

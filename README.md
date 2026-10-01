@@ -41,22 +41,22 @@ Prérequis : git, Python 3.12, Node.js (≥ 22), uv, FFmpeg ≥ 6.1 compilé ave
 ```powershell
 git clone <dépôt> mograph ; cd mograph
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt -c constraints.txt
 .\.venv\Scripts\python.exe -m playwright install chromium
 npm ci
-uv venv --python 3.11 .venv-blender
-uv pip install --python .venv-blender\Scripts\python.exe bpy==5.0.1
+uv venv --python 3.11.15 .venv-blender
+uv pip install --python .venv-blender\Scripts\python.exe bpy==5.0.1 -c constraints-blender.txt
 ```
 
 ### Ubuntu 24.04 / WSL2 / macOS
 ```bash
 sudo apt install -y git curl build-essential tmux mediainfo mpv ffmpeg \
   libxrender1 libxxf86vm1 libxfixes3 libxi6 libxkbcommon0 libsm6 libgl1 libegl1
-python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
+python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt -c constraints.txt
 .venv/bin/python -m playwright install --with-deps chromium
 npm ci
 curl -LsSf https://astral.sh/uv/install.sh | sh
-uv venv --python 3.11 .venv-blender && uv pip install --python .venv-blender/bin/python bpy==5.0.1
+uv venv --python 3.11.15 .venv-blender && uv pip install --python .venv-blender/bin/python bpy==5.0.1 -c constraints-blender.txt
 ```
 (macOS : `brew install git tmux mediainfo mpv ffmpeg node uv python@3.12`.)
 
@@ -77,12 +77,17 @@ signale toute régression (code ≠ 0). Référence : `docs/BASELINE.md`.
 FFmpeg 6.1.1 (Ubuntu 24.04) convient : ses conversions d'alpha inexactes (swscale, zscale) sont
 contournées par l'encodeur (voir `docs/CONTRACT.md` §7), vérifié par `tests/verify_step15_encode.py`.
 
-Versions figées : `requirements.txt` (pip), `package.json` + `package-lock.json` (npm),
-`bpy==5.0.1`. Toute mise à jour peut changer des pixels : refaire la porte de déterminisme.
+Versions figées : `versions.json` (références), `requirements.txt` + `constraints.txt` (pip, dépendances
+indirectes comprises), `package.json` + `package-lock.json` (npm), `bpy==5.0.1` + `constraints-blender.txt`.
+`scripts/check_versions.py` vérifie l'installation (FFmpeg 9.0.2 gyan.dev « full » sur la machine de
+référence ; `--profile ci-linux` sous Ubuntu, où FFmpeg est la 6.1.1 du paquet). Toute mise à jour peut
+changer des pixels : refaire la porte de déterminisme et la baseline.
 
 **VS Code** : ouvrir le dossier suffit. `.vscode/settings.json` associe les schémas aux scènes,
 modèles et presets : autocomplétion des propriétés, des valeurs permises et erreurs soulignées à la
-frappe. **CI** : `.github/workflows/tests.yml` rejoue les tests à chaque push (Ubuntu 24.04).
+frappe. **CI** : `.github/workflows/tests.yml` rejoue les tests à chaque push : deux jobs Ubuntu 24.04
+(FFmpeg 6.1.1, écart documenté) et un job Windows avec FFmpeg 9.0.2 épinglé (Chocolatey `ffmpeg-full`, même
+build que la machine de rendu) ; chaque job vérifie d'abord les versions (`scripts/check_versions.py`).
 
 ---------------------------------------------------------------------------------------------------
 ## 2. Commandes

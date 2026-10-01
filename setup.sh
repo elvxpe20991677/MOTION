@@ -2,7 +2,8 @@
 # Installation reproductible de mograph (Linux / macOS / WSL2), idempotente : relancer ne casse rien.
 #   ./setup.sh            installe (ou complète) puis vérifie
 #   ./setup.sh --tests    idem, puis rejoue les tests rapides des étapes 9, 11, 14, 15, 16
-# Versions figées : requirements.txt (pip), package-lock.json (npm), bpy==5.0.1.
+# Versions figées : requirements.txt + constraints.txt (pip), package-lock.json (npm), bpy==5.0.1 +
+# constraints-blender.txt ; références dans versions.json (contrôle : scripts/check_versions.py).
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -40,7 +41,8 @@ ok "FFmpeg : zscale, premultiply, extractplanes, mergeplanes, libx265, prores_ks
 
 step "Orchestrateur Python 3.12 (.venv)"
 [ -x .venv/bin/python ] || "$PY" -m venv .venv
-.venv/bin/python -m pip install --quiet --disable-pip-version-check -r requirements.txt
+# -c constraints.txt : dépendances indirectes figées aussi (installation identique à la référence).
+.venv/bin/python -m pip install --quiet --disable-pip-version-check -r requirements.txt -c constraints.txt
 .venv/bin/python -m playwright install chromium >/dev/null
 ok "$(.venv/bin/python -c 'import playwright, jsonschema, cv2, numpy; print("playwright", "jsonschema", jsonschema.__version__ if hasattr(jsonschema,"__version__") else "", "opencv", cv2.__version__, "numpy", numpy.__version__)' 2>/dev/null)"
 
@@ -49,10 +51,14 @@ npm ci --silent --no-audit --no-fund
 [ -f node_modules/gsap/dist/gsap.min.js ] || fail "gsap absent après npm ci"
 ok "gsap 3.15.0 + polices @fontsource"
 
-step "Blender bpy 5.0.1 (.venv-blender, CPython 3.11)"
-[ -x .venv-blender/bin/python ] || uv venv --quiet --python 3.11 .venv-blender
-uv pip install --quiet --python .venv-blender/bin/python bpy==5.0.1
+step "Blender bpy 5.0.1 (.venv-blender, CPython 3.11.15)"
+[ -x .venv-blender/bin/python ] || uv venv --quiet --python 3.11.15 .venv-blender
+uv pip install --quiet --python .venv-blender/bin/python bpy==5.0.1 -c constraints-blender.txt
 ok "bpy $(.venv-blender/bin/python -c 'import bpy; print(bpy.app.version_string)' 2>/dev/null | tail -1)"
+
+step "Versions de référence (versions.json)"
+# Informatif : sous Linux, FFmpeg diffère de la référence Windows (écart documenté, CONTRACT §11.3).
+.venv/bin/python scripts/check_versions.py --profile ci-linux || printf "  Écarts de version ci-dessus : les pixels peuvent différer de la référence.\n"
 
 step "Vérification rapide"
 .venv/bin/python mograph.py validate demo_flat_riso >/dev/null && ok "validate demo_flat_riso"

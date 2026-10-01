@@ -1,7 +1,12 @@
-# Vérifications automatiques de mograph à chaque push / pull request (Ubuntu 24.04 = plateforme SPEC).
-# Deux jobs : « rapide » (compilateur, compose, encodage, audio, QC) et « rendu » (Chromium + Blender,
-# nouveautés de bout en bout). Versions figées identiques au poste de rendu (requirements.txt,
-# package-lock.json, bpy 5.0.1) ; FFmpeg = paquet Ubuntu 6.1.1.
+# Vérifications automatiques de mograph à chaque push / pull request.
+# Trois jobs :
+#   « rapide » et « rendu » (Ubuntu 24.04 = plateforme SPEC, FFmpeg = paquet Ubuntu 6.1.1 : écart
+#   documenté, voir versions.json et CONTRACT §11.3) ;
+#   « reference-windows » (Windows, FFmpeg gyan.dev 9.0.2 épinglé = même build que la machine de
+#   rendu : aligne la CI sur la version locale).
+# Toutes les autres versions sont figées à l'identique du poste de rendu (versions.json,
+# constraints.txt, constraints-blender.txt, package-lock.json) et contrôlées par
+# scripts/check_versions.py avant les tests.
 name: tests
 
 on:
@@ -13,6 +18,14 @@ concurrency:
   group: tests-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # Doivent rester égales à versions.json (check_versions.py échoue sinon).
+  PYTHON_VERSION: "3.12.10"
+  NODE_VERSION: "24.19.0"
+  UV_VERSION: "0.11.7"
+  BLENDER_PYTHON_VERSION: "3.11.15"
+  FFMPEG_WINDOWS_VERSION: "9.0.2"
+
 jobs:
   rapide:
     runs-on: ubuntu-24.04
@@ -21,20 +34,22 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
-      - name: FFmpeg (libx265, prores_ks, zscale)
+      - name: FFmpeg (paquet Ubuntu, libx265, prores_ks, zscale)
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - name: Dépendances Python et npm (versions figées)
         run: |
           python -m venv .venv
-          .venv/bin/pip install -r requirements.txt
+          .venv/bin/pip install -r requirements.txt -c constraints.txt
           .venv/bin/python -m playwright install --with-deps chromium
           npm ci
+      - name: Versions (profil ci-linux)
+        run: .venv/bin/python scripts/check_versions.py --profile ci-linux --no-blender
       - name: Étape 9 — presets
         run: .venv/bin/python tests/verify_step09_presets.py
       - name: Étape 11 — compilateur
@@ -55,13 +70,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
       - name: FFmpeg et bibliothèques système de bpy
         run: |
           sudo apt-get update
@@ -70,11 +87,13 @@ jobs:
       - name: Dépendances (Python, Chromium, npm, bpy)
         run: |
           python -m venv .venv
-          .venv/bin/pip install -r requirements.txt
+          .venv/bin/pip install -r requirements.txt -c constraints.txt
           .venv/bin/python -m playwright install --with-deps chromium
           npm ci
-          uv venv --python 3.11 .venv-blender
-          uv pip install --python .venv-blender/bin/python bpy==5.0.1
+          uv venv --python ${{ env.BLENDER_PYTHON_VERSION }} .venv-blender
+          uv pip install --python .venv-blender/bin/python bpy==5.0.1 -c constraints-blender.txt
+      - name: Versions (profil ci-linux)
+        run: .venv/bin/python scripts/check_versions.py --profile ci-linux
       - name: Étape 12 — pilote web (déterminisme, 4K, alpha, reprise)
         run: .venv/bin/python tests/verify_step12_web.py
       - name: Étape 13 — backend Blender
@@ -85,7 +104,62 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: build-tests
+          name: build-tests-linux
+          path: |
+            build/_tests/**/*.json
+            build/_tests/**/*.log
+          retention-days: 7
+
+  reference-windows:
+    runs-on: windows-2025
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+      - name: FFmpeg gyan.dev « full » épinglé (même build que la machine de rendu)
+        shell: pwsh
+        run: |
+          choco install ffmpeg-full --version=${{ env.FFMPEG_WINDOWS_VERSION }} -y --no-progress
+          # Le pipeline lit MOGRAPH_FFMPEG / MOGRAPH_FFPROBE (pipeline/config.py) : aucun autre
+          # FFmpeg présent sur l'image du runner ne peut être pris à sa place.
+          "MOGRAPH_FFMPEG=C:\ProgramData\chocolatey\bin\ffmpeg.exe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "MOGRAPH_FFPROBE=C:\ProgramData\chocolatey\bin\ffprobe.exe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Dépendances (Python, Chromium, npm, bpy)
+        run: |
+          python -m venv .venv
+          .venv/Scripts/python.exe -m pip install -r requirements.txt -c constraints.txt
+          .venv/Scripts/python.exe -m playwright install chromium
+          npm ci
+          uv venv --python ${{ env.BLENDER_PYTHON_VERSION }} .venv-blender
+          uv pip install --python .venv-blender/Scripts/python.exe bpy==5.0.1 -c constraints-blender.txt
+      - name: Versions (profil reference)
+        run: .venv/Scripts/python.exe scripts/check_versions.py --profile reference
+      - name: Étapes 9 à 17 et nouveautés
+        run: |
+          set -e
+          for t in tests/verify_step*.py tests/verify_features.py; do
+            echo "::group::$t"
+            .venv/Scripts/python.exe "$t"
+            echo "::endgroup::"
+          done
+      - name: Journaux et images de test (en cas d'échec)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-tests-windows
           path: |
             build/_tests/**/*.json
             build/_tests/**/*.log

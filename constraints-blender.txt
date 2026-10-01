@@ -1,0 +1,12 @@
+# Contraintes du venv Blender (.venv-blender, CPython 3.11.15) : bpy et toutes ses dépendances.
+# Relevées le 30/09/2026 (docs/BASELINE.md). Usage :
+#   uv pip install --python .venv-blender/<python> bpy==5.0.1 -c constraints-blender.txt
+bpy==5.0.1
+certifi==2026.7.22
+charset-normalizer==3.5.1
+cython==3.3.0
+idna==3.20
+numpy==1.26.4
+requests==2.34.2
+urllib3==2.8.0
+zstandard==0.25.0

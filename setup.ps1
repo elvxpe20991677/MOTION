@@ -4,7 +4,8 @@
 #   powershell -ExecutionPolicy Bypass -File .\setup.ps1 -Defender    idem + exclusion Defender de build\ (admin)
 # Prérequis installables par winget (le script indique la commande exacte s'il en manque un) :
 #   winget install Git.Git Python.Python.3.12 OpenJS.NodeJS.LTS astral-sh.uv Gyan.FFmpeg
-# Versions figées : requirements.txt (pip), package-lock.json (npm), bpy==5.0.1.
+# Versions figées : requirements.txt + constraints.txt (pip), package-lock.json (npm), bpy==5.0.1 +
+# constraints-blender.txt ; références dans versions.json (contrôle : scripts/check_versions.py).
 param([switch]$Tests, [switch]$Defender)
 
 $ErrorActionPreference = "Stop"
@@ -58,7 +59,8 @@ if (-not (Test-Path $venvPy)) {
     $pyExe = $py[0]; $pyArgs = @($py | Select-Object -Skip 1) + @("-m", "venv", ".venv")
     Run "création de .venv" { & $pyExe @pyArgs }
 }
-Run "pip install -r requirements.txt" { & $venvPy -m pip install --quiet --disable-pip-version-check -r requirements.txt }
+# -c constraints.txt : dépendances indirectes figées aussi (installation identique à la référence).
+Run "pip install -r requirements.txt -c constraints.txt" { & $venvPy -m pip install --quiet --disable-pip-version-check -r requirements.txt -c constraints.txt }
 Run "playwright install chromium" { & $venvPy -m playwright install chromium }
 Ok "playwright, jsonschema, opencv, numpy (versions de requirements.txt) + Chromium"
 
@@ -67,10 +69,10 @@ Run "npm ci" { & npm ci --silent --no-audit --no-fund }
 if (-not (Test-Path "node_modules\gsap\dist\gsap.min.js")) { Fail "gsap absent après npm ci" }
 Ok "gsap 3.15.0 + polices @fontsource"
 
-Step "Blender bpy 5.0.1 (.venv-blender, CPython 3.11)"
+Step "Blender bpy 5.0.1 (.venv-blender, CPython 3.11.15)"
 $bpyPy = Join-Path $PSScriptRoot ".venv-blender\Scripts\python.exe"
-if (-not (Test-Path $bpyPy)) { Run "uv venv .venv-blender" { & uv venv --quiet --python 3.11 .venv-blender } }
-Run "uv pip install bpy==5.0.1" { & uv pip install --quiet --python $bpyPy bpy==5.0.1 }
+if (-not (Test-Path $bpyPy)) { Run "uv venv .venv-blender" { & uv venv --quiet --python 3.11.15 .venv-blender } }
+Run "uv pip install bpy==5.0.1 -c constraints-blender.txt" { & uv pip install --quiet --python $bpyPy bpy==5.0.1 -c constraints-blender.txt }
 $bpyVer = & $bpyPy -c "import bpy; print(bpy.app.version_string)" 2>$null | Select-Object -Last 1
 Ok "bpy $bpyVer"
 # OptiX : le backend choisit OPTIX si une carte NVIDIA est détectée (device « auto »).
@@ -88,6 +90,11 @@ if ($Defender) {
     try { Add-MpPreference -ExclusionPath $build; Ok "exclusion ajoutée : $build" }
     catch { Write-Host "  Exclusion impossible (lancez PowerShell en administrateur) : $($_.Exception.Message)" -ForegroundColor Yellow }
 }
+
+Step "Versions de référence (versions.json)"
+# Informatif : une autre machine peut différer (ex. FFmpeg) ; refaire alors la baseline (docs/BASELINE.md).
+& $venvPy scripts\check_versions.py
+if ($LASTEXITCODE -ne 0) { Write-Host "  Écarts de version ci-dessus : les pixels peuvent différer de la référence." -ForegroundColor Yellow }
 
 Step "Vérification rapide"
 Run "mograph.py validate demo_flat_riso" { & $venvPy mograph.py validate demo_flat_riso | Out-Null }

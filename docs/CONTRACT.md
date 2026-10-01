@@ -15,7 +15,7 @@ Les schémas JSON dans `schema/` et `schema/internal/` sont normatifs.
 | Disque | C: 321,6 Go (= 299,5 Gio) libres le 30/09/2026, mesuré par `Get-PSDrive` (98,6 Go à l'intégration ; build/ déplaçable via `MOGRAPH_BUILD_DIR`) |
 | FFmpeg | **9.0.2** build gyan.dev « full » (`winget install Gyan.FFmpeg` ; 8.1.2 à l'intégration) : libx265, prores_ks, libzimg/zscale, premultiply, alphaextract, blackdetect, ebur128 |
 | Python orchestrateur | 3.12.10 — venv `.venv` → **`.venv/Scripts/python.exe`** |
-| Paquets pip | playwright 1.56.0, jsonschema 4.23.0, opencv-python-headless 4.12.0.88, numpy 2.2.6 (`requirements.txt`) |
+| Paquets pip | playwright 1.56.0, jsonschema 4.23.0, opencv-python-headless 4.12.0.88, numpy 2.2.6 (`requirements.txt`) ; dépendances indirectes figées par `constraints.txt` (phase 1) |
 | Chromium | Chromium Headless Shell 141.0.7390.37 (playwright build v1194) |
 | Node / npm | 24.19.0 / 12.0.2 (sert uniquement à récupérer des fichiers figés : sans effet sur les pixels) |
 | npm | gsap 3.15.0, @fontsource/* 5.3.0 (`package.json` + `package-lock.json`) |
@@ -564,3 +564,23 @@ Ces clés n'entrent dans aucune empreinte de plan (`spec_sha256`) : aucun re-ren
 QC : contrôle de scène `scene.ai_disclosure` (`qc.check_ai_disclosure`), **jamais bloquant** :
 WARN si un asset IA est utilisé sans déclaration ou avec `ai_used: false`, PASS sinon. Le rapport
 porte `provenance` et `ai_assets` (JSON) et une section « Provenance » (Markdown).
+
+### 11.3 Phase 1 — versions de référence et CI
+- `versions.json` : versions de référence (FFmpeg 9.0.2 gyan.dev « full » + filtres et encodeurs
+  requis, Python 3.12.10, CPython 3.11.15 + bpy 5.0.1, Chromium 141.0.7390.37, Node 24.19.0,
+  uv 0.11.7). C'est **le fichier de versions** : toute nouvelle dépendance y est ajoutée, épinglée.
+- `constraints.txt` / `constraints-blender.txt` : TOUTES les versions installées (dépendances
+  indirectes comprises), relevées le 30/09/2026 ; installation : `pip install -r requirements.txt -c
+  constraints.txt`, `uv pip install bpy==5.0.1 -c constraints-blender.txt` (setup.ps1, setup.sh, CI).
+- `scripts/check_versions.py [--profile reference|ci-linux] [--no-blender] [--no-chromium]` :
+  PASS/FAIL/NOTE, code ≠ 0 si un écart. Profil `reference` : FFmpeg exactement 9.0.2 ; profil
+  `ci-linux` : FFmpeg exactement 6.1.1 (paquet Ubuntu 24.04). Tout le reste est exigé à l'identique
+  dans les deux profils ; Node et uv (sans effet sur les pixels) ne donnent qu'une NOTE.
+- CI (`.github/workflows/tests.yml`) : versions épinglées en tête (`env`, égales à versions.json) ;
+  jobs `rapide` et `rendu` sur Ubuntu 24.04 (FFmpeg 6.1.1 : **écart documenté**, aucune build Linux
+  officielle épinglable de la 9.0.2 — BtbN ne publie que des instantanés `n9.0.2-NN-g…` supprimés au
+  fil du temps) ; job `reference-windows` (windows-2025) avec `choco install ffmpeg-full
+  --version=9.0.2` (paquet Chocolatey de la build gyan.dev, la même que la machine de rendu) et
+  `MOGRAPH_FFMPEG` / `MOGRAPH_FFPROBE` pointés dessus, qui rejoue les 9 scripts de vérification.
+  Chaque job lance `check_versions.py` avant les tests. Les empreintes d'images ne sont pas comparées
+  entre machines (déterminisme garanti par machine, §6).

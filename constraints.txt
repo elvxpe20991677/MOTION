@@ -1,0 +1,15 @@
+# Contraintes pip de l'orchestrateur : TOUTES les versions installées, dépendances indirectes comprises.
+# Relevées le 30/09/2026 sur la machine de référence (docs/BASELINE.md). Usage :
+#   pip install -r requirements.txt -c constraints.txt
+# Toute mise à jour peut changer des pixels : refaire la baseline (scripts/baseline.py).
+attrs==26.1.0
+greenlet==3.5.6
+jsonschema==4.23.0
+jsonschema-specifications==2025.9.1
+numpy==2.2.6
+opencv-python-headless==4.12.0.88
+playwright==1.56.0
+pyee==13.0.1
+referencing==0.37.0
+rpds-py==2026.6.3
+typing_extensions==4.16.0
