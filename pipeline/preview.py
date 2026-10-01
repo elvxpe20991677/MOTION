@@ -113,8 +113,10 @@ class _State:
                           "direction": tr.get("direction", "left"), "url": f"/shot/{s['index']}?v={self.version}"})
         audio = c.get("audio") or None
         audio_url = None
-        if audio and audio.get("src"):
-            p = Path(audio["src"]).resolve()
+        # Aperçu : musique, sinon voix off gelée (le mixage final n'est construit qu'au rendu).
+        listen = (audio or {}).get("src") or (c.get("voiceover") or {}).get("asset")
+        if listen:
+            p = Path(listen).resolve()
             try:
                 audio_url = "/assets/" + urllib.parse.quote(p.relative_to(config.ASSETS_DIR.resolve()).as_posix())
             except ValueError:

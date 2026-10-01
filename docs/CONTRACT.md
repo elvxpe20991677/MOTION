@@ -677,3 +677,65 @@ Versionnement : `assets.lock.json` est versionné ; les médias de `assets/ai/` 
 (`.gitignore` : dépôt public, conditions des services, poids) — sur une autre machine, `assets verify`
 liste ceux à replacer. Tests : `tests/verify_step30_assets.py` (numérotation des tests de phase :
 `verify_step<phase>0_*.py`).
+
+### 11.5 Phase 4 — voix off ElevenLabs, alignement, sous-titres, mixage
+Sources vérifiées le 01/10/2026 : API « text-to-speech with timestamps »
+(`POST /v1/text-to-speech/{voice_id}/with-timestamps?output_format=…`, réponse `audio_base64`,
+`alignment.characters`, `character_start_times_seconds`, `character_end_times_seconds`), quota
+(`GET /v1/user/subscription` : `character_count`, `character_limit`,
+`next_character_count_reset_unix`, `can_extend_character_limit`). L'alignement mot à mot vient du
+MÊME appel (aucun coût en plus) ; l'API « forced alignment » n'est pas utilisée (coût non publié).
+PCM/WAV 44,1 kHz exigent l'offre Pro : format retenu `mp3_44100_128` (toutes offres).
+
+Scène : bloc `voiceover = {text, voice_id?, model?, language?, seed?, settings?, asset?, alignment?,
+start?, gain_db?, duck?{db, attack, release}}`. `[[id]]` dans `text` crée `marker:id` au début du mot
+suivant (retiré du texte envoyé). Temps : `word:N[±x]` = début du mot N (0 = premier) de la voix, en
+temps GLOBAL. Calque `subtitles` avec `"voice": true` : répliques déduites de l'alignement
+(`voice.cues_from_words` : coupe en fin de phrase, sur un silence > `config.VOICE_SUB_GAP_S`, ou
+au-delà de `VOICE_SUB_MAX_CHARS` / `VOICE_SUB_MAX_S` ; tenue `VOICE_SUB_HOLD_S`).
+
+`pipeline/voice.py` :
+```python
+class VoiceError(RuntimeError)
+def split_markers(text) -> tuple[str, list[tuple[str, int]]]
+def request_params(vo) -> tuple[dict, str, bool] ; def request_key(params) -> str ; def billed_chars(params) -> int
+def subscription(key) -> dict                      # lecture seule : tier, used, limit, remaining, reset, can_extend
+def words_from_alignment(text, alignment) -> list[dict]   # {text, start, end, char_start, char_end}
+def cues_from_words(words) -> list[tuple[float, float, str]]
+def generate(scene_path, *, yes=False, dry_run=False, budget=None, log=print, ask=None) -> dict
+def load_alignment(path) -> dict                   # contrat mograph-voice-alignment/1
+```
+`generate` : empreinte de la requête (texte nettoyé, voix, modèle, réglages, langue, graine,
+format) → fichiers `assets/ai/voice/<scène>_<empreinte[:12]>.mp3` et `.words.json`. **Cache** : si
+ces fichiers existent avec la même empreinte, 0 appel, 0 caractère. Sinon, **garde-fous AVANT tout
+appel payant** : caractères = longueur du texte envoyé ; budget de la commande
+(`config.VOICE_BUDGET_CHARS`, env `MOGRAPH_VOICE_BUDGET`, option `--budget`) ; quota restant lu sur
+le compte ; confirmation au-delà de `config.VOICE_CONFIRM_ABOVE` (env `MOGRAPH_VOICE_CONFIRM_ABOVE`)
+sauf `--yes` (refus sans vraie console). Un seul appel, puis gel des deux fichiers (`assets.add`,
+source `api`, outil ElevenLabs, prompt = texte, coût, empreinte de la voix), chemins écrits dans la
+scène, ligne JSON ajoutée à `config.VOICE_USAGE_LOG` (`voice_usage.jsonl`, versionné : date, scène,
+caractères estimés et décomptés par le compte, cache, quota restant). **Secrets** : clé lue dans
+l'environnement puis `config.ENV_FILE` (`.env`, env `MOGRAPH_ENV_FILE`), jamais affichée ni écrite ;
+un identifiant de voix venu de `.env` n'est consigné que par son empreinte (y compris dans les
+messages d'erreur). API redirigeable (`MOGRAPH_ELEVENLABS_API`) : les tests utilisent un faux serveur
+local, sans aucune consommation.
+
+Compilateur : `_load_voice` (après `_setup`) exige `asset` et `alignment` gelés sous le dossier IA
+(contrôlés par le verrou comme tout asset IA), vérifie que `alignment.text` = texte nettoyé (sinon
+REFUS « a changé depuis la génération »), place les mots en temps global (`start` = secondes, `beat:`
+ou `marker:` audio), ajoute les marqueurs `[[id]]` (doublon = REFUS). Scène compilée : clé
+`voiceover = {asset, alignment, start, gain_db, duck, duration, text, model, words[{i, text, start,
+end}], markers[{id, time}]}` ou null ; avec une voix, `audio` porte `mix` (build/<scène>/audio/
+mix.wav) et `normalize` vaut true par défaut (loudness d'un mixage inconnue d'avance) ; sans musique,
+`audio.src` est null.
+
+Mixage (`audio.build_mix`, appelé par `audio.ensure_scene_audio`) : voix décodée en 48 kHz stéréo,
+placée à l'échantillon `round(start × 48000)`, gain `gain_db` ; musique (si présente) multipliée par
+`1 + w × (10^(duck.db/20) − 1)`, w = enveloppe de ducking (`audio.duck_envelope` : rampe linéaire
+d'attaque AVANT chaque passage de parole, 1 pendant, rampe de relâchement après ; mots fusionnés si
+silence < `config.VOICE_DUCK_MERGE_S`) ; garde-fou d'écrêtage à 0,999 ; écriture WAV 24 bits
+`-bitexact` + fiche `mix.wav.json` (mixage non refait s'il est à jour). L'encodeur livre `audio.mix`
+s'il existe, sinon `audio.src` ; l'aperçu fait entendre la musique, sinon la voix gelée.
+
+CLI : `mograph voice <scène> [--dry-run] [--yes] [--budget N]` ; `mograph voice --quota`.
+Tests : `tests/verify_step40_voice.py` (faux serveur, 0 caractère consommé).

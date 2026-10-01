@@ -44,6 +44,9 @@ python mograph.py preview ma_video                 # aperçu en direct, recharg�
 - **Musique** : `python mograph.py beats assets/audio/musique.wav --scene ma_video --write` écrit
   `bpm`, `offset` et le marqueur `drop` ; `"normalize": true` règle le volume.
 - **Déclinaisons** : `{{colonne}}` dans le modèle + `batch modele.json --data lignes.csv`.
+- **Voix off** : bloc `"voiceover": {"text": "… [[logo]] …"}`, puis `python mograph.py voice <scène>
+  --dry-run` (estimation) et `python mograph.py voice <scène>` ; animer sur la parole avec `"at":
+  "word:N"` ou `"marker:logo"`, sous-titres `{"id": "st", "type": "subtitles", "voice": true}`.
 - **Clip vidéo généré par une IA** (Gemini/Flow…) : le geler une fois (`python mograph.py assets add
   clip.mp4 --tool "Gemini/Flow" --model "veo-3" --prompt "…" --license "…"`), puis calque
   `{"id": "plan", "type": "ai_clip", "asset": "assets/ai/video/clip.mp4", "w": 1920, "h": 1080}`.

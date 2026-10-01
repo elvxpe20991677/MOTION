@@ -37,6 +37,7 @@ from referencing.jsonschema import DRAFT202012
 
 from pipeline import assets as assets_mod
 from pipeline import config
+from pipeline import voice as voice_mod
 
 __all__ = [
     "SceneError",
@@ -122,7 +123,8 @@ _STAGGER_TARGETS = ("chars", "words", "lines", "bars")
 _CHART_GAP_FRACTION = 0.2
 
 _TIME_RE = re.compile(
-    r"^(?:beat:(?P<beat>\d+(?:\.\d+)?)|marker:(?P<marker>[A-Za-z_][A-Za-z0-9_]*))(?P<off>[+-]\d+(?:\.\d+)?)?$"
+    r"^(?:beat:(?P<beat>\d+(?:\.\d+)?)|marker:(?P<marker>[A-Za-z_][A-Za-z0-9_]*)|word:(?P<word>\d+))"
+    r"(?P<off>[+-]\d+(?:\.\d+)?)?$"
 )
 _BEATS_RE = re.compile(r"^beats:(?P<n>\d+(?:\.\d+)?)$")
 _POS_RE = re.compile(r"^(?:(?P<zone>safe|action):)?(?P<pct>-?\d+(?:\.\d+)?)%$")
@@ -475,7 +477,8 @@ _PATTERN_HELP = {
     r"^[a-z0-9](?:[a-z0-9-]|_(?!_))*$": "identifiant en minuscules, chiffres, « - » et « _ » (jamais « __ », réservé aux dossiers de plaques), ex. « intro_titre »",
     r"^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$": "couleur hexadécimale « #RRGGBB » ou « #RRGGBBAA », ex. « #2F5BEA »",
     r"^(?:#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})|[a-z][A-Za-z0-9_]*)$": "couleur « #RRGGBB(AA) » ou nom de la palette du preset (bg, fg, primary, secondary, accent…)",
-    r"^(?:beat:\d+(?:\.\d+)?|marker:[A-Za-z_][A-Za-z0-9_]*)(?:[+-]\d+(?:\.\d+)?)?$": "temps « beat:N » ou « marker:id » avec décalage optionnel en secondes (ex. « beat:4 », « beat:8-0.1 », « marker:drop+0.25 »), ou un nombre de secondes locales",
+    r"^(?:beat:\d+(?:\.\d+)?|marker:[A-Za-z_][A-Za-z0-9_]*|word:\d+)(?:[+-]\d+(?:\.\d+)?)?$": "temps « beat:N », « marker:id » ou « word:N » (mot N de la voix off) avec décalage optionnel en secondes (ex. « beat:4 », « marker:drop+0.25 », « word:3-0.1 »), ou un nombre de secondes locales",
+    r"^(?:beat:\d+(?:\.\d+)?|marker:[A-Za-z_][A-Za-z0-9_]*)(?:[+-]\d+(?:\.\d+)?)?$": "temps GLOBAL « beat:N » ou « marker:id » avec décalage optionnel, ou un nombre de secondes",
     r"^beats:\d+(?:\.\d+)?$": "durée « beats:N » (ex. « beats:2 »), un nombre de secondes, ou short / medium / long",
     r"^(?:(?:safe|action):)?-?\d+(?:\.\d+)?%$": "position « N% » du canevas, « safe:N% » (zone sûre titre) ou « action:N% » (zone sûre action), ex. « safe:50% », ou un nombre de px logiques",
     r"^-?\d+(?:\.\d+)?%$": "décalage « N% » de la boîte de la cible (ex. « 110% ») ou un nombre de px",
@@ -493,7 +496,7 @@ _REF_DESC = {
     "hexColor": "une couleur #RRGGBB(AA)",
     "hex": "une couleur #RRGGBB",
     "vec3": "un vecteur [x, y, z]",
-    "timeRef": "un temps (secondes locales, « beat:N » ou « marker:id » ± décalage)",
+    "timeRef": "un temps (secondes locales, « beat:N », « marker:id » ou « word:N » ± décalage)",
     "durationRef": "une durée (secondes > 0, « beats:N » ou short / medium / long)",
     "material": "un matériau en ligne {base_color, roughness, …}",
     "segment": "un segment d'interpolation",
@@ -501,7 +504,7 @@ _REF_DESC = {
 
 # anyOf des $defs de scene.schema.json -> explication complète.
 _ANYOF_HELP = (
-    ("timeRef", "référence de temps invalide : nombre de secondes LOCALES au plan, ou « beat:N » / « marker:id » (temps GLOBAL) avec décalage optionnel « +0.1 » / « -0.25 », ex. « beat:4-0.1 »"),
+    ("timeRef", "référence de temps invalide : nombre de secondes LOCALES au plan, ou « beat:N » / « marker:id » / « word:N » (temps GLOBAL) avec décalage optionnel « +0.1 » / « -0.25 », ex. « beat:4-0.1 »"),
     ("durationRef", "durée invalide : nombre de secondes > 0, « beats:N » (ex. « beats:2 », nécessite audio.bpm) ou alias du preset short / medium / long"),
     ("position", "position invalide : nombre de px logiques, « N% » du canevas, « safe:N% » ou « action:N% » de la zone sûre (ex. « safe:50% »)"),
     ("paint", "peinture invalide : couleur « #RRGGBB(AA) », nom de palette ou « none »"),
@@ -1119,6 +1122,8 @@ class _Compiler:
         # Les messages de load_preset nomment déjà le preset et le chemin fautif : on les relaie tels quels.
         self.preset = load_preset(raw["preset"], raw.get("preset_overrides"))
         self._setup()
+        # Voix off gelée : ses mots (word:N) et ses marqueurs [[id]] doivent être connus avant tout temps.
+        self._load_voice()
         self._timing()
         # Sous-titres : chaque réplique devient un calque texte ordinaire (même validation, mêmes
         # polices, mêmes zones sûres) ; il faut les débuts globaux des plans, d'où après _timing.
@@ -1130,7 +1135,7 @@ class _Compiler:
             except _Skip:
                 continue
         outputs = self._outputs()
-        audio = self._audio()
+        audio = self._with_voice(self._audio())
         self._storyboard()
         provenance = self._provenance()
         assets = self._asset_list(provenance)
@@ -1160,6 +1165,8 @@ class _Compiler:
             "shots": shots,
             # Phase 1 (CONTRACT §11.2) : assets utilisés et provenance, lus par le QC.
             "assets": assets,
+            # Phase 4 (CONTRACT §11.5) : voix off gelée (mots en temps global, marqueurs, mixage).
+            "voiceover": self.voice,
             "provenance": provenance,
             "warnings": _dedupe(self.warnings),
         }
@@ -1222,8 +1229,22 @@ class _Compiler:
             return _r(value)
         m = _TIME_RE.match(str(value))
         if not m:
-            self.fail(where, f"référence de temps {_q(value)} invalide : secondes locales (nombre), « beat:N » ou « marker:id » avec décalage optionnel.")
-        if m["beat"] is not None:
+            self.fail(where, f"référence de temps {_q(value)} invalide : secondes locales (nombre), « beat:N », « marker:id » "
+                             "ou « word:N » avec décalage optionnel.")
+        return _r(self._ref_global(m, value, where) - st.global_start / self.fps)
+
+    def _ref_global(self, m: re.Match, value: Any, where) -> float:
+        """Temps GLOBAL d'une référence « beat: », « marker: » ou « word: » (décalage compris)."""
+        if m["word"] is not None:
+            if not getattr(self, "voice", None):
+                self.fail(where, f"référence {_q(value)} : « word:N » exige une voix off générée (bloc voiceover + "
+                                 "python mograph.py voice <scène>).")
+            words = self.voice["words"]
+            n = int(m["word"])
+            if n >= len(words):
+                self.fail(where, f"mot {n} inexistant : la voix off compte {len(words)} mots (word:0 à word:{len(words) - 1}).")
+            t_global = words[n]["start"]
+        elif m["beat"] is not None:
             if self.bpm is None:
                 self.fail(where, f"référence {_q(value)} en temps musicaux alors que audio.bpm est absent : ajoutez "
                                  "\"audio\": {\"bpm\": <tempo>} (avec src ou synth) ou exprimez le temps en secondes locales au plan.")
@@ -1237,7 +1258,74 @@ class _Compiler:
             t_global = self.markers[name]
         if m["off"]:
             t_global += float(m["off"])
-        return _r(t_global - st.global_start / self.fps)
+        return t_global
+
+    def _load_voice(self) -> None:
+        """Bloc voiceover : fichiers gelés (son + alignement), mots en temps global, marqueurs [[id]]."""
+        self.voice = None
+        vo = self.raw.get("voiceover")
+        if not vo:
+            return
+        where = ("voiceover",)
+        if not vo.get("asset") or not vo.get("alignment"):
+            self.err(where, "voix off pas encore générée : lancez « python mograph.py voice <scène> » (estimation, "
+                            "garde-fou de quota, cache), qui gèle le son et l'alignement et les inscrit dans la scène.")
+            return
+        paths = {}
+        for field, kind in (("asset", "audio"), ("alignment", "text")):
+            p = config.ROOT / vo[field]
+            try:
+                loc = assets_mod.ai_location(p)
+            except assets_mod.AssetError as exc:
+                self.err(where + (field,), str(exc))
+                return
+            if loc != "in":
+                self.err(where + (field,), f"{_q(vo[field])} doit être un fichier gelé sous "
+                                           f"{assets_mod._rel(config.AI_ASSETS_DIR)}/ (écrit par mograph voice).")
+                return
+            if not p.is_file():
+                self.err(where + (field,), f"{_q(vo[field])} introuvable sur le disque : les médias de assets/ai/ ne sont "
+                                           "pas versionnés ; replacez-le, ou relancez « mograph voice » (cache ou génération).")
+                return
+            self._note_asset(p, kind)
+            paths[field] = p
+        try:
+            doc = voice_mod.load_alignment(paths["alignment"])
+            text, marks = voice_mod.split_markers(vo["text"])
+        except voice_mod.VoiceError as exc:
+            self.err(where + ("alignment",), str(exc))
+            return
+        if doc["text"] != text:
+            self.err(where + ("text",), "le texte de la voix off a changé depuis la génération : relancez « python "
+                                        "mograph.py voice <scène> » (le cache évite toute consommation si le texte revient "
+                                        "à l'identique).")
+            return
+        start_raw = vo.get("start", 0)
+        if isinstance(start_raw, (int, float)) and not isinstance(start_raw, bool):
+            start = float(start_raw)
+        else:
+            try:
+                start = self._ref_global(_TIME_RE.match(str(start_raw)), start_raw, where + ("start",))
+            except _Skip:
+                return
+        words = [{"i": k, "text": w["text"], "start": _r(start + float(w["start"])), "end": _r(start + float(w["end"])),
+                  "char_start": int(w.get("char_start", 0))} for k, w in enumerate(doc["words"])]
+        voice_markers = {}
+        for name, pos in marks:
+            nxt = next((w for w in words if w["char_start"] >= pos), None)
+            t = nxt["start"] if nxt else words[-1]["end"]
+            if name in self.markers or name in voice_markers:
+                self.err(where + ("text",), f"marqueur « {name} » défini deux fois (voix off et/ou audio.markers) : renommez-le.")
+                continue
+            voice_markers[name] = t
+        self.markers.update(voice_markers)
+        duck = {"db": config.VOICE_DUCK_DB, "attack": config.VOICE_DUCK_ATTACK_S, "release": config.VOICE_DUCK_RELEASE_S,
+                **(vo.get("duck") or {})}
+        self.voice = {"asset": str(paths["asset"].resolve()), "alignment": str(paths["alignment"].resolve()),
+                      "start": _r(start), "gain_db": float(vo.get("gain_db", 0)), "duck": duck,
+                      "duration": _r(float(doc.get("duration") or words[-1]["end"] - start)), "text": text,
+                      "model": doc.get("model"), "words": [{k: w[k] for k in ("i", "text", "start", "end")} for w in words],
+                      "markers": [{"id": k, "time": v} for k, v in voice_markers.items()]}
 
     def duration_ref(self, value: Any, where) -> float:
         """Durée -> secondes (nombre, « beats:N » ou alias du preset)."""
@@ -1881,12 +1969,20 @@ class _Compiler:
                 if layer.get("anim"):
                     self.err(lp + ("anim",), "un calque « subtitles » n'accepte pas « anim » : ses fondus sont réglés par "
                                              "« fade » ; animez un calque texte ordinaire si besoin.")
-                try:
-                    cues = _read_subtitles(layer["src"])
-                except ValueError as exc:
-                    self.err(lp + ("src",), str(exc))
-                    continue
-                self._note_asset(config.ROOT / layer["src"], "subtitles")
+                if layer.get("voice"):
+                    # Répliques déduites de l'alignement mot à mot gelé de la voix off (aucun fichier).
+                    if not self.voice:
+                        self.err(lp + ("voice",), "sous-titres de la voix off demandés, mais la scène n'a pas de voix off "
+                                                  "générée (bloc voiceover + python mograph.py voice <scène>).")
+                        continue
+                    cues = voice_mod.cues_from_words(self.voice["words"])
+                else:
+                    try:
+                        cues = _read_subtitles(layer["src"])
+                    except ValueError as exc:
+                        self.err(lp + ("src",), str(exc))
+                        continue
+                    self._note_asset(config.ROOT / layer["src"], "subtitles")
                 safe = config.safe_rect(self.aspect, "title")
                 base = {k: layer[k] for k in ("style", "size", "weight", "color", "align", "maxWidth", "lineHeight",
                                               "tracking", "case", "rotation", "scale", "blend", "boil") if k in layer}
@@ -1927,7 +2023,7 @@ class _Compiler:
                     })
                     n_kept += 1
                 if not n_kept:
-                    self.warn(lp + ("src",), f"aucun sous-titre de {layer['src']} ne tombe dans ce plan "
+                    self.warn(lp + ("src",), f"aucun sous-titre de {layer.get('src') or 'la voix off'} ne tombe dans ce plan "
                                              f"({_fr(shot_start, max_dec=2)} s → {_fr(shot_start + st.duration, max_dec=2)} s "
                                              "en temps global) : vérifiez « offset ».")
             shot["layers"] = out
@@ -2536,6 +2632,8 @@ class _Compiler:
         if synth and self.bpm is None:
             self.err(("audio", "synth"), "la piste de test (synth) est rythmée : ajoutez audio.bpm.")
         if not src and not synth:
+            if getattr(self, "voice", None):
+                return None  # la voix off fournit la piste (mixage, _with_voice)
             # Bloc « tempo seul » (bpm / offset / marqueurs sans piste) : il ne sert qu'à résoudre les temps
             # beat: / marker:, déjà convertis en secondes locales ci-dessus. Le contrat (§4) n'admet pas de
             # src nul et l'aval (audio, encode, qc) attend une vraie piste dès que audio est non nul : on émet
@@ -2583,6 +2681,26 @@ class _Compiler:
             # Normalisation de la source vers qc.loudness_target_lufs à l'encodage (loudnorm 2 passes).
             "normalize": bool(audio.get("normalize", False)),
         }
+
+    def _with_voice(self, audio: dict | None) -> dict | None:
+        """Scène avec voix off : la piste livrée est le MIXAGE voix + musique (ducking), construit par
+        audio.ensure_scene_audio dans build/<scène>/audio/mix.wav ; normalisation par défaut (loudness
+        d'un mixage inconnue d'avance)."""
+        if not self.voice:
+            return audio
+        raw_a = self.raw.get("audio") or {}
+        if audio is None:
+            audio = {"src": None, "bpm": self.bpm, "offset": self.audio_offset,
+                     "beats_per_bar": int(raw_a.get("beats_per_bar", 4)),
+                     "markers": [{"id": m["id"], "time": float(m["time"])} for m in raw_a.get("markers") or []],
+                     "synth": None, "target_lufs": self.qc["loudness_target_lufs"]}
+        voice_end = self.voice["words"][-1]["end"]
+        total_s = (self.timing[-1].global_start + self.timing[-1].frames) / self.fps if self.timing else 0
+        if voice_end > total_s + 1e-6:
+            self.warn(("voiceover",), f"la voix off finit à {_fr(voice_end, max_dec=2)} s mais la vidéo dure "
+                                      f"{_fr(total_s, max_dec=2)} s : la fin sera coupée.")
+        return {**audio, "normalize": bool(raw_a.get("normalize", True)),
+                "mix": str(config.scene_build_dir(self.scene_id) / "audio" / "mix.wav")}
 
     def _provenance(self) -> dict | None:
         """Bloc provenance normalisé (auteurs, outils, déclaration d'usage de l'IA), date vérifiée."""
@@ -2751,9 +2869,15 @@ def summary(compiled: dict) -> str:
                      f"{r['samples']} éch., {r['view_transform']} / {r['look']}, {len(j['objects'])} objet(s), "
                      f"{len(j['lights'])} lumière(s){', transparent' if j['transparent'] else ''}")
     a = compiled["audio"]
+    vo = compiled.get("voiceover")
+    if vo:
+        lines.append(f"  Voix off    : {len(vo['words'])} mots, {_fr(vo['words'][0]['start'], max_dec=2)} → "
+                     f"{_fr(vo['words'][-1]['end'], max_dec=2)} s, ducking {_fr(vo['duck']['db'])} dB"
+                     + (f", marqueurs {', '.join(m['id'] for m in vo['markers'])}" if vo["markers"] else ""))
     if a:
         marks = ", ".join(f"{m['id']}@{_fr(m['time'])} s" for m in a["markers"]) or "aucun"
-        lines.append(f"  Audio       : {a['src']} · {(_fr(a['bpm']) + ' BPM') if a['bpm'] else 'sans tempo'} · "
+        lines.append(f"  Audio       : {a['src'] or '(voix off seule)'}{' + voix off (mixage)' if a.get('mix') else ''} · "
+                     f"{(_fr(a['bpm']) + ' BPM') if a['bpm'] else 'sans tempo'} · "
                      f"offset {_fr(a['offset'])} s · marqueurs : {marks}" + (" · piste de test générée" if a["synth"] else ""))
     else:
         lines.append("  Audio       : aucun")

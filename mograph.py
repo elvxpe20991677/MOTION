@@ -19,6 +19,7 @@ Commandes :
     beats        <audio>   détecte tempo, premier temps et drop d'une musique (--scene … --write)
     sheets       <scène>   planches contact (out/<scène>/planche_contact.png)
     assets       add|verify|list   assets IA gelés : verrou assets.lock.json (empreinte + provenance)
+    voice        <scène>   voix off ElevenLabs du bloc voiceover : estimation, garde-fou de quota, cache, gel
 
 Options utiles : validate --layout (zones sûres vérifiées sur quelques images, avant le rendu) ;
 all/render --draft (préversion rapide : 1080p, plaques 3D réduites, sans flou, sans QC).
@@ -696,6 +697,29 @@ def cmd_versions(args) -> int:
     return EXIT_OK
 
 
+def cmd_voice(args) -> int:
+    """Voix off (CONTRACT §11.5) : génère UNE fois (ou retrouve en cache), gèle, inscrit dans la scène."""
+    from pipeline import voice
+
+    try:
+        if args.quota:
+            q = voice.subscription(voice.api_key())
+            print(f"Offre {q['tier']} : {q['used']} / {q['limit']} caractères utilisés, {q['remaining']} restant(s), "
+                  f"remise à zéro le {q['reset']}" + ("" if q["can_extend"] else " ; dépassement facturé impossible") + ".")
+            return EXIT_OK
+        if not args.scene:
+            print("Indiquez la scène (python mograph.py voice <scène>), ou --quota pour lire le quota.", file=sys.stderr)
+            return EXIT_FAIL
+        r = voice.generate(resolve_scene_path(args.scene), yes=args.yes, dry_run=args.dry_run, budget=args.budget,
+                           log=_log)
+    except voice.VoiceError as exc:
+        print(f"REFUSÉ : {exc}", file=sys.stderr)
+        return EXIT_FAIL
+    if r["status"] == "estimation":
+        print(f"Estimation : {r['chars']} caractère(s) ; rien n'a été consommé (--dry-run).")
+    return EXIT_OK
+
+
 def cmd_assets(args) -> int:
     """Assets IA gelés (CONTRACT §11.4) : add (geler une sortie d'IA), verify, list."""
     from pipeline import assets
@@ -831,6 +855,15 @@ def build_parser() -> argparse.ArgumentParser:
     s = scene_cmd("status", cmd_status, "avancement d'un rendu")
     s.add_argument("--lines", type=int, default=8, help="lignes de journal affichées")
     scene_cmd("versions", cmd_versions, "archiver les versions des outils")
+
+    vc = sub.add_parser("voice", help="voix off ElevenLabs du bloc voiceover (garde-fou de quota, cache, gel)")
+    vc.add_argument("scene", nargs="?", default=None, help="chemin d'un .json ou id de scène (scenes/<id>.json)")
+    vc.add_argument("--dry-run", action="store_true", help="estimer seulement (caractères, quota restant), sans appel payant")
+    vc.add_argument("--yes", action="store_true", help="confirmer d'avance au-delà du seuil (MOGRAPH_VOICE_CONFIRM_ABOVE)")
+    vc.add_argument("--budget", type=int, default=None,
+                    help="plafond de caractères de cette commande (défaut : MOGRAPH_VOICE_BUDGET)")
+    vc.add_argument("--quota", action="store_true", help="afficher seulement le quota du compte (lecture, aucune consommation)")
+    vc.set_defaults(func=cmd_voice)
 
     asp = sub.add_parser("assets", help="assets IA gelés : add (geler), verify, list (assets.lock.json)")
     asub = asp.add_subparsers(dest="assets_cmd", required=True)

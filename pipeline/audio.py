@@ -549,6 +549,16 @@ def _read_sidecar(sidecar: Path) -> dict | None:
 
 
 def ensure_scene_audio(compiled: dict, *, log=print) -> Path | None:
+    """Garantit la piste LIVRÉE de la scène : la musique (_ensure_music), puis, avec une voix off, le
+    mixage voix + musique avec ducking (build_mix, CONTRACT §11.5). Renvoie le fichier à encoder."""
+    music = _ensure_music(compiled, log=log)
+    audio = compiled.get("audio") or {}
+    if compiled.get("voiceover") and audio.get("mix"):
+        return build_mix(compiled, music, log=log)
+    return music
+
+
+def _ensure_music(compiled: dict, *, log=print) -> Path | None:
     """Garantit la présence de la piste audio d'une scène compilée.
 
     - pas de bloc audio, ou bloc « tempo seul » (audio.bpm sans src ni synth, pour les références
@@ -570,6 +580,8 @@ def ensure_scene_audio(compiled: dict, *, log=print) -> Path | None:
                 "audio.synth est défini mais la scène compilée n'indique aucun chemin audio.src : recompilez la "
                 "scène (le compilateur choisit alors assets/audio/<scène>_beat.wav) ou ajoutez \"src\" au bloc audio."
             )
+        if compiled.get("voiceover"):
+            return None  # voix off seule : le mixage fournit la piste
         # Schéma : un bloc audio peut ne porter que le tempo (références beat:) sans aucune piste.
         log("[audio] tempo seul (audio.bpm sans piste ni synth) : aucune piste à préparer, livrables sans son.")
         return None
@@ -636,6 +648,119 @@ def ensure_scene_audio(compiled: dict, *, log=print) -> Path | None:
                    encoding="utf-8")
     os.replace(tmp, sidecar)
     return src
+
+
+# ---------------------------------------------------------------------------
+# Mixage voix off + musique (phase 4)
+# ---------------------------------------------------------------------------
+
+MIX_GENERATOR_ID = "mograph-mix/1"
+
+
+def _decode_stereo(path, n: int) -> np.ndarray:
+    """Fichier audio -> float32 (n, 2) à SAMPLE_RATE (FFmpeg), complété de silence ou coupé à n."""
+    argv = _FFMPEG_BASE + ["-v", "error", "-i", str(path), "-vn", "-ac", "2", "-ar", str(SAMPLE_RATE),
+                           "-f", "f32le", "-acodec", "pcm_f32le", "pipe:1"]
+    try:
+        r = subprocess.run(argv, capture_output=True, timeout=600)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise AudioError(f"Décodage de {path} impossible ({exc}).") from exc
+    if r.returncode != 0:
+        raise AudioError(f"Décodage de {path} impossible : {r.stderr.decode('utf-8', 'replace').strip()[-300:]}")
+    x = np.frombuffer(r.stdout, "<f4").reshape(-1, 2)
+    out = np.zeros((n, 2), np.float32)
+    out[:min(n, len(x))] = x[:n]
+    return out
+
+
+def speech_intervals(words: list[dict], merge_s: float) -> list[tuple[float, float]]:
+    """Intervalles de parole (temps global) : mots fusionnés quand le silence entre eux < merge_s."""
+    spans: list[list[float]] = []
+    for w in words:
+        if spans and w["start"] - spans[-1][1] < merge_s:
+            spans[-1][1] = max(spans[-1][1], w["end"])
+        else:
+            spans.append([w["start"], w["end"]])
+    return [(a, b) for a, b in spans]
+
+
+def duck_envelope(n: int, spans: list[tuple[float, float]], attack: float, release: float) -> np.ndarray:
+    """Poids de ducking 0..1 par échantillon : rampe linéaire d'attaque AVANT chaque intervalle de parole
+    (la musique est déjà basse au premier mot), 1 pendant, rampe de relâchement après."""
+    w = np.zeros(n, np.float32)
+    t = np.arange(n, dtype=np.float64) / SAMPLE_RATE
+    for a, b in spans:
+        i0 = max(0, int(np.floor((a - attack) * SAMPLE_RATE)))
+        i1 = min(n, int(np.ceil((b + release) * SAMPLE_RATE)) + 1)
+        if i0 >= i1:
+            continue
+        tt = t[i0:i1]
+        up = np.clip((tt - (a - attack)) / attack, 0, 1) if attack > 0 else (tt >= a).astype(np.float64)
+        down = np.clip(1 - (tt - b) / release, 0, 1) if release > 0 else (tt <= b).astype(np.float64)
+        seg = np.where(tt < a, up, np.where(tt > b, down, 1.0)).astype(np.float32)
+        w[i0:i1] = np.maximum(w[i0:i1], seg)
+    return w
+
+
+def build_mix(compiled: dict, music: Path | None, *, log=print) -> Path:
+    """Mixage déterministe voix off + musique, avec ducking calculé depuis l'alignement mot à mot.
+
+    Écrit build/<scène>/audio/mix.wav (48 kHz, 24 bits, stéréo, -bitexact) et sa fiche mix.json ; un
+    mixage à jour (mêmes entrées et réglages) n'est pas refait.
+    """
+    from pipeline import assets
+
+    vo, audio = compiled["voiceover"], compiled["audio"]
+    out = Path(audio["mix"])
+    n = _scene_samples(compiled)
+    spans = speech_intervals(vo["words"], config.VOICE_DUCK_MERGE_S)
+    params = {"generator": MIX_GENERATOR_ID, "samples": n, "sample_rate": SAMPLE_RATE,
+              "voice_sha256": _sha256_file(Path(vo["asset"])), "music_sha256": _sha256_file(music) if music else None,
+              "start": vo["start"], "gain_db": vo["gain_db"], "duck": vo["duck"], "spans": spans}
+    stamp = out.with_name(out.name + ".json")
+    if out.is_file() and stamp.is_file():
+        try:
+            rec = json.loads(stamp.read_text(encoding="utf-8"))
+            if rec.get("params") == json.loads(json.dumps(params)) and rec.get("wav_sha256") == _sha256_file(out):
+                log(f"[audio] mixage à jour : {out}")
+                return out
+        except (OSError, ValueError):
+            pass
+    assets.check_compiled(compiled, stage="Mixage de la voix off")
+    voice = _decode_stereo(vo["asset"], n)
+    # Voix placée à son temps de départ (échantillon entier) puis coupée à la durée de la vidéo.
+    off = int(round(vo["start"] * SAMPLE_RATE))
+    placed = np.zeros((n, 2), np.float32)
+    if off < n:
+        placed[off:] = voice[:n - off]
+    placed *= np.float32(10 ** (vo["gain_db"] / 20))
+    mix = placed
+    if music is not None:
+        m = _decode_stereo(music, n)
+        g = np.float32(10 ** (vo["duck"]["db"] / 20))
+        w = duck_envelope(n, spans, float(vo["duck"]["attack"]), float(vo["duck"]["release"]))
+        mix = m * (1 + w * (g - 1))[:, None] + placed
+    peak = float(np.max(np.abs(mix))) if n else 0.0
+    if peak > 0.999:
+        # Garde-fou d'écrêtage (déterministe) ; la normalisation EBU R128 de l'encodage règle ensuite le niveau.
+        mix = mix * np.float32(0.999 / peak)
+        log(f"[audio] mixage : crête {peak:.3f} ramenée à 0,999 (gain {20 * np.log10(0.999 / peak):.2f} dB).")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out.with_name(out.name + ".tmp.wav")
+    argv = _FFMPEG_BASE + ["-v", "error", "-y", "-f", "f32le", "-ar", str(SAMPLE_RATE), "-ac", "2", "-i", "pipe:0",
+                           "-c:a", "pcm_s24le", "-bitexact", str(tmp)]
+    r = subprocess.run(argv, input=np.ascontiguousarray(mix, dtype="<f4").tobytes(), capture_output=True, timeout=600)
+    if r.returncode != 0:
+        tmp.unlink(missing_ok=True)
+        raise AudioError(f"Écriture du mixage impossible : {r.stderr.decode('utf-8', 'replace').strip()[-300:]}")
+    os.replace(tmp, out)
+    rec_tmp = stamp.with_name(stamp.name + ".tmp")
+    rec_tmp.write_text(json.dumps({"params": params, "wav_sha256": _sha256_file(out)}, indent=2, sort_keys=True) + "\n",
+                       encoding="utf-8")
+    os.replace(rec_tmp, stamp)
+    log(f"[audio] mixage voix off{' + musique (ducking ' + str(vo['duck']['db']) + ' dB)' if music else ''} -> {out} "
+        f"({len(spans)} passage(s) de parole).")
+    return out
 
 
 # ---------------------------------------------------------------------------

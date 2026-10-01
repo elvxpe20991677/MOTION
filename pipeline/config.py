@@ -34,6 +34,30 @@ AI_ASSETS_DIR: Path = Path(os.environ.get("MOGRAPH_AI_ASSETS_DIR", ASSETS_DIR / 
 # Verrou des assets IA gelés : empreinte SHA-256 + provenance de chaque fichier de AI_ASSETS_DIR.
 # Versionné avec les scènes ; le rendu ÉCHOUE si un asset IA n'y figure pas ou si son empreinte diffère.
 ASSETS_LOCK: Path = Path(os.environ.get("MOGRAPH_ASSETS_LOCK", ROOT / "assets.lock.json")).resolve()
+# Voix off ElevenLabs (phase 4, pipeline/voice.py, CONTRACT §11.5). Clé et voix par défaut lues dans
+# .env (jamais versionné) ; API redirigeable (tests : faux serveur local, aucun caractère consommé).
+ENV_FILE: Path = Path(os.environ.get("MOGRAPH_ENV_FILE", ROOT / ".env")).resolve()
+ELEVENLABS_API_BASE: str = os.environ.get("MOGRAPH_ELEVENLABS_API", "https://api.elevenlabs.io")
+VOICE_DEFAULT_MODEL: str = "eleven_multilingual_v2"     # meilleur français ; 1 crédit par caractère
+# MP3 44,1 kHz 128 kb/s : seul format de qualité ouvert à toutes les offres (PCM/WAV 44,1 kHz : offre Pro).
+VOICE_OUTPUT_FORMAT: str = "mp3_44100_128"
+VOICE_HTTP_TIMEOUT_S: float = 120.0
+# Garde-fou de quota : plafond de caractères par commande, confirmation au-delà d'un seuil.
+VOICE_BUDGET_CHARS: int = int(os.environ.get("MOGRAPH_VOICE_BUDGET", "1000"))
+VOICE_CONFIRM_ABOVE: int = int(os.environ.get("MOGRAPH_VOICE_CONFIRM_ABOVE", "200"))
+# Journal de consommation (une ligne JSON par commande « mograph voice », versionné : suivi du quota).
+VOICE_USAGE_LOG: Path = Path(os.environ.get("MOGRAPH_VOICE_USAGE_LOG", ROOT / "voice_usage.jsonl")).resolve()
+# Sous-titres générés depuis l'alignement : coupe en fin de phrase, sur un silence, ou au-delà de ces limites.
+VOICE_SUB_MAX_CHARS: int = 60
+VOICE_SUB_MAX_S: float = 5.0
+VOICE_SUB_GAP_S: float = 0.5
+VOICE_SUB_HOLD_S: float = 0.25
+# Ducking : la musique baisse pendant la parole (intervalles de mots fusionnés si le silence < MERGE).
+VOICE_DUCK_DB: float = -12.0
+VOICE_DUCK_ATTACK_S: float = 0.08
+VOICE_DUCK_RELEASE_S: float = 0.35
+VOICE_DUCK_MERGE_S: float = 0.4
+
 # Nature d'un asset IA déduite de son extension (verrou, CLI « assets add »).
 AI_ASSET_KINDS: dict[str, tuple[str, ...]] = {
     "video": (".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi", ".mxf"),

@@ -31,6 +31,48 @@
         }
       }
     },
+    "voiceover": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text"],
+      "description": "Voix off générée UNE fois par « python mograph.py voice <scène> » (ElevenLabs, garde-fou de quota, cache) puis GELÉE sous assets/ai/voice/ ; le rendu lit seulement les fichiers gelés.",
+      "properties": {
+        "text": { "type": "string", "minLength": 1, "description": "Texte dit. « [[id]] » placé avant un mot crée le marqueur marker:id au début de ce mot (retiré du texte envoyé)." },
+        "voice_id": { "type": "string", "minLength": 1, "description": "Voix ElevenLabs ; défaut : ELEVENLABS_VOICE_ID de .env." },
+        "model": { "type": "string", "minLength": 1, "description": "Modèle ElevenLabs ; défaut : eleven_multilingual_v2." },
+        "language": { "type": "string", "pattern": "^[a-z]{2}$", "description": "Code ISO 639-1 (non pris en charge par eleven_multilingual_v2)." },
+        "seed": { "type": "integer", "minimum": 0, "maximum": 4294967295, "description": "Graine ElevenLabs (rejeu plus stable)." },
+        "settings": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "stability": { "type": "number", "minimum": 0, "maximum": 1 },
+            "similarity_boost": { "type": "number", "minimum": 0, "maximum": 1 },
+            "style": { "type": "number", "minimum": 0, "maximum": 1 },
+            "speed": { "type": "number", "minimum": 0.7, "maximum": 1.2 },
+            "use_speaker_boost": { "type": "boolean" }
+          }
+        },
+        "asset": { "type": "string", "minLength": 1, "description": "Son gelé (écrit par mograph voice)." },
+        "alignment": { "type": "string", "minLength": 1, "description": "Alignement mot à mot gelé (écrit par mograph voice)." },
+        "start": {
+          "description": "Début de la voix en temps GLOBAL : secondes, « beat:N » ou « marker:id » (des marqueurs audio).",
+          "anyOf": [ { "type": "number", "minimum": 0 }, { "type": "string", "pattern": "^(?:beat:\\d+(?:\\.\\d+)?|marker:[A-Za-z_][A-Za-z0-9_]*)(?:[+-]\\d+(?:\\.\\d+)?)?$" } ],
+          "default": 0
+        },
+        "gain_db": { "type": "number", "minimum": -30, "maximum": 12, "default": 0 },
+        "duck": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Baisse de la musique pendant la parole (ducking).",
+          "properties": {
+            "db": { "type": "number", "minimum": -40, "maximum": 0 },
+            "attack": { "type": "number", "minimum": 0, "maximum": 2 },
+            "release": { "type": "number", "minimum": 0, "maximum": 5 }
+          }
+        }
+      }
+    },
     "provenance": {
       "type": "object",
       "additionalProperties": false,
@@ -103,10 +145,10 @@
       "anyOf": [ { "$ref": "#/$defs/color" }, { "const": "none" } ]
     },
     "timeRef": {
-      "description": "Nombre = secondes locales au plan. 'beat:N' (N décimal, 0 = offset audio) ou 'marker:id', avec décalage optionnel '+0.1' / '-0.25' en secondes = temps GLOBAL.",
+      "description": "Nombre = secondes locales au plan. 'beat:N' (N décimal, 0 = offset audio), 'marker:id' ou 'word:N' (début du mot N de la voix off, 0 = premier mot), avec décalage optionnel '+0.1' / '-0.25' en secondes = temps GLOBAL.",
       "anyOf": [
         { "type": "number" },
-        { "type": "string", "pattern": "^(?:beat:\\d+(?:\\.\\d+)?|marker:[A-Za-z_][A-Za-z0-9_]*)(?:[+-]\\d+(?:\\.\\d+)?)?$" }
+        { "type": "string", "pattern": "^(?:beat:\\d+(?:\\.\\d+)?|marker:[A-Za-z_][A-Za-z0-9_]*|word:\\d+)(?:[+-]\\d+(?:\\.\\d+)?)?$" }
       ]
     },
     "durationRef": {
@@ -490,9 +532,10 @@
         {
           "if": { "properties": { "type": { "const": "subtitles" } } },
           "then": {
-            "required": ["src"],
+            "anyOf": [ { "required": ["src"] }, { "required": ["voice"], "properties": { "voice": { "const": true } } } ],
             "properties": {
               "src": { "type": "string", "minLength": 1, "description": "Fichier .srt ou .vtt sous assets/ ; temps GLOBAUX de la vidéo." },
+              "voice": { "type": "boolean", "description": "true : répliques générées depuis l'alignement mot à mot de la voix off (sans fichier)." },
               "offset": { "type": "number", "default": 0, "description": "Décalage (s) ajouté à tous les sous-titres." },
               "fade": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.12, "description": "Durée des fondus d'entrée et de sortie (s)." },
               "style": { "enum": ["display", "body"], "default": "body" },

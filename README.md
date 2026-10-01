@@ -115,6 +115,8 @@ build que la machine de rendu) ; chaque job vérifie d'abord les versions (`scri
 | `python mograph.py sheets <scène>` | planches contact (`out/<scène>/planche_contact.png`, `planche_alpha.png`) |
 | `python mograph.py assets add <fichier> --tool … --model … --prompt … --license …` | **geler** une sortie d'IA (copie sous `assets/ai/`, SHA-256 + provenance dans `assets.lock.json`) |
 | `python mograph.py assets verify` / `assets list` | assets IA présents et intacts / provenance |
+| `python mograph.py voice <scène> [--dry-run] [--yes] [--budget N]` | **voix off** ElevenLabs du bloc `voiceover` : estimation, garde-fou de quota, cache (rejeu = 0 caractère), gel |
+| `python mograph.py voice --quota` | quota ElevenLabs du compte (lecture seule) |
 | `python mograph.py synth-beat --bpm 120 --duration 5 --out assets/audio/beat.wav` | piste test |
 | `python mograph.py status <scène>` | avancement (y compris d'un rendu détaché) |
 | `python mograph.py versions <scène>` | archive les versions dans `out/<scène>/versions.txt` |
@@ -255,6 +257,20 @@ visibles ; un petit nombre de segments allège aussi les scènes à milliers d'o
 Surcharges des textures du preset (`grain, paper, vignette, scanlines, tracking` : `false`,
 nombre = intensité, ou objet) et `glitch {windows [[at, dur]], on_beats {from, to, every, length},
 amount, colors, mode, layers}`.
+
+### Voix off (`voiceover`)
+```jsonc
+"voiceover": { "text": "Bienvenue chez Ondea. [[logo]] Le son, enfin libre.", "start": 0.5,
+               "duck": { "db": -12 } }   // asset et alignment sont écrits par « mograph voice »
+```
+`python mograph.py voice <scène>` génère la voix UNE fois (ElevenLabs, voix et clé lues dans `.env`),
+avec garde-fous : estimation des caractères (`--dry-run`), budget par commande, quota restant lu sur le
+compte, confirmation au-delà de 200 caractères (`--yes`). Relancer avec le même texte coûte 0 caractère
+(cache). Le son et l'alignement mot à mot sont gelés sous `assets/ai/voice/` ; chaque commande est
+journalisée dans `voice_usage.jsonl`. Dans la scène : `"at": "word:3"` (début du 4e mot de la voix),
+`[[logo]]` dans le texte → `"marker:logo"`, sous-titres automatiques `{"id": "st", "type":
+"subtitles", "voice": true}`. Au rendu, la voix est mixée avec la musique, qui baisse pendant la parole
+(ducking, `duck.db`, -12 dB par défaut), puis normalisée à `qc.loudness_target_lufs`.
 
 ### Provenance et IA
 `provenance` (facultatif) : `authors`, `tools [{name, version, role}]` et `ai_disclosure {ai_used,

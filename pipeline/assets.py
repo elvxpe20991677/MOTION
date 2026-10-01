@@ -460,6 +460,14 @@ def problems_for(paths: Iterable[Path | str], lock: dict | None = None,
     return out
 
 
+def status_of(path: Path | str, lock: dict | None = None, lock_path: Path | str | None = None) -> str:
+    """Statut d'un fichier IA : « ok », « non verrouillé », « absent », « modifié » (AssetError si hors du
+    dossier IA ou lien sortant)."""
+    lock = lock if lock is not None else load_lock(lock_path)
+    key = lock_key(path)
+    return _problem(key, lock["assets"].get(key), _lock_path(lock_path).name)[0]
+
+
 def ai_paths_of(compiled: dict) -> list[str]:
     """Assets IA relevés par le compilateur (compiled["assets"], CONTRACT §11.2)."""
     return [a["path"] for a in (compiled.get("assets") or []) if a.get("ai")]

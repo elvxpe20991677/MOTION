@@ -103,6 +103,8 @@ jobs:
         run: .venv/bin/python tests/verify_features.py
       - name: Phase 3 — assets IA gelés
         run: .venv/bin/python tests/verify_step30_assets.py
+      - name: Phase 4 — voix off (faux serveur ElevenLabs, aucun appel réel)
+        run: .venv/bin/python tests/verify_step40_voice.py
       - name: Journaux et images de test (en cas d'échec)
         if: failure()
         uses: actions/upload-artifact@v4

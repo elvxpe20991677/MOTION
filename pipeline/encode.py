@@ -207,7 +207,9 @@ def build_commands(compiled: dict) -> list[dict]:
     duration = duration_text(frames, fps)
     pattern = config.master_dir(scene_id) / config.FRAME_PATTERN_FFMPEG
     audio = compiled.get("audio")
-    audio_src = Path(audio["src"]) if audio and audio.get("src") else None
+    # Piste livrée : le mixage voix off + musique s'il existe (phase 4), sinon la musique.
+    track = (audio.get("mix") or audio.get("src")) if audio else None
+    audio_src = Path(track) if track else None
     # Mesure faite UNE fois (même gain pour tous les livrables) et seulement si demandée.
     norm = (loudnorm_prefix(audio_src, duration, float(audio["target_lufs"]))
             if audio_src is not None and audio.get("normalize") else None)
@@ -336,8 +338,9 @@ def encode_scene(compiled: dict, *, log=print) -> list[Path]:
 
     assets.check_compiled(compiled, stage="Encodage")
     audio = compiled.get("audio")
-    if audio and audio.get("src") and not Path(audio["src"]).is_file():
-        raise EncodeError(f"Piste audio absente : {audio['src']}. Générez-la (audio.synth + "
+    track = (audio.get("mix") or audio.get("src")) if audio else None
+    if track and not Path(track).is_file():
+        raise EncodeError(f"Piste audio absente : {track}. Générez-la (audio.synth, mixage de la voix off : "
                           "pipeline.audio.ensure_scene_audio) ou placez le fichier avant l'encodage.")
     commands = build_commands(compiled)
 
