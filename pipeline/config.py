@@ -307,9 +307,15 @@ BLACKDETECT_PIX_TH: float = 0.03          # 0.06 pénalise les fonds sombres vou
 LEVELS_R103_Y: tuple[float, float] = (55.0, 966.0)
 # EBU R103 v3.0 (mai 2020, tech.ebu.ch/publications/r103), Table 1 en 10 bits : plage « préférée »
 # de Y ET de chaque composante R'G'B' ; mesure après le filtre passe-bas recommandé (H 1,2,3,4,3,2,1
-# /16, V 1,2,1 /4) ; « hors gamut » seulement si l'erreur dépasse 1 % de l'image (les pointes de
-# compression aux arêtes vives et la chroma sous-échantillonnée ne sont pas des erreurs de gamut).
+# /16, V 1,2,1 /4) ; un « hors gamut » n'est signalé que si l'erreur dépasse 1 % de l'image (les
+# dépassements bénins plus petits restent des erreurs de gamut, mais ne sont pas signalés).
 LEVELS_R103_PREFERRED_10BIT: tuple[float, float] = (20.0, 984.0)
+# R103 v3.0, Annexe 1 (Introduction) : un programme pré-produit et étalonné (cas de mograph) doit
+# suivre DE PRÈS la plage nominale 64..940. Tolérance ±1 % de l'excursion nominale (8,76 codes) :
+# absorbe le bruit de quantification des codecs (Éclosion Urbaine : moins de 4,4 codes sur plus de
+# 99 % de chaque image) et détecte un vrai défaut de plage (fond en super-blanc ou en sous-noir).
+LEVELS_NOMINAL_10BIT: tuple[float, float] = (64.0, 940.0)
+LEVELS_NOMINAL_TOLERANCE: float = 0.01
 LEVELS_R103_FILTER_H: tuple[int, ...] = (1, 2, 3, 4, 3, 2, 1)
 LEVELS_R103_FILTER_V: tuple[int, ...] = (1, 2, 1)
 LEVELS_R103_AREA_MAX: float = 0.01

@@ -3,7 +3,7 @@
   "scene_id": "eclosion_urbaine",
   "title": "Éclosion Urbaine — film concept",
   "verdict": "CONFORME",
-  "generated_at": "2026-09-30T20:33:09+00:00",
+  "generated_at": "2026-10-01T12:24:14+00:00",
   "format": {
     "aspect": "16:9",
     "resolution": "1080p",
@@ -17,7 +17,7 @@
   "frames": 744,
   "duration_s": 31.0,
   "counts": {
-    "PASS": 30,
+    "PASS": 31,
     "FAIL": 0,
     "WARN": 0,
     "SKIP": 0
@@ -71,6 +71,8 @@
       "blocking_failures": 0
     }
   ],
+  "provenance": null,
+  "ai_assets": [],
   "checks": [
     {
       "id": "hevc_main10.readable",
@@ -181,7 +183,8 @@
       "status": "PASS",
       "expected": {
         "reserved_codes": "aucun (4..1019)",
-        "ebu_r103_v3": "Y et R'G'B' filtrés dans 20..984 sur au moins 99 % de chaque image"
+        "ebu_r103_v3_gamut": "Y et R'G'B' filtrés dans 20..984 sur au moins 99 % de chaque image",
+        "ebu_r103_v3_nominal": "Y et R'G'B' filtrés dans 64..940 ± 1 % sur au moins 99 % de chaque image (programme pré-produit)"
       },
       "actual": {
         "y_min": 52.0,
@@ -193,6 +196,13 @@
         "r103_frames_out_of_gamut": 0,
         "r103_max_area_pct": 0.0138,
         "r103_worst_frame": 310,
+        "nominal_frames_out": 0,
+        "nominal_max_area_pct": 0.2305,
+        "nominal_worst_frame": 480,
+        "nominal_range": [
+          55.24,
+          948.76
+        ],
         "y_filtered": [
           83.7,
           950.2
@@ -208,7 +218,7 @@
         "r103_frames": 744
       },
       "blocking": false,
-      "detail": "0 image hors gamut EBU R103 v3.0 (pire image 310 : 0.0138 % hors plage après filtrage, seuil 1 %) ; Y filtré 83.7..950.2, R'G'B' filtrés 56.9..1034.1. Mesure brute (sans filtre) : Y 52..1001, chroma 122..803, R'G'B' -130.2..1158.5 ; 105 image(s) à Y brut hors 55..966. Les dépassements bruts sont des pointes de compression aux arêtes vives et de chroma sous-échantillonnée, que R103 v3.0 exclut par son filtre et son seuil de surface."
+      "detail": "Aucune image hors gamut ni hors plage nominale au sens de R103 v3.0 (surface maximale hors 20..984 : 0.0138 %, image 310 ; hors 55.24..948.76 : 0.2305 %, image 480 ; seuil de signalement 1 %). Y filtré 83.7..950.2, R'G'B' filtrés 56.9..1034.1. Mesure brute (sans filtre) : Y 52..1001, chroma 122..803, R'G'B' -130.2..1158.5 ; 105 image(s) à Y brut hors 55..966."
     },
     {
       "id": "hevc_main10.black",
@@ -361,7 +371,8 @@
       "status": "PASS",
       "expected": {
         "reserved_codes": "aucun (4..1019)",
-        "ebu_r103_v3": "Y et R'G'B' filtrés dans 20..984 sur au moins 99 % de chaque image"
+        "ebu_r103_v3_gamut": "Y et R'G'B' filtrés dans 20..984 sur au moins 99 % de chaque image",
+        "ebu_r103_v3_nominal": "Y et R'G'B' filtrés dans 64..940 ± 1 % sur au moins 99 % de chaque image (programme pré-produit)"
       },
       "actual": {
         "y_min": 76.0,
@@ -373,6 +384,13 @@
         "r103_frames_out_of_gamut": 0,
         "r103_max_area_pct": 0.0023,
         "r103_worst_frame": 567,
+        "nominal_frames_out": 0,
+        "nominal_max_area_pct": 0.1303,
+        "nominal_worst_frame": 588,
+        "nominal_range": [
+          55.24,
+          948.76
+        ],
         "y_filtered": [
           86.2,
           943.1
@@ -388,7 +406,7 @@
         "r103_frames": 744
       },
       "blocking": false,
-      "detail": "0 image hors gamut EBU R103 v3.0 (pire image 567 : 0.0023 % hors plage après filtrage, seuil 1 %) ; Y filtré 86.2..943.1, R'G'B' filtrés 69.7..988.3. Mesure brute (sans filtre) : Y 76..987, chroma 126..790, R'G'B' -70.5..1144.3 ; 31 image(s) à Y brut hors 55..966. Les dépassements bruts sont des pointes de compression aux arêtes vives et de chroma sous-échantillonnée, que R103 v3.0 exclut par son filtre et son seuil de surface."
+      "detail": "Aucune image hors gamut ni hors plage nominale au sens de R103 v3.0 (surface maximale hors 20..984 : 0.0023 %, image 567 ; hors 55.24..948.76 : 0.1303 %, image 588 ; seuil de signalement 1 %). Y filtré 86.2..943.1, R'G'B' filtrés 69.7..988.3. Mesure brute (sans filtre) : Y 76..987, chroma 126..790, R'G'B' -70.5..1144.3 ; 31 image(s) à Y brut hors 55..966."
     },
     {
       "id": "prores_422hq.timecode",
@@ -497,6 +515,20 @@
       },
       "blocking": true,
       "detail": "10/10 images témoins identiques au bit près (qc.determinism_frames = 8)."
+    },
+    {
+      "id": "scene.ai_disclosure",
+      "label": "scène : déclaration d'usage de l'IA",
+      "status": "PASS",
+      "expected": "provenance.ai_disclosure (ai_used: true, rôles, outils, date) dès qu'un asset de assets/ai/ est utilisé",
+      "actual": {
+        "ai_assets": [],
+        "declared": false,
+        "ai_used": null,
+        "roles": null
+      },
+      "blocking": false,
+      "detail": "Aucun asset de assets/ai/ utilisé : aucune déclaration requise."
     }
   ],
   "tools": {

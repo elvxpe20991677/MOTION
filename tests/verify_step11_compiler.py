@@ -648,8 +648,14 @@ def main() -> int:
         expect_refused(with_ai({"ai_disclosure": {**decl, "roles": ["hologramme"]}}),
                        "rôle d'IA inconnu", ["hologramme"])
         c2 = scene.compile_scene(with_ai({"ai_disclosure": {"ai_used": False, "roles": ["image"]}}))
-        check(any("ai_used vaut false" in w for w in c2["warnings"]),
-              "ai_used: false avec des rôles listés => avertissement de contradiction")
+        check(any("ai_used vaut false" in w for w in c2["warnings"])
+              and not any("sans déclaration" in w for w in c2["warnings"]),
+              "ai_used: false avec un asset IA => avertissement de contradiction (et non « sans déclaration »)",
+              str(c2["warnings"][-2:]))
+        exc = expect_refused(with_ai({"ai_disclosure": {"roles": ["image"]}}), "ai_used absent", ["ai_used"])
+        check(exc is not None and str(exc).count("ai_used") == 1 and "date" not in str(exc),
+              "ai_used absent : une seule erreur (pas de champs tools/date réclamés à tort)",
+              str(exc)[:200] if exc else "")
         q0, q1, q2 = (qc.check_ai_disclosure(c) for c in (c0, c1, c2))
         check(q0["status"] == "WARN" and q1["status"] == "PASS" and q2["status"] == "WARN"
               and not any(q["blocking"] for q in (q0, q1, q2)),

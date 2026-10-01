@@ -1064,8 +1064,9 @@ class _Compiler:
         self.source = source
         self.errors: list[str] = []
         self.warnings: list[str] = []
-        # Fichiers de assets/ réellement utilisés -> natures (image, video, subtitles, audio) : relevé
-        # pour le QC (déclaration d'usage de l'IA) et le verrou des assets gelés.
+        # Fichiers réellement utilisés -> natures (image, video, subtitles, audio) : relevé pour le QC
+        # (déclaration d'usage de l'IA) et le verrou des assets gelés. Chemin relatif à la racine ;
+        # absolu seulement pour une piste audio hors du projet (seul audio.src n'est pas limité à assets/).
         self._assets: dict[str, set[str]] = {}
 
     def _note_asset(self, path: Path, kind: str) -> None:
@@ -2541,12 +2542,16 @@ class _Compiler:
             items.append({"path": rel, "kinds": sorted(self._assets[rel]), "ai": path.is_relative_to(ai_root)})
         ai_items = [a["path"] for a in items if a["ai"]]
         disclosure = (provenance or {}).get("ai_disclosure")
-        if ai_items and not (disclosure and disclosure["ai_used"]):
-            # Avertissement dès la compilation : le QC le signalera aussi (scene.ai_disclosure).
-            self.warn(("provenance",), f"{len(ai_items)} asset(s) produit(s) par IA ({', '.join(ai_items[:3])}"
-                                       f"{'…' if len(ai_items) > 3 else ''}) sans déclaration : ajoutez "
+        listed = f"{', '.join(ai_items[:3])}{'…' if len(ai_items) > 3 else ''}"
+        # Avertissements dès la compilation : le QC les signalera aussi (scene.ai_disclosure).
+        if ai_items and disclosure is None:
+            self.warn(("provenance",), f"{len(ai_items)} asset(s) produit(s) par IA ({listed}) sans déclaration : ajoutez "
                                        "\"provenance\": {\"ai_disclosure\": {\"ai_used\": true, \"roles\": [...], "
                                        "\"tools\": [...], \"date\": \"AAAA-MM-JJ\"}}.")
+        elif ai_items and not disclosure["ai_used"]:
+            self.warn(("provenance", "ai_disclosure", "ai_used"),
+                      f"ai_used vaut false alors que {len(ai_items)} asset(s) de assets/ai/ sont utilisés ({listed}) : "
+                      "passez ai_used à true et complétez roles, tools et date.")
         return items
 
     def _storyboard(self) -> None:

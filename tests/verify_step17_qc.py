@@ -228,6 +228,9 @@ def make_compiled(scene_id: str, outputs: list[tuple[str, Path]], *, alpha: bool
         "qc": qc_block,
         "shots": [{"id": sid, "index": i, "frames": n, "global_start": gs, "fade_in_frames": f, "plates": []}
                   for i, (sid, gs, n, f) in enumerate(SEGMENTS)],
+        # Phase 1 (CONTRACT §11.2) : relevé des assets et provenance, comme un compilé réel.
+        "assets": [],
+        "provenance": None,
         "warnings": [],
     }
 
@@ -439,6 +442,27 @@ def unit_r103_tests() -> None:
            "R103 v3.0 (unitaire) : un rouge saturé à Y légal est détecté par les composantes R'G'B'",
            f"Y filtré={rs['y_filtered']} R'G'B' filtrés={rs['rgb_filtered']}")
 
+    # Plage NOMINALE (R103 v3.0, Annexe 1 : programme pré-produit) : 64..940 à ±1 % près.
+    nominal_cases = {
+        # fond plein cadre en super-blanc : dans la plage préférée (< 984) mais hors nominale
+        "super_blanc": (frame(y=975.0), 3),
+        # fond plein cadre en sous-noir : > 20 mais hors nominale
+        "sous_noir": (frame(y=30.0), 3),
+        # léger dépassement (bruit de quantification) dans la tolérance de ±1 % : non signalé
+        "bruit_tolere": (frame(y=944.0), 0),
+    }
+    for name, (f, want) in nominal_cases.items():
+        r = qc._gamut_r103(_r103_clip(name, [f] * 3), w, h, timeout=120)
+        record(r["r103_frames_out_of_gamut"] == 0 and r["nominal_frames_out"] == want,
+               f"R103 v3.0 (unitaire) : « {name} » => 0 image hors gamut, {want} hors plage nominale sur 3",
+               f"hors gamut={r['r103_frames_out_of_gamut']} hors nominale={r['nominal_frames_out']} "
+               f"zone={r['nominal_max_area_pct']} % plage={r['nominal_range']}")
+    chk = qc.check_output(_r103_clip("super_blanc", [frame(y=975.0)] * 3), {"fps": FPS, "frames": 3, "levels": True})
+    lev = next((c for c in chk if c["id"].endswith(".levels")), {})
+    record(lev.get("status") == "WARN" and lev.get("blocking") is False and "plage nominale" in lev.get("detail", ""),
+           "R103 v3.0 (unitaire) : un fond en super-blanc donne un WARN « plage nominale », non bloquant",
+           f"{lev.get('status')} ; {lev.get('detail', '')[:120]}")
+
 
 def main() -> int:
     t_all = time.perf_counter()
@@ -576,9 +600,24 @@ def main() -> int:
     c_ai = check_statuses(rep_ai).get("scene.ai_disclosure", {})
     md_ai = (config.scene_out_dir("ai_undeclared") / "qc_report.md").read_text(encoding="utf-8")
     record(c_ai.get("status") == "WARN" and rep_ai["verdict"] == qc.VERDICT_OK and rep_ai["ai_assets"] == ["assets/ai/plan.mp4"]
-           and "assets/ai/plan.mp4" in md_ai,
+           and "`assets/ai/plan.mp4`" in md_ai,
            "asset IA sans déclaration : scene.ai_disclosure WARN, verdict inchangé (CONFORME), asset listé au rapport",
            f"{c_ai.get('status')} ; {rep_ai['verdict']}")
+    old = {k: v for k, v in with_ai.items() if k not in ("assets", "provenance")}
+    skip = qc.check_ai_disclosure(old)
+    record(skip["status"] == "SKIP" and skip["blocking"] is False,
+           "compilé sans relevé d'assets (antérieur à la phase 1) : scene.ai_disclosure SKIP, rien n'est affirmé",
+           f"{skip['status']} ; {skip['detail'][:90]}")
+    lines = qc._provenance_lines({"provenance": {"authors": ["A\n# Titre"], "tools": [{"name": "Resolve", "model": "x",
+                                                                                     "role": "étalonnage"}],
+                                                 "ai_disclosure": {"ai_used": True, "roles": ["voice"], "date": "2026-10-01",
+                                                                   "tools": [{"name": "ElevenLabs", "role": "voix"}],
+                                                                   "statement": "Ligne 1\n# Titre injecté"}},
+                                  "ai_assets": ["assets/ai/voix.wav"]})
+    record(not any(l.lstrip().startswith("#") and l.strip() != "## Provenance" for l in lines)
+           and any("Resolve / x" in l for l in lines) and any("`assets/ai/voix.wav`" in l for l in lines),
+           "section Provenance : textes libres sur une ligne (aucun titre injecté), modèle des outils affiché",
+           " | ".join(lines)[:200])
 
     # --- Format des contrôles (CONTRACT §4) ----------------------------------------------------------
     keys = {"id", "label", "status", "expected", "actual", "blocking", "detail"}

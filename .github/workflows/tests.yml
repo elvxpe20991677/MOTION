@@ -19,7 +19,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Doivent rester égales à versions.json (check_versions.py échoue sinon).
+  # Doivent rester égales à versions.json : check_versions.py --strict échoue sinon (Node et uv
+  # compris ; hors CI, ces deux-là ne donnent qu'une NOTE car ils n'influencent pas les pixels).
   PYTHON_VERSION: "3.12.10"
   NODE_VERSION: "24.19.0"
   UV_VERSION: "0.11.7"
@@ -49,7 +50,7 @@ jobs:
           .venv/bin/python -m playwright install --with-deps chromium
           npm ci
       - name: Versions (profil ci-linux)
-        run: .venv/bin/python scripts/check_versions.py --profile ci-linux --no-blender
+        run: .venv/bin/python scripts/check_versions.py --profile ci-linux --no-blender --strict
       - name: Étape 9 — presets
         run: .venv/bin/python tests/verify_step09_presets.py
       - name: Étape 11 — compilateur
@@ -93,7 +94,7 @@ jobs:
           uv venv --python ${{ env.BLENDER_PYTHON_VERSION }} .venv-blender
           uv pip install --python .venv-blender/bin/python bpy==5.0.1 -c constraints-blender.txt
       - name: Versions (profil ci-linux)
-        run: .venv/bin/python scripts/check_versions.py --profile ci-linux
+        run: .venv/bin/python scripts/check_versions.py --profile ci-linux --strict
       - name: Étape 12 — pilote web (déterminisme, 4K, alpha, reprise)
         run: .venv/bin/python tests/verify_step12_web.py
       - name: Étape 13 — backend Blender
@@ -146,7 +147,7 @@ jobs:
           uv venv --python ${{ env.BLENDER_PYTHON_VERSION }} .venv-blender
           uv pip install --python .venv-blender/Scripts/python.exe bpy==5.0.1 -c constraints-blender.txt
       - name: Versions (profil reference)
-        run: .venv/Scripts/python.exe scripts/check_versions.py --profile reference
+        run: .venv/Scripts/python.exe scripts/check_versions.py --profile reference --strict
       - name: Étapes 9 à 17 et nouveautés
         run: |
           set -e

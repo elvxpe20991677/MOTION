@@ -1,4 +1,4 @@
-# Installation reproductible de mograph sous Windows 11 (PowerShell 5.1 ou 7), idempotente.
+﻿# Installation reproductible de mograph sous Windows 11 (PowerShell 5.1 ou 7), idempotente.
 #   powershell -ExecutionPolicy Bypass -File .\setup.ps1              installe (ou complète) puis vérifie
 #   powershell -ExecutionPolicy Bypass -File .\setup.ps1 -Tests       idem + tests rapides (étapes 9, 11, 14, 15, 16)
 #   powershell -ExecutionPolicy Bypass -File .\setup.ps1 -Defender    idem + exclusion Defender de build\ (admin)

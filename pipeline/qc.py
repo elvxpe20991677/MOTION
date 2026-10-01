@@ -318,13 +318,15 @@ _BT709_KR, _BT709_KB = 0.2126, 0.0722
 
 
 def _gamut_r103(path: Path, width: int, height: int, timeout: float) -> dict:
-    """Gamut EBU R103 v3.0 sur TOUTES les images (config.LEVELS_R103_*).
+    """Niveaux EBU R103 v3.0 sur TOUTES les images (config.LEVELS_R103_* et LEVELS_NOMINAL_*).
 
     Chaque image est décodée en 4:4:4 10 bits (chroma suréchantillonnée par swscale en arrondi
-    exact), Y et R'G'B' (matrice BT.709 inverse, plage limitée, SANS écrêtage) sont exprimés en codes
-    10 bits, filtrés par le passe-bas recommandé par R103, puis la part de l'image hors de la plage
-    préférée est mesurée : une image n'est « hors gamut » qu'au-delà de config.LEVELS_R103_AREA_MAX.
+    exact). Y et R'G'B' (matrice BT.709 inverse, plage limitée, SANS écrêtage) sont exprimés en codes
+    10 bits et filtrés par le passe-bas recommandé par R103. Deux surfaces sont mesurées par image :
+    hors plage préférée (gamut, Table 1) et hors plage nominale élargie de la tolérance (programme
+    pré-produit, Annexe 1). Une image n'est comptée qu'au-delà de config.LEVELS_R103_AREA_MAX.
     """
+    import tempfile
     import time
 
     import cv2
@@ -332,6 +334,8 @@ def _gamut_r103(path: Path, width: int, height: int, timeout: float) -> dict:
     if width <= 0 or height <= 0:
         raise QCError(f"mesure R103 impossible sur {path.name} : dimensions inconnues ({width}x{height}).")
     lo, hi = config.LEVELS_R103_PREFERRED_10BIT
+    tol = config.LEVELS_NOMINAL_TOLERANCE * (config.LEVELS_NOMINAL_10BIT[1] - config.LEVELS_NOMINAL_10BIT[0])
+    nlo, nhi = config.LEVELS_NOMINAL_10BIT[0] - tol, config.LEVELS_NOMINAL_10BIT[1] + tol
     kh = np.asarray(config.LEVELS_R103_FILTER_H, np.float32)
     kv = np.asarray(config.LEVELS_R103_FILTER_V, np.float32)
     kh, kv = kh / kh.sum(), kv / kv.sum()
@@ -340,17 +344,29 @@ def _gamut_r103(path: Path, width: int, height: int, timeout: float) -> dict:
             "-sws_flags", "bicubic+accurate_rnd+full_chroma_int", "-pix_fmt", "yuv444p10le",
             "-f", "rawvideo", "-"]
     kwargs: dict[str, Any] = {"creationflags": subprocess.CREATE_NO_WINDOW} if config.IS_WINDOWS else {}
+    # stderr vers un fichier temporaire : lu à la fin, il ne peut pas bloquer le tube vidéo.
+    errf = tempfile.TemporaryFile()
     try:
-        # stderr vers un fichier temporaire du système : lu à la fin, il ne peut pas bloquer le tube vidéo.
-        import tempfile
-        errf = tempfile.TemporaryFile()
         proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=errf, **kwargs)
     except FileNotFoundError as exc:
+        errf.close()
         raise QCError(f"Outil introuvable : {config.FFMPEG!r} (FFmpeg requis pour la mesure R103).") from exc
+    # Garde-fou : si FFmpeg se bloque sans rien écrire, read() attendrait sans fin ; la minuterie tue
+    # le processus (PID connu) à l'échéance, ce qui débloque la lecture.
+    expired = threading.Event()
+
+    def _expire() -> None:
+        expired.set()
+        proc.kill()
+
+    timer = threading.Timer(timeout, _expire)
+    timer.daemon = True
+    timer.start()
     fsize = width * height * 3 * 2
     deadline = time.monotonic() + timeout
-    n = bad_frames = 0
+    n = bad_frames = nominal_frames = 0
     worst_frac, worst_frame = 0.0, None
+    worst_nom, worst_nom_frame = 0.0, None
     y_f = [np.inf, -np.inf]
     rgb_f = [np.inf, -np.inf]
     rgb_raw = [np.inf, -np.inf]
@@ -360,7 +376,8 @@ def _gamut_r103(path: Path, width: int, height: int, timeout: float) -> dict:
             if len(buf) < fsize:
                 break
             if time.monotonic() > deadline:
-                raise QCError(f"Délai dépassé ({timeout:.0f} s) pour la mesure R103 de {path.name}.")
+                expired.set()
+                break
             y, cb, cr = np.frombuffer(buf, "<u2").reshape(3, height, width).astype(np.float32)
             # Composantes normalisées (0..1 = noir..blanc nominal) puis retour en codes 10 bits.
             yn = (y - 64.0) / 876.0
@@ -369,6 +386,7 @@ def _gamut_r103(path: Path, width: int, height: int, timeout: float) -> dict:
             b = yn + 2.0 * (1.0 - _BT709_KB) * pb
             g = (yn - _BT709_KR * r - _BT709_KB * b) / kg
             outside = np.zeros((height, width), bool)
+            off_nominal = np.zeros((height, width), bool)
             for is_luma, comp in ((True, y), (False, r * 876.0 + 64.0), (False, g * 876.0 + 64.0),
                                   (False, b * 876.0 + 64.0)):
                 if not is_luma:
@@ -379,25 +397,38 @@ def _gamut_r103(path: Path, width: int, height: int, timeout: float) -> dict:
                 acc[0] = min(acc[0], float(f.min()))
                 acc[1] = max(acc[1], float(f.max()))
                 outside |= (f < lo) | (f > hi)
-            frac = float(outside.mean())
+                off_nominal |= (f < nlo) | (f > nhi)
+            frac, nom = float(outside.mean()), float(off_nominal.mean())
             if frac > config.LEVELS_R103_AREA_MAX:
                 bad_frames += 1
+            if nom > config.LEVELS_R103_AREA_MAX:
+                nominal_frames += 1
             if worst_frame is None or frac > worst_frac:
                 worst_frac, worst_frame = frac, n
+            if worst_nom_frame is None or nom > worst_nom:
+                worst_nom, worst_nom_frame = nom, n
             n += 1
     finally:
+        timer.cancel()
         if proc.poll() is None:
             proc.kill()
         proc.wait()
         errf.seek(0)
         err = errf.read()
         errf.close()
+    if expired.is_set():
+        raise QCError(f"Délai dépassé ({timeout:g} s) pour la mesure R103 de {path.name} : vérifiez que le "
+                      "fichier n'est pas corrompu et qu'il n'est pas sur un disque réseau lent.")
     if n == 0:
         raise QCError(f"mesure R103 impossible sur {path.name} : aucune image décodée ({_tail(_text(err))}).")
     return {
         "r103_frames_out_of_gamut": bad_frames,
         "r103_max_area_pct": round(100.0 * worst_frac, 4),
         "r103_worst_frame": worst_frame,
+        "nominal_frames_out": nominal_frames,
+        "nominal_max_area_pct": round(100.0 * worst_nom, 4),
+        "nominal_worst_frame": worst_nom_frame,
+        "nominal_range": [round(nlo, 2), round(nhi, 2)],
         "y_filtered": [round(y_f[0], 1), round(y_f[1], 1)],
         "rgb_filtered": [round(rgb_f[0], 1), round(rgb_f[1], 1)],
         "rgb_raw": [round(rgb_raw[0], 1), round(rgb_raw[1], 1)],
@@ -673,9 +704,13 @@ def check_output(path, expected: dict) -> list[dict]:
         bits = 12 if "12" in pix else (10 if "10" in pix else 8)
         rlo, rhi = config.LEVELS_RESERVED_10BIT
         plo, phi = config.LEVELS_R103_PREFERRED_10BIT
+        nlo, nhi = config.LEVELS_NOMINAL_10BIT
         area = 100.0 * config.LEVELS_R103_AREA_MAX
+        tol = 100.0 * config.LEVELS_NOMINAL_TOLERANCE
         exp_lv = {"reserved_codes": f"aucun ({rlo:g}..{rhi:g})",
-                  "ebu_r103_v3": f"Y et R'G'B' filtrés dans {plo:g}..{phi:g} sur au moins {100 - area:g} % de chaque image"}
+                  "ebu_r103_v3_gamut": f"Y et R'G'B' filtrés dans {plo:g}..{phi:g} sur au moins {100 - area:g} % de chaque image",
+                  "ebu_r103_v3_nominal": f"Y et R'G'B' filtrés dans {nlo:g}..{nhi:g} ± {tol:g} % sur au moins "
+                                         f"{100 - area:g} % de chaque image (programme pré-produit)"}
         try:
             lv = _levels(p, bits, timeout)
             lv.update(_gamut_r103(p, int(v.get("width") or 0), int(v.get("height") or 0), timeout))
@@ -686,8 +721,10 @@ def check_output(path, expected: dict) -> list[dict]:
             raw_note = (f"Mesure brute (sans filtre) : Y {lv['y_min']:g}..{lv['y_max']:g}, chroma {lv['c_min']:g}.."
                         f"{lv['c_max']:g}, R'G'B' {lv['rgb_raw'][0]:g}..{lv['rgb_raw'][1]:g} ; "
                         f"{lv['frames_raw_outside_55_966']} image(s) à Y brut hors 55..966.")
+            filt_note = (f"Y filtré {lv['y_filtered'][0]:g}..{lv['y_filtered'][1]:g}, R'G'B' filtrés "
+                         f"{lv['rgb_filtered'][0]:g}..{lv['rgb_filtered'][1]:g}.")
             # Informatif (jamais bloquant) : la diffusion broadcast se valide aux scopes (Resolve) ; le
-            # web tolère ces écarts. Le statut suit la méthode R103 v3.0 (filtre + seuil de surface).
+            # web tolère ces écarts. Ordre : codes réservés, gamut (plage préférée), plage nominale.
             if reserved:
                 add("levels", "niveaux vidéo (EBU R103 v3.0)", "WARN", exp_lv, lv, False,
                     f"Codes réservés atteints (< {rlo:g} ou > {rhi:g} en 10 bits) : à corriger pour la DIFFUSION "
@@ -698,14 +735,20 @@ def check_output(path, expected: dict) -> list[dict]:
                     f"{lv['r103_frames_out_of_gamut']} image(s) hors gamut EBU R103 v3.0 (plus de {area:g} % de l'image "
                     f"hors {plo:g}..{phi:g} après filtrage ; pire image {lv['r103_worst_frame']} : "
                     f"{lv['r103_max_area_pct']:g} %) : couleurs trop saturées ou trop lumineuses pour la diffusion, "
-                    "à reprendre à l'étalonnage (palette, fond). " + raw_note)
+                    "à reprendre à l'étalonnage (palette, fond). " + filt_note + " " + raw_note)
+            elif lv["nominal_frames_out"]:
+                add("levels", "niveaux vidéo (EBU R103 v3.0)", "WARN", exp_lv, lv, False,
+                    f"{lv['nominal_frames_out']} image(s) hors plage nominale (plus de {area:g} % de l'image hors "
+                    f"{lv['nominal_range'][0]:g}..{lv['nominal_range'][1]:g} après filtrage ; pire image "
+                    f"{lv['nominal_worst_frame']} : {lv['nominal_max_area_pct']:g} %) : R103 v3.0 (Annexe 1) demande "
+                    "qu'un programme pré-produit suive de près la plage nominale 64..940 ; vérifiez la conversion "
+                    "de plage et les couleurs extrêmes (super-blancs, sous-noirs). " + filt_note + " " + raw_note)
             else:
                 add("levels", "niveaux vidéo (EBU R103 v3.0)", "PASS", exp_lv, lv, False,
-                    f"0 image hors gamut EBU R103 v3.0 (pire image {lv['r103_worst_frame']} : {lv['r103_max_area_pct']:g} % "
-                    f"hors plage après filtrage, seuil {area:g} %) ; Y filtré {lv['y_filtered'][0]:g}..{lv['y_filtered'][1]:g}, "
-                    f"R'G'B' filtrés {lv['rgb_filtered'][0]:g}..{lv['rgb_filtered'][1]:g}. " + raw_note
-                    + " Les dépassements bruts sont des pointes de compression aux arêtes vives et de chroma "
-                      "sous-échantillonnée, que R103 v3.0 exclut par son filtre et son seuil de surface.")
+                    f"Aucune image hors gamut ni hors plage nominale au sens de R103 v3.0 (surface maximale hors "
+                    f"{plo:g}..{phi:g} : {lv['r103_max_area_pct']:g} %, image {lv['r103_worst_frame']} ; hors "
+                    f"{lv['nominal_range'][0]:g}..{lv['nominal_range'][1]:g} : {lv['nominal_max_area_pct']:g} %, image "
+                    f"{lv['nominal_worst_frame']} ; seuil de signalement {area:g} %). " + filt_note + " " + raw_note)
 
     # --- Piste timecode tmcd (ProRes) ------------------------------------------------------------
     if expected.get("timecode"):
@@ -1120,9 +1163,14 @@ def check_ai_disclosure(compiled: dict) -> dict:
     compiled["assets"]). Avertissement si un tel asset est utilisé sans provenance.ai_disclosure
     déclarant ai_used: true.
     """
+    expected = "provenance.ai_disclosure (ai_used: true, rôles, outils, date) dès qu'un asset de assets/ai/ est utilisé"
+    if "assets" not in compiled:
+        # Compilé antérieur à la phase 1 (ou écrit à la main) : rien n'a été vérifié, on ne l'affirme pas.
+        return _check("scene.ai_disclosure", "scène : déclaration d'usage de l'IA", "SKIP", expected, None, False,
+                      "Relevé des assets absent du compilé (scène compilée avant la phase 1) : recompilez la scène "
+                      "(python mograph.py validate <scène>).")
     ai_assets = [a["path"] for a in (compiled.get("assets") or []) if a.get("ai")]
     disc = (compiled.get("provenance") or {}).get("ai_disclosure")
-    expected = "provenance.ai_disclosure (ai_used: true, rôles, outils, date) dès qu'un asset de assets/ai/ est utilisé"
     actual = {"ai_assets": ai_assets, "declared": disc is not None,
               "ai_used": disc.get("ai_used") if disc else None, "roles": disc.get("roles") if disc else None}
     label = "scène : déclaration d'usage de l'IA"
@@ -1144,6 +1192,20 @@ def check_ai_disclosure(compiled: dict) -> dict:
                   "Aucun asset de assets/ai/ utilisé" + (" ; aucune IA déclarée." if disc else " : aucune déclaration requise."))
 
 
+def _md_text(value: Any) -> str:
+    """Texte libre sur une seule ligne : un retour à la ligne ne peut pas créer de titre Markdown."""
+    return " ".join(str(value).split())
+
+
+def _tool_text(tool: dict) -> str:
+    parts = [_md_text(tool.get("name", "?"))]
+    if tool.get("model"):
+        parts.append(f"/ {_md_text(tool['model'])}")
+    if tool.get("version"):
+        parts.append(_md_text(tool["version"]))
+    return " ".join(parts) + f" — {_md_text(tool.get('role', ''))}"
+
+
 def _provenance_lines(report: dict) -> list[str]:
     """Section « Provenance » du rapport humain : auteurs, outils, déclaration d'IA, assets IA."""
     prov = report.get("provenance") or {}
@@ -1153,24 +1215,23 @@ def _provenance_lines(report: dict) -> list[str]:
         lines.append("Aucun bloc `provenance` dans la scène.")
     else:
         if prov.get("authors"):
-            lines.append(f"- Auteurs : {', '.join(prov['authors'])}")
+            lines.append(f"- Auteurs : {', '.join(_md_text(a) for a in prov['authors'])}")
         for tool in prov.get("tools") or []:
-            lines.append(f"- Outil : {tool.get('name')} {tool.get('version') or ''} — {tool.get('role')}".replace("  ", " "))
+            lines.append(f"- Outil : {_tool_text(tool)}")
         if disc is None:
             lines.append("- Déclaration d'usage de l'IA : absente")
         elif not disc.get("ai_used"):
             lines.append("- Déclaration d'usage de l'IA : aucune IA utilisée")
         else:
-            lines.append(f"- IA utilisée (déclaration du {disc.get('date')}) : rôles {', '.join(disc.get('roles') or [])}")
+            lines.append(f"- IA utilisée (déclaration du {_md_text(disc.get('date'))}) : rôles "
+                         f"{', '.join(disc.get('roles') or [])}")
             for tool in disc.get("tools") or []:
-                lines.append(f"  - {tool.get('name')}"
-                             + (f" / {tool['model']}" if tool.get("model") else "")
-                             + (f" {tool['version']}" if tool.get("version") else "")
-                             + f" — {tool.get('role')}")
+                lines.append(f"  - {_tool_text(tool)}")
             if disc.get("statement"):
-                lines.append(f"- Mention : {disc['statement']}")
+                lines.append(f"- Mention : {_md_text(disc['statement'])}")
     ai_assets = report.get("ai_assets") or []
-    lines.append(f"- Assets produits par IA (assets/ai/) : {', '.join(ai_assets) if ai_assets else 'aucun'}")
+    lines.append("- Assets produits par IA (assets/ai/) : "
+                 + (", ".join(f"`{_md_text(a)}`" for a in ai_assets) if ai_assets else "aucun"))
     return lines
 
 

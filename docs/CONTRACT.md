@@ -432,7 +432,8 @@ alpha réel (4444, alphaextract image médiane : min < 255), blackdetect `pix_th
 (bloquant si noir > allow_black_s, informatif si `format.alpha`), audio (codec aac|pcm_s24le,
 48 kHz, durée ± (1 image + 25 ms)), loudness ±1 LU + true peak ≤ −1 dBTP, zones sûres (master
 manifest, bloquant au-delà de `safe_zone_tolerance_s` continu hors zone), déterminisme
-(`determinism.json` ok), niveaux vidéo (informatif, jamais bloquant : voir §11.1).
+(`determinism.json` ok), niveaux vidéo (informatif, jamais bloquant : voir §11.1), déclaration
+d'usage de l'IA `scene.ai_disclosure` (informatif, jamais bloquant : voir §11.2).
 Rapport `out/<scene>/qc_report.json` + `.md` (verdict en tête).
 
 ---------------------------------------------------------------------------------------------------
@@ -532,19 +533,29 @@ false`, comme avant) :
   R'G'B' (matrice BT.709 inverse, plage limitée, sans écrêtage) sont filtrés par
   `config.LEVELS_R103_FILTER_H` (1,2,3,4,3,2,1 /16) et `LEVELS_R103_FILTER_V` (1,2,1 /4) ; une image
   est **hors gamut** si la part de ses pixels hors `config.LEVELS_R103_PREFERRED_10BIT` (20..984)
-  dépasse `config.LEVELS_R103_AREA_MAX` (1 %) → WARN s'il y en a au moins une, sinon PASS ;
+  dépasse `config.LEVELS_R103_AREA_MAX` (1 %, seuil de signalement de R103 « Signal Issues ») → WARN ;
+- sinon **plage nominale** (R103 v3.0, Annexe 1, Introduction : un programme pré-produit et étalonné
+  doit suivre de près la plage nominale 64..940) : même mesure filtrée, plage
+  `config.LEVELS_NOMINAL_10BIT` élargie de `LEVELS_NOMINAL_TOLERANCE` (±1 % = 8,76 codes : 55,24..
+  948,76) ; plus de 1 % d'une image au-delà → WARN, sinon PASS. La tolérance est un choix mograph
+  (R103 ne la chiffre pas) : mesuré sur Éclosion Urbaine, le bruit de quantification des codecs
+  dépasse la plage stricte 64..940 sur 1,94 % (HEVC) et 1,73 % (ProRes) de la pire image, mais reste
+  sous 4,4 codes sur plus de 99 % de chaque image ; un vrai défaut de plage (fond à 975 ou à 30) est
+  détecté ;
 - toujours relevés dans `actual` : min/max bruts Y/chroma/R'G'B', nombre d'images à Y brut hors
   `config.LEVELS_R103_Y` (55..966, ancienne mesure, indicateur seulement), plages filtrées, pire
-  image et sa surface hors plage.
+  image et surface hors plage (préférée et nominale). Le texte du contrôle donne des mesures, jamais
+  de cause : l'explication ci-dessous vaut pour Éclosion Urbaine seulement.
+- délai : une minuterie tue FFmpeg (PID connu) à l'échéance, même s'il se bloque sans rien écrire.
 
 Diagnostic qui a motivé ce changement (Éclosion Urbaine, 744 images) : avant codec, la chaîne
 `config.ZSCALE` donne Y 76..940 (0 image hors 55..966) ; en 4:4:4 sans codec, R'G'B' reste dans
 63,6..942,5. Les 105 images HEVC (Y brut 52..1001) et 31 images ProRes (76..987) signalées hors
 55..966 viennent donc de la **compression** (pointes aux arêtes vives), et les R'G'B' bruts hors
-plage du **sous-échantillonnage de la chroma** (4:2:0 / 4:2:2) sur les arêtes saturées. Selon
-R103 v3.0, 0 image hors gamut (surface maximale 0,014 % en HEVC, 0,0023 % en ProRes). L'encodeur
-n'est pas modifié : R103 déconseille les légaliseurs avant la fin du traitement, et aucun pixel
-livré ne change.
+plage du **sous-échantillonnage de la chroma** (4:2:0 / 4:2:2) sur les arêtes saturées. Ce sont des
+dépassements bénins au sens de R103 v3.0 : 0 image signalée hors gamut (surface maximale 0,014 % en
+HEVC, 0,0023 % en ProRes) ni hors plage nominale tolérancée. L'encodeur n'est pas modifié : R103
+déconseille les légaliseurs avant la fin du traitement, et aucun pixel livré ne change.
 
 ### 11.2 Phase 1 — provenance et déclaration d'usage de l'IA
 Scène (`schema/scene.schema.json`) : bloc optionnel `provenance` = `{authors[], tools[{name, version?,
@@ -555,14 +566,17 @@ statement?}`, `roles` ⊂ {scene, text, image, video, music, voice, subtitles, 3
 `config.AI_ASSETS_DIR` (`assets/ai/`) sans `ai_used: true` → AVERTISSEMENT.
 
 Scène compilée, clés ajoutées (§4) :
-- `assets` : `[{path (relatif à la racine, « / »), kinds ⊂ {image, video, subtitles, audio}, ai}]`,
+- `assets` : `[{path (relatif à la racine, « / » ; absolu seulement pour une piste audio hors du
+  projet), kinds ⊂ {image, video, subtitles, audio}, ai}]`,
   trié par chemin ; `ai` = fichier sous `config.AI_ASSETS_DIR`. Relevé des fichiers réellement
   utilisés (images, vidéos, sous-titres, piste audio, y compris la piste test générée).
 - `provenance` : bloc normalisé (`authors`, `tools`, `ai_disclosure`) ou `null`.
 Ces clés n'entrent dans aucune empreinte de plan (`spec_sha256`) : aucun re-rendu, aucun pixel modifié.
 
 QC : contrôle de scène `scene.ai_disclosure` (`qc.check_ai_disclosure`), **jamais bloquant** :
-WARN si un asset IA est utilisé sans déclaration ou avec `ai_used: false`, PASS sinon. Le rapport
+WARN si un asset IA est utilisé sans déclaration ou avec `ai_used: false`, SKIP si le compilé n'a
+pas de relevé `assets` (compilé d'avant la phase 1), PASS sinon. Textes libres du rapport Markdown
+ramenés sur une ligne (aucun titre injecté). Le rapport
 porte `provenance` et `ai_assets` (JSON) et une section « Provenance » (Markdown).
 
 ### 11.3 Phase 1 — versions de référence et CI
@@ -572,15 +586,19 @@ porte `provenance` et `ai_assets` (JSON) et une section « Provenance » (Markdo
 - `constraints.txt` / `constraints-blender.txt` : TOUTES les versions installées (dépendances
   indirectes comprises), relevées le 30/09/2026 ; installation : `pip install -r requirements.txt -c
   constraints.txt`, `uv pip install bpy==5.0.1 -c constraints-blender.txt` (setup.ps1, setup.sh, CI).
-- `scripts/check_versions.py [--profile reference|ci-linux] [--no-blender] [--no-chromium]` :
-  PASS/FAIL/NOTE, code ≠ 0 si un écart. Profil `reference` : FFmpeg exactement 9.0.2 ; profil
-  `ci-linux` : FFmpeg exactement 6.1.1 (paquet Ubuntu 24.04). Tout le reste est exigé à l'identique
-  dans les deux profils ; Node et uv (sans effet sur les pixels) ne donnent qu'une NOTE.
+- `scripts/check_versions.py [--profile reference|ci-linux] [--no-blender] [--no-chromium] [--strict]` :
+  PASS/FAIL/NOTE, code ≠ 0 si un écart. FFmpeg ET ffprobe comparés à la chaîne de version complète
+  (profil `reference` : `9.0.2-full_build-www.gyan.dev` ; `ci-linux` : `6.1.1-3ubuntu5`), plus les
+  filtres et encodeurs requis (dont extractplanes et mergeplanes, utilisés par l'encodeur). Tout le
+  reste est exigé à l'identique dans les deux profils ; Node et uv (sans effet sur les pixels) ne
+  donnent qu'une NOTE, un FAIL avec `--strict` (utilisé en CI).
 - CI (`.github/workflows/tests.yml`) : versions épinglées en tête (`env`, égales à versions.json) ;
-  jobs `rapide` et `rendu` sur Ubuntu 24.04 (FFmpeg 6.1.1 : **écart documenté**, aucune build Linux
-  officielle épinglable de la 9.0.2 — BtbN ne publie que des instantanés `n9.0.2-NN-g…` supprimés au
-  fil du temps) ; job `reference-windows` (windows-2025) avec `choco install ffmpeg-full
-  --version=9.0.2` (paquet Chocolatey de la build gyan.dev, la même que la machine de rendu) et
-  `MOGRAPH_FFMPEG` / `MOGRAPH_FFPROBE` pointés dessus, qui rejoue les 9 scripts de vérification.
+  jobs `rapide` et `rendu` sur Ubuntu 24.04 (FFmpeg 6.1.1 : **écart documenté** ; aucune build Linux
+  n'est identique à la build gyan.dev de référence — BtbN publie des builds `n9.0.2` (quotidiennes
+  gardées 14 jours, de fin de mois gardées 2 ans) mais avec d'autres versions de bibliothèques ;
+  option non retenue, à décider) ; job `reference-windows` (windows-2025) avec `choco install
+  ffmpeg-full --version=9.0.2` (paquet Chocolatey qui embarque l'archive gyan.dev : SHA-256 de
+  ffmpeg.exe et ffprobe.exe identiques aux binaires winget de la machine de rendu, vérifié le
+  01/10/2026) et `MOGRAPH_FFMPEG` / `MOGRAPH_FFPROBE` pointés dessus, qui rejoue les 9 scripts.
   Chaque job lance `check_versions.py` avant les tests. Les empreintes d'images ne sont pas comparées
   entre machines (déterminisme garanti par machine, §6).

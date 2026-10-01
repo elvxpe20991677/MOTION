@@ -305,10 +305,12 @@ la machine de rendu final.
 En plus des contrôles de l'étape 17 (codec, profil, fps, images comptées, hvc1, bt709/tv, timecode,
 alpha, noir, son, loudness, zones sûres, déterminisme), chaque livrable passe un **contrôle des
 niveaux** sur toutes les images, **informatif** (jamais bloquant) : codes réservés (< 4 ou > 1019 en
-10 bits) = avertissement ; puis gamut selon **EBU R103 v3.0** : Y et R'G'B' filtrés comme le prescrit
-la recommandation, avertissement si plus de 1 % d'une image sort de 20..984. Les pointes brutes de
-compression aux arêtes vives restent affichées dans le rapport mais ne sont pas des erreurs de gamut
-(détails et diagnostic : `docs/CONTRACT.md` §11.1). Les **planches contact** (`out/<scène>/planche_contact.png`, et `planche_alpha.png` sur fonds
+10 bits) = avertissement ; puis, selon **EBU R103 v3.0**, Y et R'G'B' filtrés comme le recommande la
+norme : avertissement si plus de 1 % d'une image sort de la plage préférée 20..984 (gamut) ou de la
+plage nominale 64..940 à ±1 % près (programme pré-produit). Les dépassements bénins, plus petits, sont
+mesurés et affichés dans le rapport mais non signalés (détails : `docs/CONTRACT.md` §11.1). Un contrôle
+de scène `scene.ai_disclosure` (informatif) vérifie la déclaration d'usage de l'IA (voir « Provenance
+et IA »). Les **planches contact** (`out/<scène>/planche_contact.png`, et `planche_alpha.png` sur fonds
 clair et sombre pour une scène transparente) montrent les coupes, transitions, temps musicaux et
 marqueurs : la relecture humaine commence par elles.
 

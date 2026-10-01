@@ -6,11 +6,12 @@ Usage (depuis la racine, avec le Python de l'orchestrateur) :
     .venv/bin/python scripts/check_versions.py --profile ci-linux --no-blender
 
 Profils :
-  reference : machine de rendu et job CI Windows : FFmpeg = versions.json « ffmpeg.reference » ;
-  ci-linux  : jobs CI Ubuntu : FFmpeg = paquet Ubuntu « ffmpeg.ci_linux » (écart documenté).
+  reference : machine de rendu et job CI Windows : FFmpeg ET ffprobe = « ffmpeg.reference_version_string »
+              (chaîne complète : 9.0.2-full_build-www.gyan.dev, pas seulement le numéro) ;
+  ci-linux  : jobs CI Ubuntu : FFmpeg ET ffprobe = « ffmpeg.ci_linux_version_string » (écart documenté).
 Tout le reste est exigé à l'identique dans les deux profils : Python, paquets pip (constraints.txt),
 Chromium, paquets npm (package.json), bpy et son venv (constraints-blender.txt). Node et uv sont
-sans effet sur les pixels : un écart n'est qu'une NOTE.
+sans effet sur les pixels : un écart n'est qu'une NOTE, sauf avec --strict (CI) où c'est un FAIL.
 Sortie : lignes PASS / FAIL / NOTE / SKIP ; code ≠ 0 si au moins un FAIL.
 """
 
@@ -59,17 +60,20 @@ def _pins(path: Path) -> dict[str, str]:
 
 
 def check_ffmpeg(ref: dict, profile: str) -> None:
-    want = ref["reference"] if profile == "reference" else ref["ci_linux"]
-    code, out = _run([config.FFMPEG, "-hide_banner", "-version"])
-    m = re.search(r"ffmpeg version n?(\d+(?:\.\d+)+)", out)
-    got = m.group(1) if m else None
-    first = out.splitlines()[0] if out else ""
-    if got == want:
-        report("PASS", f"FFmpeg {want} (profil {profile})", first)
-    else:
-        hint = (ref.get("reference_build", "") if profile == "reference" else ref.get("ci_linux_note", ""))
-        report("FAIL", f"FFmpeg {want} attendu (profil {profile})",
-               f"trouvé « {first or 'aucun ffmpeg'} » ({config.FFMPEG}) ; référence : {hint}")
+    # Chaîne de version COMPLÈTE (ex. « 9.0.2-full_build-www.gyan.dev ») : un instantané git
+    # « n9.0.2-17-g… » ou une build « essentials » a le même numéro mais d'autres bibliothèques.
+    want = ref["reference_version_string"] if profile == "reference" else ref["ci_linux_version_string"]
+    hint = ref.get("reference_build", "") if profile == "reference" else ref.get("ci_linux_note", "")
+    for tool, exe in (("ffmpeg", config.FFMPEG), ("ffprobe", config.FFPROBE)):
+        _, out = _run([exe, "-hide_banner", "-version"])
+        m = re.search(rf"{tool} version (\S+)", out)
+        got = m.group(1) if m else None
+        first = out.splitlines()[0] if out else ""
+        if got == want:
+            report("PASS", f"{tool} {want} (profil {profile})", first)
+        else:
+            report("FAIL", f"{tool} {want} attendu (profil {profile})",
+                   f"trouvé « {first or 'aucun ' + tool} » ({exe}) ; référence : {hint}")
     _, filters = _run([config.FFMPEG, "-hide_banner", "-filters"])
     _, encoders = _run([config.FFMPEG, "-hide_banner", "-encoders"])
     miss_f = [f for f in ref["required_filters"] if not re.search(rf"\s{re.escape(f)}\s", filters)]
@@ -148,15 +152,16 @@ def check_blender(want_py: str, want_bpy: str, constraints: Path) -> None:
            "; ".join(bad) if bad else "toutes versions exactes")
 
 
-def check_note(tool: str, argv: list[str], want: str) -> None:
+def check_note(tool: str, argv: list[str], want: str, *, strict: bool = False) -> None:
+    miss = "FAIL" if strict else "NOTE"
     exe = shutil.which(argv[0])
     if not exe:
-        report("NOTE", f"{tool} {want}", "introuvable dans le PATH (sans effet sur les pixels)")
+        report(miss, f"{tool} {want}", "introuvable dans le PATH (sans effet sur les pixels)")
         return
     _, out = _run([exe, *argv[1:]])
     got = re.search(r"(\d+\.\d+\.\d+)", out)
     got = got.group(1) if got else out.strip()[:60]
-    report("PASS" if got == want else "NOTE", f"{tool} {want}",
+    report("PASS" if got == want else miss, f"{tool} {want}",
            f"trouvé {got}" + ("" if got == want else " (sans effet sur les pixels)"))
 
 
@@ -170,6 +175,8 @@ def main() -> int:
     p.add_argument("--profile", choices=("reference", "ci-linux"), default="reference")
     p.add_argument("--no-blender", action="store_true", help="ne pas contrôler le venv Blender (job sans bpy)")
     p.add_argument("--no-chromium", action="store_true", help="ne pas lancer Chromium")
+    p.add_argument("--strict", action="store_true",
+                   help="un écart de Node ou d'uv devient un FAIL (CI : versions épinglées dans le workflow)")
     args = p.parse_args()
     ref = json.loads((ROOT / "versions.json").read_text(encoding="utf-8"))
     check_ffmpeg(ref["ffmpeg"], args.profile)
@@ -184,8 +191,8 @@ def main() -> int:
         report("SKIP", "venv Blender", "--no-blender")
     else:
         check_blender(ref["blender_python"], ref["bpy"], ROOT / ref["blender_constraints"])
-    check_note("Node", ["node", "--version"], ref["node"])
-    check_note("uv", ["uv", "--version"], ref["uv"])
+    check_note("Node", ["node", "--version"], ref["node"], strict=args.strict)
+    check_note("uv", ["uv", "--version"], ref["uv"], strict=args.strict)
     fails = RESULTS.count("FAIL")
     print(f"\n{'VERSIONS CONFORMES' if not fails else f'{fails} écart(s) de version'} (profil {args.profile})")
     return 0 if not fails else 1

@@ -81,8 +81,8 @@
         "date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "description": "Date de la déclaration (AAAA-MM-JJ)." },
         "statement": { "type": "string", "description": "Mention libre (ex. « Voix off synthétique ; musique générée par IA »)." }
       },
-      "if": { "properties": { "ai_used": { "const": true } } },
-      "then": { "required": ["ai_used", "roles", "tools", "date"], "properties": { "roles": { "minItems": 1 }, "tools": { "minItems": 1 } } }
+      "if": { "required": ["ai_used"], "properties": { "ai_used": { "const": true } } },
+      "then": { "required": ["roles", "tools", "date"], "properties": { "roles": { "minItems": 1 }, "tools": { "minItems": 1 } } }
     },
     "id": {
       "type": "string",
