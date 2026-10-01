@@ -131,3 +131,13 @@ plans, empreinte du maître `e03ac824…`, et SHA-256 des deux livrables.
 | `context.txt` | suivi par git ; corps identique à `docs/SPEC.md` (lignes 2 à 531) ; en plus : une ligne « Prompt : » en tête et une consigne finale (deux sur `origin/main`, dont « n'exécute aucune commande système ») ; `SPEC.md` a en plus un en-tête de 5 lignes | fusionner `origin/main` puis `git rm context.txt` (contenu conservé dans `docs/SPEC.md` et l'historique) |
 | Branche `claude/motion-pipeline-evolution-582d24` | créée pour la session sur `origin/main`, inutilisée | la supprimer après fusion des phases |
 | Dépendances indirectes | non épinglées (pip et bpy) | fichier de contraintes figé (phase 1, avec l'alignement de la CI) |
+
+## 7. Suivi des phases (comparaison à la phase 0)
+
+| Phase | Commit mesuré | `compare` | Écarts (NOTE) | Données |
+|---|---|---|---|---|
+| 1 — consolidation | ad9ed78 (arbre propre) | **aucune régression** | PASS en hausse : compilateur 147 → 157, QC 91 → 107, QC de la scène 26 → 27 (contrôle `scene.ai_disclosure`) ; empreintes des 175 images, du maître et octets HEVC/ProRes identiques ; porte 8/8 | [`baseline/phase-1.json`](baseline/phase-1.json) |
+
+Coût mesuré de la phase 1 : la mesure R103 décode toutes les images de chaque livrable (QC de
+`demo_flat_riso` : 5 s → 19 s ; `verify_step17_qc` : 54 s → 175 s ; Éclosion Urbaine, 744 images :
+1 min 30 s pour les deux livrables).
