@@ -606,6 +606,58 @@ def main() -> int:
     finally:
         config.ASSETS_DIR, config.SERVED_PREFIXES["/assets/"] = saved
 
+    # ------------------------------------------------------------------------------------------
+    print("== Phase 1 : provenance et déclaration d'usage de l'IA ==")
+    from pipeline import qc
+    check(compiled["assets"] == [{"path": "assets/audio/test_rich_flat_beat.wav", "kinds": ["audio"], "ai": False}]
+          and compiled["provenance"] is None,
+          "scène riche : seule la piste test est relevée (ai: false), provenance = null", str(compiled["assets"]))
+    fake_ai = TEST_DIR / "assets" / "ai"
+    fake_ai.mkdir(parents=True, exist_ok=True)
+    cv2.imwrite(str(fake_ai / "fond_ia.png"), np.full((8, 8, 3), 90, np.uint8))
+    saved = (config.ASSETS_DIR, config.SERVED_PREFIXES["/assets/"], config.AI_ASSETS_DIR)
+    # assets/ et assets/ai/ redirigés vers build/_tests/11 : aucun fichier de test dans le vrai dossier.
+    config.ASSETS_DIR = TEST_DIR / "assets"
+    config.SERVED_PREFIXES["/assets/"] = TEST_DIR / "assets"
+    config.AI_ASSETS_DIR = fake_ai
+    decl = {"ai_used": True, "roles": ["image"], "tools": [{"name": "Gemini", "model": "imagen", "role": "fond"}],
+            "date": "2026-10-01", "statement": "Fond généré par IA"}
+    try:
+        def with_ai(prov):
+            def fn(r):
+                r["shots"][0]["layers"].append({"id": "fond_ia", "type": "image", "w": 160, "h": 90,
+                                                "src": "build/_tests/11/assets/ai/fond_ia.png"})
+                if prov is not None:
+                    r["provenance"] = prov
+            return mutated(rich, fn)
+
+        c0 = scene.compile_scene(with_ai(None))
+        a0 = [a for a in c0["assets"] if a["ai"]]
+        check(len(a0) == 1 and a0[0]["kinds"] == ["image"] and a0[0]["path"].endswith("assets/ai/fond_ia.png")
+              and c0["provenance"] is None and any("sans déclaration" in w for w in c0["warnings"]),
+              "asset sous assets/ai/ relevé (ai: true) ; sans déclaration => avertissement de compilation",
+              f"{c0['assets']} {c0['warnings'][-1:]}")
+        c1 = scene.compile_scene(with_ai({"authors": ["Studio"], "ai_disclosure": decl}))
+        check(c1["provenance"]["ai_disclosure"] == decl and c1["provenance"]["authors"] == ["Studio"]
+              and not any("sans déclaration" in w for w in c1["warnings"]),
+              "déclaration complète : provenance normalisée dans le compilé, aucun avertissement", str(c1["provenance"]))
+        expect_refused(with_ai({"ai_disclosure": {"ai_used": True, "date": "2026-10-01"}}),
+                       "ai_used: true sans rôles ni outils", ["roles", "tools"])
+        expect_refused(with_ai({"ai_disclosure": {**decl, "date": "2026-02-30"}}),
+                       "date de déclaration impossible", ["date « 2026-02-30 » invalide"])
+        expect_refused(with_ai({"ai_disclosure": {**decl, "roles": ["hologramme"]}}),
+                       "rôle d'IA inconnu", ["hologramme"])
+        c2 = scene.compile_scene(with_ai({"ai_disclosure": {"ai_used": False, "roles": ["image"]}}))
+        check(any("ai_used vaut false" in w for w in c2["warnings"]),
+              "ai_used: false avec des rôles listés => avertissement de contradiction")
+        q0, q1, q2 = (qc.check_ai_disclosure(c) for c in (c0, c1, c2))
+        check(q0["status"] == "WARN" and q1["status"] == "PASS" and q2["status"] == "WARN"
+              and not any(q["blocking"] for q in (q0, q1, q2)),
+              "QC scene.ai_disclosure : WARN sans déclaration ou si ai_used est faux, PASS si déclarée, jamais bloquant",
+              f"{q0['status']} {q1['status']} {q2['status']}")
+    finally:
+        config.ASSETS_DIR, config.SERVED_PREFIXES["/assets/"], config.AI_ASSETS_DIR = saved
+
     print()
     if failures:
         print(f"ÉCHEC : {failures} contrôle(s) en échec.")

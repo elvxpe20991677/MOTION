@@ -44,6 +44,9 @@ python mograph.py preview ma_video                 # aperçu en direct, recharg�
 - **Musique** : `python mograph.py beats assets/audio/musique.wav --scene ma_video --write` écrit
   `bpm`, `offset` et le marqueur `drop` ; `"normalize": true` règle le volume.
 - **Déclinaisons** : `{{colonne}}` dans le modèle + `batch modele.json --data lignes.csv`.
+- **Média produit par une IA** (voix, musique, clip, image) : le ranger sous `assets/ai/` et déclarer
+  `"provenance": {"ai_disclosure": {"ai_used": true, "roles": ["music"], "tools": [{"name": "…",
+  "role": "…"}], "date": "AAAA-MM-JJ"}}` (sinon avertissement à la compilation et au QC).
 
 ## 4. Prompt pour un assistant IA
 Copier le bloc ci-dessous, puis ajouter votre brief. Joindre `schema/scene.schema.json` et le preset

@@ -17,6 +17,7 @@ Usage direct (diagnostic) : .venv/bin/python -m pipeline.scene scenes/<scène>.j
 from __future__ import annotations
 
 import copy
+import datetime as _dt
 import difflib
 import hashlib
 import json
@@ -1063,6 +1064,16 @@ class _Compiler:
         self.source = source
         self.errors: list[str] = []
         self.warnings: list[str] = []
+        # Fichiers de assets/ réellement utilisés -> natures (image, video, subtitles, audio) : relevé
+        # pour le QC (déclaration d'usage de l'IA) et le verrou des assets gelés.
+        self._assets: dict[str, set[str]] = {}
+
+    def _note_asset(self, path: Path, kind: str) -> None:
+        try:
+            rel = path.resolve().relative_to(config.ROOT).as_posix()
+        except ValueError:
+            rel = path.resolve().as_posix()
+        self._assets.setdefault(rel, set()).add(kind)
 
     # -- journal ---------------------------------------------------------------------------------
 
@@ -1108,6 +1119,8 @@ class _Compiler:
         outputs = self._outputs()
         audio = self._audio()
         self._storyboard()
+        provenance = self._provenance()
+        assets = self._asset_list(provenance)
         if self.errors:
             raise SceneError(self.errors, self.warnings)
         last = self.timing[-1]
@@ -1132,6 +1145,9 @@ class _Compiler:
             "outputs": outputs,
             "qc": self.qc,
             "shots": shots,
+            # Phase 1 (CONTRACT §11.2) : assets utilisés et provenance, lus par le QC.
+            "assets": assets,
+            "provenance": provenance,
             "warnings": _dedupe(self.warnings),
         }
         self._assert_contract(compiled)
@@ -1732,6 +1748,7 @@ class _Compiler:
                                      + ", ".join(e for e, t in config.MIME_TYPES.items() if t.startswith("image/")) + ".")
         if not path.is_file():
             self.fail(lp + ("src",), f"image introuvable : {path}. Vérifiez le chemin (relatif à la racine du projet).")
+        self._note_asset(path, "image")
         cl.update({
             "src": _served_url(path),
             "w": float(layer["w"]), "h": float(layer["h"]), "fit": layer.get("fit", "cover"),
@@ -1753,6 +1770,7 @@ class _Compiler:
                                      f"{', '.join(config.VIDEO_EXTENSIONS)}.")
         if not path.is_file():
             self.fail(lp + ("src",), f"vidéo introuvable : {path}. Vérifiez le chemin (relatif à la racine du projet).")
+        self._note_asset(path, "video")
         info = _probe_video(path)
         if info.get("error"):
             self.fail(lp + ("src",), f"vidéo illisible ({path.name}) : {info['error']}. Vérifiez le fichier avec ffprobe.")
@@ -1809,6 +1827,7 @@ class _Compiler:
                 except ValueError as exc:
                     self.err(lp + ("src",), str(exc))
                     continue
+                self._note_asset(config.ROOT / layer["src"], "subtitles")
                 safe = config.safe_rect(self.aspect, "title")
                 base = {k: layer[k] for k in ("style", "size", "weight", "color", "align", "maxWidth", "lineHeight",
                                               "tracking", "case", "rotation", "scale", "blend", "boil") if k in layer}
@@ -2474,6 +2493,7 @@ class _Compiler:
         if not path.is_file() and not synth:
             self.err(("audio", "src"), f"fichier audio introuvable : {path}. Placez-le, corrigez le chemin (relatif à la racine) "
                                        "ou ajoutez \"synth\": {\"kind\": \"beat\"} pour générer une piste de test.")
+        self._note_asset(path, "audio")
         target = float(synth["target_lufs"]) if synth and "target_lufs" in synth else self.qc["loudness_target_lufs"]
         return {
             "src": str(path),
@@ -2486,6 +2506,48 @@ class _Compiler:
             # Normalisation de la source vers qc.loudness_target_lufs à l'encodage (loudnorm 2 passes).
             "normalize": bool(audio.get("normalize", False)),
         }
+
+    def _provenance(self) -> dict | None:
+        """Bloc provenance normalisé (auteurs, outils, déclaration d'usage de l'IA), date vérifiée."""
+        prov = self.raw.get("provenance")
+        if not prov:
+            return None
+        out = {"authors": list(prov.get("authors") or []),
+               "tools": [dict(tool) for tool in prov.get("tools") or []],
+               "ai_disclosure": None}
+        ai = prov.get("ai_disclosure")
+        if ai is not None:
+            if ai.get("date"):
+                try:
+                    _dt.date.fromisoformat(ai["date"])
+                except ValueError:
+                    self.err(("provenance", "ai_disclosure", "date"),
+                             f"date « {ai['date']} » invalide : format AAAA-MM-JJ, date réelle (ex. 2026-09-30).")
+            if not ai["ai_used"] and (ai.get("roles") or ai.get("tools")):
+                self.warn(("provenance", "ai_disclosure"),
+                          "ai_used vaut false mais des rôles ou des outils d'IA sont listés : mettez \"ai_used\": true "
+                          "ou retirez-les.")
+            out["ai_disclosure"] = {"ai_used": bool(ai["ai_used"]), "roles": list(ai.get("roles") or []),
+                                    "tools": [dict(tool) for tool in ai.get("tools") or []],
+                                    "date": ai.get("date"), "statement": ai.get("statement")}
+        return out
+
+    def _asset_list(self, provenance: dict | None) -> list[dict]:
+        """Assets utilisés, triés ; « ai » = fichier sous config.AI_ASSETS_DIR (assets/ai/)."""
+        ai_root = config.AI_ASSETS_DIR.resolve()
+        items = []
+        for rel in sorted(self._assets):
+            path = (config.ROOT / rel).resolve()
+            items.append({"path": rel, "kinds": sorted(self._assets[rel]), "ai": path.is_relative_to(ai_root)})
+        ai_items = [a["path"] for a in items if a["ai"]]
+        disclosure = (provenance or {}).get("ai_disclosure")
+        if ai_items and not (disclosure and disclosure["ai_used"]):
+            # Avertissement dès la compilation : le QC le signalera aussi (scene.ai_disclosure).
+            self.warn(("provenance",), f"{len(ai_items)} asset(s) produit(s) par IA ({', '.join(ai_items[:3])}"
+                                       f"{'…' if len(ai_items) > 3 else ''}) sans déclaration : ajoutez "
+                                       "\"provenance\": {\"ai_disclosure\": {\"ai_used\": true, \"roles\": [...], "
+                                       "\"tools\": [...], \"date\": \"AAAA-MM-JJ\"}}.")
+        return items
 
     def _storyboard(self) -> None:
         ids = [s["id"] for s in self.raw["shots"]]

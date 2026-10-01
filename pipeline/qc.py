@@ -2,8 +2,8 @@
 
 Chaque livrable de ``compiled["outputs"]`` est inspecté par ffprobe (avec ``-count_frames`` : les
 images sont COMPTÉES en décodant, pas lues dans l'en-tête) puis par des passes FFmpeg de contenu
-(alphaextract, blackdetect, ebur128). S'y ajoutent deux contrôles de scène : zones sûres (relevés
-``__layout`` du manifeste maître) et résultat du test de déterminisme.
+(alphaextract, blackdetect, ebur128). S'y ajoutent trois contrôles de scène : zones sûres (relevés
+``__layout`` du manifeste maître), résultat du test de déterminisme et déclaration d'usage de l'IA.
 
 Format d'un contrôle (CONTRACT §4) :
     {"id", "label", "status": "PASS"|"FAIL"|"WARN"|"SKIP", "expected", "actual", "blocking", "detail"}
@@ -1113,6 +1113,67 @@ def check_determinism(compiled: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 
+def check_ai_disclosure(compiled: dict) -> dict:
+    """Déclaration d'usage de l'IA (CONTRACT §11.2) : informatif, jamais bloquant.
+
+    Un asset est « IA » s'il est sous config.AI_ASSETS_DIR (relevé par le compilateur dans
+    compiled["assets"]). Avertissement si un tel asset est utilisé sans provenance.ai_disclosure
+    déclarant ai_used: true.
+    """
+    ai_assets = [a["path"] for a in (compiled.get("assets") or []) if a.get("ai")]
+    disc = (compiled.get("provenance") or {}).get("ai_disclosure")
+    expected = "provenance.ai_disclosure (ai_used: true, rôles, outils, date) dès qu'un asset de assets/ai/ est utilisé"
+    actual = {"ai_assets": ai_assets, "declared": disc is not None,
+              "ai_used": disc.get("ai_used") if disc else None, "roles": disc.get("roles") if disc else None}
+    label = "scène : déclaration d'usage de l'IA"
+    fix = ('ajoutez à la scène "provenance": {"ai_disclosure": {"ai_used": true, "roles": ["video"], '
+           '"tools": [{"name": "…", "model": "…", "role": "…"}], "date": "AAAA-MM-JJ"}}.')
+    if ai_assets and disc is None:
+        return _check("scene.ai_disclosure", label, "WARN", expected, actual, False,
+                      f"{len(ai_assets)} asset(s) produit(s) par IA sans déclaration ({', '.join(ai_assets[:5])}) : {fix}")
+    if ai_assets and not disc.get("ai_used"):
+        return _check("scene.ai_disclosure", label, "WARN", expected, actual, False,
+                      f"ai_used vaut false alors que {len(ai_assets)} asset(s) de assets/ai/ sont utilisés : "
+                      "corrigez la déclaration (ai_used: true, rôles, outils, date).")
+    if disc and disc.get("ai_used"):
+        tools = ", ".join(f"{t.get('name')}{' ' + t['model'] if t.get('model') else ''}" for t in disc.get("tools") or [])
+        return _check("scene.ai_disclosure", label, "PASS", expected, actual, False,
+                      f"IA déclarée le {disc.get('date')} : rôles {', '.join(disc.get('roles') or [])} ; outils {tools} ; "
+                      f"{len(ai_assets)} asset(s) de assets/ai/.")
+    return _check("scene.ai_disclosure", label, "PASS", expected, actual, False,
+                  "Aucun asset de assets/ai/ utilisé" + (" ; aucune IA déclarée." if disc else " : aucune déclaration requise."))
+
+
+def _provenance_lines(report: dict) -> list[str]:
+    """Section « Provenance » du rapport humain : auteurs, outils, déclaration d'IA, assets IA."""
+    prov = report.get("provenance") or {}
+    disc = prov.get("ai_disclosure")
+    lines = ["", "## Provenance", ""]
+    if not prov:
+        lines.append("Aucun bloc `provenance` dans la scène.")
+    else:
+        if prov.get("authors"):
+            lines.append(f"- Auteurs : {', '.join(prov['authors'])}")
+        for tool in prov.get("tools") or []:
+            lines.append(f"- Outil : {tool.get('name')} {tool.get('version') or ''} — {tool.get('role')}".replace("  ", " "))
+        if disc is None:
+            lines.append("- Déclaration d'usage de l'IA : absente")
+        elif not disc.get("ai_used"):
+            lines.append("- Déclaration d'usage de l'IA : aucune IA utilisée")
+        else:
+            lines.append(f"- IA utilisée (déclaration du {disc.get('date')}) : rôles {', '.join(disc.get('roles') or [])}")
+            for tool in disc.get("tools") or []:
+                lines.append(f"  - {tool.get('name')}"
+                             + (f" / {tool['model']}" if tool.get("model") else "")
+                             + (f" {tool['version']}" if tool.get("version") else "")
+                             + f" — {tool.get('role')}")
+            if disc.get("statement"):
+                lines.append(f"- Mention : {disc['statement']}")
+    ai_assets = report.get("ai_assets") or []
+    lines.append(f"- Assets produits par IA (assets/ai/) : {', '.join(ai_assets) if ai_assets else 'aucun'}")
+    return lines
+
+
 def _fmt(value: Any) -> str:
     """Valeur lisible pour une cellule Markdown."""
     if value is None:
@@ -1164,6 +1225,7 @@ def render_markdown(report: dict) -> str:
     for d in report["deliverables"]:
         lines.append(f"| {_cell(d['name'])} | {_cell(d['path'])} | {_cell(d['size_bytes'])} | "
                      f"{_cell(d['blocking_failures'])} |")
+    lines += _provenance_lines(report)
     lines += [
         "",
         "## Contrôles",
@@ -1227,7 +1289,8 @@ def run_qc(compiled: dict, *, log: Callable[[str], Any] = print) -> dict:
         checks.extend(lst)
     checks.append(check_safe_zones(compiled))
     checks.append(check_determinism(compiled))
-    say(f"  {checks[-2]['id']} : {checks[-2]['status']} ; {checks[-1]['id']} : {checks[-1]['status']}")
+    checks.append(check_ai_disclosure(compiled))
+    say("  " + " ; ".join(f"{c['id']} : {c['status']}" for c in checks[-3:]))
 
     blocking_failures = [c["id"] for c in checks if c["status"] == "FAIL" and c["blocking"]]
     verdict = VERDICT_KO if blocking_failures else VERDICT_OK
@@ -1258,6 +1321,9 @@ def run_qc(compiled: dict, *, log: Callable[[str], Any] = print) -> dict:
         "counts": {s: sum(1 for c in checks if c["status"] == s) for s in STATUSES},
         "blocking_failures": blocking_failures,
         "deliverables": deliverables,
+        # Provenance déclarée et assets IA utilisés (CONTRACT §11.2), repris dans la section Provenance.
+        "provenance": compiled.get("provenance"),
+        "ai_assets": [a["path"] for a in (compiled.get("assets") or []) if a.get("ai")],
         "checks": checks,
         "tools": {"ffmpeg": _tool_version(config.FFMPEG), "ffprobe": _tool_version(config.FFPROBE)},
         "report_paths": {"json": str(json_path), "md": str(md_path)},

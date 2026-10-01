@@ -545,3 +545,22 @@ plage du **sous-échantillonnage de la chroma** (4:2:0 / 4:2:2) sur les arêtes 
 R103 v3.0, 0 image hors gamut (surface maximale 0,014 % en HEVC, 0,0023 % en ProRes). L'encodeur
 n'est pas modifié : R103 déconseille les légaliseurs avant la fin du traitement, et aucun pixel
 livré ne change.
+
+### 11.2 Phase 1 — provenance et déclaration d'usage de l'IA
+Scène (`schema/scene.schema.json`) : bloc optionnel `provenance` = `{authors[], tools[{name, version?,
+model?, role}], ai_disclosure}` ; `ai_disclosure` = `{ai_used, roles[], tools[], date (AAAA-MM-JJ),
+statement?}`, `roles` ⊂ {scene, text, image, video, music, voice, subtitles, 3d, matte, other} ;
+`ai_used: true` exige `roles` (≥ 1), `tools` (≥ 1) et `date`. Compilateur : date réelle vérifiée
+(REFUS sinon) ; `ai_used: false` avec rôles ou outils → AVERTISSEMENT ; asset de
+`config.AI_ASSETS_DIR` (`assets/ai/`) sans `ai_used: true` → AVERTISSEMENT.
+
+Scène compilée, clés ajoutées (§4) :
+- `assets` : `[{path (relatif à la racine, « / »), kinds ⊂ {image, video, subtitles, audio}, ai}]`,
+  trié par chemin ; `ai` = fichier sous `config.AI_ASSETS_DIR`. Relevé des fichiers réellement
+  utilisés (images, vidéos, sous-titres, piste audio, y compris la piste test générée).
+- `provenance` : bloc normalisé (`authors`, `tools`, `ai_disclosure`) ou `null`.
+Ces clés n'entrent dans aucune empreinte de plan (`spec_sha256`) : aucun re-rendu, aucun pixel modifié.
+
+QC : contrôle de scène `scene.ai_disclosure` (`qc.check_ai_disclosure`), **jamais bloquant** :
+WARN si un asset IA est utilisé sans déclaration ou avec `ai_used: false`, PASS sinon. Le rapport
+porte `provenance` et `ai_assets` (JSON) et une section « Provenance » (Markdown).

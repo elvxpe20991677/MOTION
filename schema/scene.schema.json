@@ -31,6 +31,16 @@
         }
       }
     },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Provenance de la vidéo : auteurs, outils et déclaration d'usage de l'IA (reprise dans qc_report et, plus tard, dans le manifeste C2PA). Obligatoire en pratique dès qu'un asset de assets/ai/ est utilisé (contrôle QC scene.ai_disclosure).",
+      "properties": {
+        "authors": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Auteurs ou studio (texte libre)." },
+        "tools": { "type": "array", "items": { "$ref": "#/$defs/provenanceTool" }, "description": "Outils de production non IA notables (ex. mograph, Blender, DaVinci Resolve)." },
+        "ai_disclosure": { "$ref": "#/$defs/aiDisclosure" }
+      }
+    },
     "outputs": {
       "type": "array",
       "minItems": 1,
@@ -44,6 +54,36 @@
     }
   },
   "$defs": {
+    "provenanceTool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "role"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "description": "Nom de l'outil ou du service (ex. ElevenLabs, Gemini/Flow, ACE-Step)." },
+        "version": { "type": "string", "description": "Version de l'outil." },
+        "model": { "type": "string", "description": "Modèle d'IA utilisé (ex. eleven_multilingual_v2, veo-3)." },
+        "role": { "type": "string", "minLength": 1, "description": "Ce que l'outil a produit dans cette vidéo." }
+      }
+    },
+    "aiDisclosure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ai_used"],
+      "description": "Déclaration d'usage de l'IA générative (outils, rôle de l'IA, date).",
+      "properties": {
+        "ai_used": { "type": "boolean", "description": "Vrai si un contenu de la vidéo (image, son, voix, texte, scène...) a été produit par une IA." },
+        "roles": {
+          "type": "array", "uniqueItems": true,
+          "items": { "enum": ["scene", "text", "image", "video", "music", "voice", "subtitles", "3d", "matte", "other"] },
+          "description": "Rôles de l'IA : scene (JSON de scène généré), text, image, video, music, voice, subtitles, 3d, matte, other."
+        },
+        "tools": { "type": "array", "items": { "$ref": "#/$defs/provenanceTool" }, "description": "Outils et modèles d'IA utilisés." },
+        "date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "description": "Date de la déclaration (AAAA-MM-JJ)." },
+        "statement": { "type": "string", "description": "Mention libre (ex. « Voix off synthétique ; musique générée par IA »)." }
+      },
+      "if": { "properties": { "ai_used": { "const": true } } },
+      "then": { "required": ["ai_used", "roles", "tools", "date"], "properties": { "roles": { "minItems": 1 }, "tools": { "minItems": 1 } } }
+    },
     "id": {
       "type": "string",
       "pattern": "^[a-z0-9](?:[a-z0-9-]|_(?!_))*$",

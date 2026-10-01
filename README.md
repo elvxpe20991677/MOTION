@@ -168,6 +168,9 @@ existants). Un plan dont la définition compilée change repart de zéro.
   "audio":   { "src": "assets/audio/beat_120.wav", "bpm": 120, "offset": 0,
                "markers": [ { "id": "drop", "time": 2.0 } ], "synth": { "kind": "beat" } },
   "storyboard": [ { "shot": "s1", "intent": "…", "notes": "…" } ],
+  "provenance": { "authors": ["…"], "ai_disclosure": { "ai_used": true, "roles": ["voice"],
+                  "tools": [ { "name": "ElevenLabs", "model": "…", "role": "voix off" } ],
+                  "date": "2026-10-01", "statement": "Voix off synthétique" } },
   "outputs": [ { "profile": "hevc_main10", "crf": 18 }, { "profile": "prores_422hq" } ],
   "qc": { "safe_zone": "title", "safe_zone_tolerance_s": 0.5, "allow_black_s": 0,
           "determinism_frames": 8, "loudness_target_lufs": -14 },
@@ -241,6 +244,14 @@ visibles ; un petit nombre de segments allège aussi les scènes à milliers d'o
 Surcharges des textures du preset (`grain, paper, vignette, scanlines, tracking` : `false`,
 nombre = intensité, ou objet) et `glitch {windows [[at, dur]], on_beats {from, to, every, length},
 amount, colors, mode, layers}`.
+
+### Provenance et IA
+`provenance` (facultatif) : `authors`, `tools [{name, version, role}]` et `ai_disclosure {ai_used,
+roles, tools [{name, model, role}], date, statement}` (rôles : scene, text, image, video, music,
+voice, subtitles, 3d, matte, other). Tout fichier placé sous `assets/ai/` est considéré comme produit
+par une IA : sans déclaration `ai_used: true`, la compilation avertit et le QC émet un WARN (non
+bloquant) `scene.ai_disclosure`. La déclaration est reprise dans la section « Provenance » de
+`qc_report.md`.
 
 ### Livrables
 `hevc_main10` (.mp4, `hvc1`, yuv420p10le), `prores_422hq` (.mov, timecode 01:00:00:00),

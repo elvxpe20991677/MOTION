@@ -563,6 +563,23 @@ def main() -> int:
            and abs(tp.get("integrated_lufs", 0) + 14.0) <= config.LOUDNESS_TOLERANCE_LU,
            "truepeak : l'échec vient bien du true peak (intégré dans la tolérance)", f"{tp}")
 
+    # --- Déclaration d'usage de l'IA (phase 1, CONTRACT §11.2) ---------------------------------------
+    ai = check_statuses(reports["ok_alpha"]).get("scene.ai_disclosure", {})
+    md = (config.scene_out_dir("ok_alpha") / "qc_report.md").read_text(encoding="utf-8")
+    record(ai.get("status") == "PASS" and ai.get("blocking") is False and "## Provenance" in md
+           and "Assets produits par IA (assets/ai/) : aucun" in md,
+           "ok_alpha : scene.ai_disclosure PASS (aucun asset IA) et section Provenance dans qc_report.md",
+           f"{ai.get('status')} ; {ai.get('detail')}")
+    with_ai = {**setup_scene("ai_undeclared", ok2, alpha=False),
+               "assets": [{"path": "assets/ai/plan.mp4", "kinds": ["video"], "ai": True}]}
+    rep_ai = qc.run_qc(with_ai, log=lambda m: None)
+    c_ai = check_statuses(rep_ai).get("scene.ai_disclosure", {})
+    md_ai = (config.scene_out_dir("ai_undeclared") / "qc_report.md").read_text(encoding="utf-8")
+    record(c_ai.get("status") == "WARN" and rep_ai["verdict"] == qc.VERDICT_OK and rep_ai["ai_assets"] == ["assets/ai/plan.mp4"]
+           and "assets/ai/plan.mp4" in md_ai,
+           "asset IA sans déclaration : scene.ai_disclosure WARN, verdict inchangé (CONFORME), asset listé au rapport",
+           f"{c_ai.get('status')} ; {rep_ai['verdict']}")
+
     # --- Format des contrôles (CONTRACT §4) ----------------------------------------------------------
     keys = {"id", "label", "status", "expected", "actual", "blocking", "detail"}
     bad = [(sid, c.get("id")) for sid, r in reports.items() for c in r["checks"]
