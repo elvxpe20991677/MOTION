@@ -705,14 +705,25 @@ def cmd_assets(args) -> int:
             prompt = args.prompt
             if args.prompt_file:
                 pf = Path(args.prompt_file)
-                prompt = pf.read_text(encoding="utf-8").strip() if pf.is_file() else None
-                if prompt is None:
+                if not pf.is_file():
                     print(f"Fichier de prompt introuvable : {pf}", file=sys.stderr)
                     return EXIT_FAIL
-            key, entry, status = assets.add(
+                try:
+                    # utf-8-sig : un fichier enregistré par le Bloc-notes (BOM) ne laisse pas U+FEFF dans le prompt.
+                    prompt = pf.read_text(encoding="utf-8-sig").strip()
+                except UnicodeDecodeError:
+                    print(f"Fichier de prompt {pf} illisible en UTF-8 (UTF-16 de PowerShell 5.1 ?) : enregistrez-le en "
+                          "UTF-8.", file=sys.stderr)
+                    return EXIT_FAIL
+                if not prompt:
+                    print(f"Fichier de prompt vide : {pf}.", file=sys.stderr)
+                    return EXIT_FAIL
+            key, entry, status, warnings = assets.add(
                 args.file, tool=args.tool, model=args.model, prompt=prompt or "", license=args.license,
                 date=args.date, seed=args.seed, cost=args.cost, notes=args.notes, tool_version=args.tool_version,
                 source=args.source, kind=args.kind, dest=args.dest, replace=args.replace)
+            for w in warnings:
+                print(f"AVERTISSEMENT : {w}", file=sys.stderr)
             print(f"{status} : {key}")
             print(f"  SHA-256 {entry['sha256']} ({entry['bytes']} octets, {entry['kind']})")
             pv = entry["provenance"]
@@ -836,10 +847,11 @@ def build_parser() -> argparse.ArgumentParser:
     aa.add_argument("--cost", default=None, help="coût ou quota consommé (ex. « 20 crédits Flow »)")
     aa.add_argument("--notes", default=None)
     aa.add_argument("--tool-version", default=None)
-    aa.add_argument("--source", default="manual_import", choices=("manual_import", "api", "local"),
-                    help="manual_import (défaut) : téléchargé à la main ; api : module mograph ; local : modèle local")
-    aa.add_argument("--kind", default=None, choices=("video", "image", "audio", "subtitles", "mesh", "text", "other"),
-                    help="nature (défaut : déduite de l'extension)")
+    from pipeline import assets as assets_mod
+    aa.add_argument("--source", default=None, choices=assets_mod.SOURCES,
+                    help="manual_import (défaut pour un nouvel asset) : téléchargé à la main ; api : module mograph ; "
+                         "local : modèle local")
+    aa.add_argument("--kind", default=None, choices=assets_mod.KINDS, help="nature (défaut : déduite de l'extension)")
     aa.add_argument("--dest", default=None, help="sous-chemin sous assets/ai/ (défaut : <nature>/<nom du fichier>)")
     aa.add_argument("--replace", action="store_true",
                     help="remplacer un asset déjà gelé par une autre version (les scènes concernées seront re-rendues)")

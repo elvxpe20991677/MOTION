@@ -433,7 +433,9 @@ alpha réel (4444, alphaextract image médiane : min < 255), blackdetect `pix_th
 48 kHz, durée ± (1 image + 25 ms)), loudness ±1 LU + true peak ≤ −1 dBTP, zones sûres (master
 manifest, bloquant au-delà de `safe_zone_tolerance_s` continu hors zone), déterminisme
 (`determinism.json` ok), niveaux vidéo (informatif, jamais bloquant : voir §11.1), déclaration
-d'usage de l'IA `scene.ai_disclosure` (informatif, jamais bloquant : voir §11.2).
+d'usage de l'IA `scene.ai_disclosure` (informatif, jamais bloquant : voir §11.2), assets IA gelés
+`scene.ai_lock` (**bloquant** : verrouillé, présent, empreinte identique ; SKIP sans relevé `assets` :
+voir §11.4).
 Rapport `out/<scene>/qc_report.json` + `.md` (verdict en tête).
 
 ---------------------------------------------------------------------------------------------------
@@ -614,7 +616,16 @@ entrée ; clé = chemin relatif à la racine, « / » ; entrée = `{sha256, byte
 audio, subtitles, mesh, text, other}, added (UTC), replaces?, media? (ffprobe : width, height, fps,
 duration_s, codec, pix_fmt, alpha), provenance {tool, tool_version?, model, date (AAAA-MM-JJ),
 prompt, seed?, license, cost?, source ∈ {manual_import, api, local}, notes?}}`. Écrit trié, de façon
-atomique, validé à la lecture et à l'écriture.
+atomique (temporaire propre au processus), sous un verrou inter-processus (`assets.lock.json.lck`,
+attente 30 s) ; validé à la lecture et à l'écriture, erreurs traduites en français ; lu en
+`utf-8-sig` (un BOM est toléré).
+
+Chemins : l'appartenance au dossier IA est jugée sur le chemin LEXICAL normalisé et sur le chemin
+RÉSOLU, préfixes Win32 `\\?\` / `\\.\` retirés, casse normalisée (`ai_location` → `in`, `link_out`,
+`out`). Un lien ou une jonction écrit sous le dossier IA et qui en sort (`link_out`) est REFUSÉ ; le
+dossier IA doit être sous `config.ASSETS_DIR`. `audio.src` en chemin de périphérique, étendu ou
+réseau est refusé, et une piste `audio.synth` ne peut pas être rangée sous le dossier IA (elle est
+régénérée par le pipeline ; `audio.ensure_scene_audio` refuse aussi d'y écrire).
 
 `pipeline/assets.py` :
 ```python
@@ -622,15 +633,22 @@ class AssetError(RuntimeError)
 def file_sha256(path) -> str
 def is_ai_path(path) -> bool ; def lock_key(path) -> str ; def kind_for(path) -> str
 def load_lock(lock_path=None) -> dict ; def save_lock(lock, lock_path=None) -> Path
+def ai_location(path) -> str                                    # in | link_out | out
 def add(src, *, tool, model, prompt, license, date=None, seed=None, cost=None, notes=None,
-        tool_version=None, source="manual_import", kind=None, dest=None, replace=False,
-        lock_path=None) -> tuple[str, dict, str]          # statut : ajouté | inchangé | remplacé | provenance mise à jour
+        tool_version=None, source=None, kind=None, dest=None, replace=False,
+        lock_path=None) -> tuple[str, dict, str, list[str]]  # (clé, entrée, statut, avertissements)
 def problems_for(paths, lock=None, lock_path=None) -> list[str]   # non verrouillé, absent, modifié
 def ai_paths_of(compiled) -> list[str] ; def check_compiled(compiled, *, stage) -> None   # AssetError
 def verify(lock_path=None) -> list[dict] ; def entries_for(paths, lock_path=None) -> dict
 ```
-`add` copie un fichier extérieur sous `assets/ai/<nature>/<nom>` (ou `--dest`) ; un asset gelé n'est
-jamais écrasé par un autre contenu sans `--replace` (l'ancienne empreinte est gardée dans `replaces`).
+`add` valide TOUT (options, date AAAA-MM-JJ réelle, graine, `--dest` = chemin de fichier relatif sans
+`..`, entrée conforme au schéma) avant de toucher au disque ; copie un fichier extérieur sous
+`assets/ai/<nature>/<nom>` (ou `--dest`) via un temporaire vérifié ; un asset gelé n'est jamais écrasé
+par un autre contenu sans `--replace` (ancienne empreinte gardée dans `replaces`, ancien fichier
+restauré si l'écriture du verrou échoue). Statuts : `ajouté`, `remplacé`, `inchangé`, `provenance mise
+à jour` ou `mis à jour (champs)` ; re-geler le même fichier COMPLÈTE la provenance (seules les options
+données remplacent les valeurs existantes, `replaces` est conservé). Avertissement si ffprobe ne lit
+pas une vidéo ou un son. `verify` signale aussi les clés non normalisées et les liens sortants.
 
 Contrôles (refus explicite, message actionnable) : à la **compilation** (`_asset_list` : tout asset
 de `assets/ai/` utilisé, quel que soit le calque, doit être verrouillé, présent et d'empreinte
@@ -645,7 +663,10 @@ Calque `ai_clip` (`schema/scene.schema.json`) : `{asset, w, h, fit, start, loop}
 `assets/ai/`, verrouillé, de nature `video`. Compilé par `_video_fields` (chemin « video » :
 extraction FFmpeg exacte de l'image k = clip à `start + k / fps`, alpha conservé — vérifié sur un
 ProRes 4444 —, calque runtime `sequence`) ; le job média porte en plus `ai_sha256` (ajouté APRÈS le
-calcul de `digest` : les jobs vidéo existants gardent leur empreinte, aucun re-rendu).
+calcul de `digest` : les jobs vidéo existants gardent leur empreinte, aucun re-rendu). Un calque
+`image` dont la source est un asset IA porte `ai_sha256` (empreinte gelée) : remplacer l'asset change
+`spec_sha256`, donc le plan est re-rendu (les images non IA sont inchangées). L'aperçu (`preview`)
+surveille le verrou et les assets IA de la scène : leur modification recompile, donc revérifie.
 
 CLI : `mograph assets add <fichier> --tool --model (--prompt | --prompt-file) --license [--seed]
 [--date] [--cost] [--notes] [--tool-version] [--source] [--kind] [--dest] [--replace]` ;

@@ -1069,13 +1069,24 @@ class _Compiler:
         # (déclaration d'usage de l'IA) et le verrou des assets gelés. Chemin relatif à la racine ;
         # absolu seulement pour une piste audio hors du projet (seul audio.src n'est pas limité à assets/).
         self._assets: dict[str, set[str]] = {}
+        self._ai_assets: set[str] = set()
 
-    def _note_asset(self, path: Path, kind: str) -> None:
+    def _note_asset(self, path: Path, kind: str) -> str | None:
+        """Relève un fichier utilisé ; `path` est le chemin ÉCRIT (non résolu) : un lien ou une jonction
+        placé sous le dossier IA et qui en sort est refusé, au lieu de passer pour un fichier ordinaire.
+        Renvoie la clé relevée (clé du verrou pour un asset IA), ou None si refusé."""
         try:
-            rel = path.resolve().relative_to(config.ROOT).as_posix()
-        except ValueError:
-            rel = path.resolve().as_posix()
+            loc = assets_mod.ai_location(path)
+            if loc == "link_out":
+                assets_mod.lock_key(path)  # message explicite « lien ou jonction qui sort du dossier IA »
+            rel = assets_mod.lock_key(path) if loc == "in" else assets_mod._rel(path)
+        except assets_mod.AssetError as exc:
+            self.err("assets", str(exc))
+            return None
         self._assets.setdefault(rel, set()).add(kind)
+        if loc == "in":
+            self._ai_assets.add(rel)
+        return rel
 
     # -- journal ---------------------------------------------------------------------------------
 
@@ -1752,11 +1763,20 @@ class _Compiler:
                                      + ", ".join(e for e, t in config.MIME_TYPES.items() if t.startswith("image/")) + ".")
         if not path.is_file():
             self.fail(lp + ("src",), f"image introuvable : {path}. Vérifiez le chemin (relatif à la racine du projet).")
-        self._note_asset(path, "image")
+        key = self._note_asset(config.ROOT / src, "image")
         cl.update({
             "src": _served_url(path),
             "w": float(layer["w"]), "h": float(layer["h"]), "fit": layer.get("fit", "cover"),
         })
+        if key in self._ai_assets:
+            # Image IA : son empreinte gelée entre dans celle du plan (spec_sha256), qui est donc re-rendu si
+            # l'asset est remplacé (assets add --replace) ; le runtime ignore ce champ.
+            try:
+                entry = assets_mod.load_lock()["assets"].get(key)
+            except assets_mod.AssetError:
+                entry = None  # verrou illisible : signalé par _asset_list
+            if entry is not None:
+                cl["ai_sha256"] = entry["sha256"]
 
     def _video_fields(self, st: _ShotTiming, lp: tuple, layer: dict, cl: dict) -> None:
         """Calque vidéo : images extraites par FFmpeg (pipeline/media.py), affichées comme une plaque.
@@ -1774,7 +1794,7 @@ class _Compiler:
                                      f"{', '.join(config.VIDEO_EXTENSIONS)}.")
         if not path.is_file():
             self.fail(lp + ("src",), f"vidéo introuvable : {path}. Vérifiez le chemin (relatif à la racine du projet).")
-        self._note_asset(path, "video")
+        self._note_asset(config.ROOT / src, "video")
         info = _probe_video(path)
         if info.get("error"):
             self.fail(lp + ("src",), f"vidéo illisible ({path.name}) : {info['error']}. Vérifiez le fichier avec ffprobe.")
@@ -1820,7 +1840,11 @@ class _Compiler:
         asset = layer["asset"]
         path = (config.ROOT / asset).resolve()
         ai_dir = assets_mod._rel(config.AI_ASSETS_DIR)
-        if not assets_mod.is_ai_path(path):
+        try:
+            in_ai = assets_mod.ai_location(config.ROOT / asset) == "in"
+        except assets_mod.AssetError as exc:
+            self.fail(lp + ("asset",), str(exc))
+        if not in_ai:
             self.fail(lp + ("asset",), f"le clip IA {_q(asset)} doit se trouver sous {ai_dir}/ : gelez-le avec « python "
                                        "mograph.py assets add <fichier> --tool … --model … --prompt … --license … », qui "
                                        "l'y range et l'enregistre dans le verrou.")
@@ -2520,15 +2544,33 @@ class _Compiler:
                                   "l'animation, les livrables seront MUETS. Pour une bande-son, ajoutez \"src\": "
                                   "\"assets/audio/<piste>.wav\" ou \"synth\": {\"kind\": \"beat\"} (piste de test générée).")
             return None
+        if src and str(src).replace("/", "\\").startswith("\\\\"):
+            # Chemins de périphérique, étendus ou réseau (\\?\, \\.\, UNC) : ils échapperaient à la comparaison
+            # avec le dossier des assets IA ; une piste se range sous assets/.
+            self.err(("audio", "src"), f"chemin {_q(src)} refusé (périphérique, étendu ou réseau) : copiez la piste sous "
+                                       "assets/audio/ (ou gelez-la sous assets/ai/) et donnez un chemin relatif à la racine.")
+            return None
         if src:
             path = (config.ROOT / src).resolve()
         else:
             # Piste de test sans chemin : générée dans assets/audio/ sous le nom de la scène.
             path = (config.AUDIO_DIR / f"{self.scene_id}_beat.wav").resolve()
+        try:
+            synth_in_ai = bool(synth) and assets_mod.is_ai_path(config.ROOT / src if src else path)
+        except assets_mod.AssetError as exc:
+            self.err(("audio", "src"), str(exc))
+            return None
+        if synth_in_ai:
+            # Une piste de test est GÉNÉRÉE (et régénérée) par le pipeline : elle n'a rien à faire parmi les
+            # assets IA gelés, que le pipeline ne doit jamais réécrire.
+            self.err(("audio", "src"), f"une piste de test générée (synth) ne peut pas être rangée sous "
+                                       f"{assets_mod._rel(config.AI_ASSETS_DIR)}/ (assets IA gelés, jamais réécrits) : "
+                                       "utilisez assets/audio/<piste>.wav.")
+            return None
         if not path.is_file() and not synth:
             self.err(("audio", "src"), f"fichier audio introuvable : {path}. Placez-le, corrigez le chemin (relatif à la racine) "
                                        "ou ajoutez \"synth\": {\"kind\": \"beat\"} pour générer une piste de test.")
-        self._note_asset(path, "audio")
+        self._note_asset(config.ROOT / src if src else path, "audio")
         target = float(synth["target_lufs"]) if synth and "target_lufs" in synth else self.qc["loudness_target_lufs"]
         return {
             "src": str(path),
@@ -2569,11 +2611,8 @@ class _Compiler:
 
     def _asset_list(self, provenance: dict | None) -> list[dict]:
         """Assets utilisés, triés ; « ai » = fichier sous config.AI_ASSETS_DIR (assets/ai/)."""
-        ai_root = config.AI_ASSETS_DIR.resolve()
-        items = []
-        for rel in sorted(self._assets):
-            path = (config.ROOT / rel).resolve()
-            items.append({"path": rel, "kinds": sorted(self._assets[rel]), "ai": path.is_relative_to(ai_root)})
+        items = [{"path": rel, "kinds": sorted(self._assets[rel]), "ai": rel in self._ai_assets}
+                 for rel in sorted(self._assets)]
         ai_items = [a["path"] for a in items if a["ai"]]
         if ai_items:
             # Assets gelés (CONTRACT §11.4) : verrouillés, présents, empreinte identique, sinon REFUS ; le

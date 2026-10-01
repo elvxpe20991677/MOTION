@@ -618,6 +618,12 @@ def ensure_scene_audio(compiled: dict, *, log=print) -> Path | None:
             log(f"[audio] {src.name} à jour (paramètres de synthèse identiques).")
             return src
         log(f"[audio] {src.name} (piste de test générée) a d'autres paramètres : régénération.")
+    from pipeline import assets
+
+    if assets.is_ai_path(src):
+        # Garde-fou (le compilateur refuse déjà ce cas) : un asset IA gelé n'est jamais réécrit.
+        raise RuntimeError(f"Refus de générer la piste de test {src} sous le dossier des assets IA gelés : utilisez "
+                           "assets/audio/<piste>.wav.")
     log(f"[audio] génération de {src} : {params['bpm']} BPM, {params['beats_per_bar']} temps/mesure, "
         f"offset {params['offset']} s, {n_samples} échantillons, cible {params['target_lufs']} LUFS.")
     synth_beat(src, params["bpm"], n_samples / SAMPLE_RATE, beats_per_bar=params["beats_per_bar"],

@@ -47,7 +47,9 @@ python mograph.py preview ma_video                 # aperçu en direct, recharg�
 - **Clip vidéo généré par une IA** (Gemini/Flow…) : le geler une fois (`python mograph.py assets add
   clip.mp4 --tool "Gemini/Flow" --model "veo-3" --prompt "…" --license "…"`), puis calque
   `{"id": "plan", "type": "ai_clip", "asset": "assets/ai/video/clip.mp4", "w": 1920, "h": 1080}`.
-- **Média produit par une IA** (voix, musique, clip, image) : le ranger sous `assets/ai/` et déclarer
+- **Média produit par une IA** (voix, musique, clip, image) : le geler avec `python mograph.py assets add
+  <fichier> --tool … --model … --prompt … --license …` (copie sous `assets/ai/<nature>/` ; un fichier de
+  `assets/ai/` non gelé est REFUSÉ à la compilation), puis déclarer
   `"provenance": {"ai_disclosure": {"ai_used": true, "roles": ["music"], "tools": [{"name": "…",
   "role": "…"}], "date": "AAAA-MM-JJ"}}` (sinon avertissement à la compilation et au QC).
 

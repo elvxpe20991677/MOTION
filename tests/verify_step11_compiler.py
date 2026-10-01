@@ -588,9 +588,11 @@ def main() -> int:
     fake_assets = TEST_DIR / "assets" / "images"
     fake_assets.mkdir(parents=True, exist_ok=True)
     cv2.imwrite(str(fake_assets / "logo test.png"), np.full((8, 8, 3), 200, np.uint8))
-    saved = (config.ASSETS_DIR, config.SERVED_PREFIXES["/assets/"])
+    saved = (config.ASSETS_DIR, config.SERVED_PREFIXES["/assets/"], config.AI_ASSETS_DIR)
     config.ASSETS_DIR = TEST_DIR / "assets"
     config.SERVED_PREFIXES["/assets/"] = TEST_DIR / "assets"
+    # Dossier IA redirigé avec assets/ : il doit toujours en faire partie (phase 3, pipeline/assets.py).
+    config.AI_ASSETS_DIR = TEST_DIR / "assets" / "ai"
     try:
         def with_image(src):
             return mutated(rich, lambda r: r["shots"][0]["layers"].append(
@@ -604,7 +606,7 @@ def main() -> int:
         expect_refused(with_image("pipeline/config.py"), "image hors de assets/", ["doit se trouver sous assets/"])
         expect_refused(with_image("build/_tests/11/assets/images/logo.tiff"), "format d'image non servi", ["format d'image « .tiff » non servi"])
     finally:
-        config.ASSETS_DIR, config.SERVED_PREFIXES["/assets/"] = saved
+        config.ASSETS_DIR, config.SERVED_PREFIXES["/assets/"], config.AI_ASSETS_DIR = saved
 
     # ------------------------------------------------------------------------------------------
     print("== Phase 1 : provenance et déclaration d'usage de l'IA ==")

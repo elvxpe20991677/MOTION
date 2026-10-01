@@ -322,9 +322,10 @@ niveaux** sur toutes les images, **informatif** (jamais bloquant) : codes réser
 10 bits) = avertissement ; puis, selon **EBU R103 v3.0**, Y et R'G'B' filtrés comme le recommande la
 norme : avertissement si plus de 1 % d'une image sort de la plage préférée 20..984 (gamut) ou de la
 plage nominale 64..940 à ±1 % près (programme pré-produit). Les dépassements bénins, plus petits, sont
-mesurés et affichés dans le rapport mais non signalés (détails : `docs/CONTRACT.md` §11.1). Un contrôle
-de scène `scene.ai_disclosure` (informatif) vérifie la déclaration d'usage de l'IA (voir « Provenance
-et IA »). Les **planches contact** (`out/<scène>/planche_contact.png`, et `planche_alpha.png` sur fonds
+mesurés et affichés dans le rapport mais non signalés (détails : `docs/CONTRACT.md` §11.1). Contrôles de
+scène ajoutés : `scene.ai_disclosure` (informatif) vérifie la déclaration d'usage de l'IA ;
+`scene.ai_lock` (**bloquant**) vérifie que chaque asset de `assets/ai/` utilisé est gelé, présent et
+intact (voir « Provenance et IA »). Les **planches contact** (`out/<scène>/planche_contact.png`, et `planche_alpha.png` sur fonds
 clair et sombre pour une scène transparente) montrent les coupes, transitions, temps musicaux et
 marqueurs : la relecture humaine commence par elles.
 

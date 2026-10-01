@@ -291,6 +291,170 @@ def test_alpha() -> None:
           f"alpha={a} media={entry.get('media')}")
 
 
+def test_lock_integrity(dest: Path, p_ok: Path) -> None:
+    print("== F. Verrou invalide, options de add, contournements, concurrence ==")
+    saved = LOCK.read_bytes()
+    key = rel(dest)
+    try:
+        lock = json.loads(saved)
+        lock["assets"][key]["provenance"] = {}
+        LOCK.write_text(json.dumps(lock), encoding="utf-8")
+        cp = mograph("validate", str(p_ok))
+        compiled = json.loads((TEST / "build" / "s30_ok" / "compiled.json").read_text(encoding="utf-8"))
+        try:
+            assets.check_compiled(compiled, stage="Rendu")
+            refused = False
+        except assets.AssetError:
+            refused = True
+        c = qc.check_ai_lock(compiled)
+        cpv = mograph("assets", "verify")
+        check("entrée sans provenance : validate, rendu, QC et verify refusent (message français « champ obligatoire »)",
+              cp.returncode == 1 and "champ obligatoire" in cp.stderr and refused and c["status"] == "FAIL"
+              and cpv.returncode == 1, tail(cp, 1))
+        LOCK.write_text(saved.decode("utf-8")[:40], encoding="utf-8")
+        cp = mograph("validate", str(p_ok))
+        check("verrou JSON tronqué : validate refuse (« JSON invalide ligne … »)",
+              cp.returncode == 1 and "JSON invalide" in cp.stderr, tail(cp, 1))
+        LOCK.write_bytes(b"\xef\xbb\xbf" + saved)
+        cp = mograph("validate", str(p_ok))
+        check("verrou réenregistré avec BOM (Bloc-notes) : accepté", cp.returncode == 0, tail(cp, 1))
+    finally:
+        LOCK.write_bytes(saved)
+
+    # Re-geler le même fichier : la provenance est complétée, jamais effacée.
+    cp = mograph("assets", "add", key, "--tool", "Test", "--model", "lavfi", "--prompt", "mire testsrc2 animée",
+                 "--license", "test interne", "--notes", "revu")
+    pv = json.loads(LOCK.read_text(encoding="utf-8"))["assets"][key]["provenance"]
+    check("re-gel avec --notes : « provenance mise à jour », graine, coût et date conservés",
+          cp.returncode == 0 and "provenance mise à jour" in cp.stdout and pv.get("notes") == "revu"
+          and pv.get("seed") == 7 and pv.get("cost") == "0 crédit", f"{tail(cp, 1)} {pv}")
+
+    # --prompt-file (avec BOM) et --dest.
+    pf = SRC / "prompt.txt"
+    pf.write_bytes(b"\xef\xbb\xbf" + "Forêt brumeuse, travelling lent".encode("utf-8"))
+    ffmpeg("-f", "lavfi", "-i", "testsrc2=size=320x180:rate=25:duration=1", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+           str(SRC / "petit.mp4"))
+    cp = mograph("assets", "add", rel(SRC / "petit.mp4"), "--tool", "T", "--model", "M", "--prompt-file", str(pf),
+                 "--license", "L", "--dest", "clips/foret.mp4")
+    lock = json.loads(LOCK.read_text(encoding="utf-8"))
+    e = lock["assets"].get(rel(AI / "clips" / "foret.mp4"), {})
+    check("--prompt-file (BOM retiré) et --dest (rangé sous clips/foret.mp4)",
+          cp.returncode == 0 and e.get("provenance", {}).get("prompt") == "Forêt brumeuse, travelling lent",
+          f"{tail(cp, 1)} {e.get('provenance', {}).get('prompt')!r}")
+    cp = mograph("assets", "add", rel(SRC / "petit.mp4"), "--tool", "T", "--model", "M", "--prompt", "P",
+                 "--license", "L", "--dest", "clips/")
+    check("--dest désignant un dossier : refusé proprement (code 1, message français, pas de trace)",
+          cp.returncode == 1 and "chemin de FICHIER" in cp.stderr and "Traceback" not in cp.stderr, tail(cp, 1))
+    cp = mograph("assets", "add", rel(SRC / "petit.mp4"), "--tool", "T", "--model", "M", "--prompt", "P",
+                 "--license", "L", "--date", "20260915", "--dest", "clips/autre.mp4")
+    check("--date au format non AAAA-MM-JJ : refusé AVANT toute copie",
+          cp.returncode == 1 and "--date" in cp.stderr and not (AI / "clips" / "autre.mp4").exists(), tail(cp, 1))
+
+    # --replace : remplacé, ancienne empreinte gardée, le job média du plan change (re-rendu).
+    before = scene_mod.compile_scene(p_ok)["shots"][0]["media"][0]["digest"]
+    old_sha = assets.file_sha256(dest)
+    original = dest.read_bytes()
+    try:
+        cp = add_cli(SRC / "autre" / "mire.mp4", "--replace", "--dest", "video/mire.mp4")
+        e = json.loads(LOCK.read_text(encoding="utf-8"))["assets"][key]
+        after = scene_mod.compile_scene(p_ok)["shots"][0]["media"][0]["digest"]
+        check("assets add --replace : « remplacé », champ replaces = ancienne empreinte, extraction à refaire",
+              cp.returncode == 0 and "remplacé" in cp.stdout and e.get("replaces") == old_sha and after != before,
+              tail(cp, 1))
+    finally:
+        dest.write_bytes(original)
+        assets.add(dest, tool="Test", model="lavfi", prompt="mire testsrc2 animée", license="test interne",
+                   seed=7, cost="0 crédit", replace=True)
+
+    # Image IA remplacée : l'empreinte du plan change (sinon le plan ne serait pas re-rendu).
+    img_src = SRC / "fond.png"
+    pi = scene("s30_img", {"id": "fond", "type": "image", "src": rel(AI / "image" / "fond.png"), "w": 160, "h": 90},
+               provenance={"ai_disclosure": {**DECL, "roles": ["image"]}})
+    from pipeline import web_render
+    s1 = web_render.spec_sha256(scene_mod.compile_scene(pi)["shots"][0]["spec"])
+    cv2.imwrite(str(SRC / "fond2.png"), np.full((90, 160, 3), 30, np.uint8))
+    assets.add(SRC / "fond2.png", tool="Test", model="m", prompt="fond sombre", license="test", dest="image/fond.png",
+               replace=True)
+    s2 = web_render.spec_sha256(scene_mod.compile_scene(pi)["shots"][0]["spec"])
+    check("image IA remplacée (--replace) : empreinte du plan différente, le plan sera re-rendu", s1 != s2,
+          f"{s1[:12]} -> {s2[:12]}")
+    assets.add(img_src, tool="Test", model="m", prompt="fond gris", license="test", dest="image/fond.png", replace=True)
+
+    # Contournements : chemin étendu Windows, jonction sous le dossier IA, piste synth sous le dossier IA.
+    ffmpeg("-f", "lavfi", "-i", "sine=frequency=440:duration=1", "-ar", "48000", str(AI / "libre.wav"))
+    try:
+        ext = "\\\\?\\" + str((AI / "libre.wav").resolve())
+        pa = scene("s30_audio_etendu", {"id": "t", "type": "text", "text": "A"})
+        d = json.loads(pa.read_text(encoding="utf-8"))
+        d["audio"] = {"src": ext}
+        pa.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+        cp = mograph("validate", str(pa))
+        check("audio.src en chemin étendu \\\\?\\ vers un fichier IA non gelé : REFUS", cp.returncode == 1 and
+              ("refusé" in cp.stderr or "absent du verrou" in cp.stderr), tail(cp, 1))
+        d["audio"] = {"src": rel(AI / "beat.wav"), "bpm": 120, "synth": {"kind": "beat"}}
+        pa.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+        cp = mograph("validate", str(pa))
+        check("audio.synth sous le dossier IA : REFUS (une piste générée n'est pas un asset gelé)",
+              cp.returncode == 1 and "piste de test générée" in cp.stderr and not (AI / "beat.wav").exists(), tail(cp, 1))
+    finally:
+        (AI / "libre.wav").unlink(missing_ok=True)
+    # Cible SOUS assets/ (servie au navigateur) mais HORS du dossier IA : le vrai scénario de contournement.
+    outside = SRC / "hors_ia"
+    outside.mkdir(parents=True, exist_ok=True)
+    cv2.imwrite(str(outside / "y.png"), np.full((8, 8, 3), 200, np.uint8))
+    junction = AI / "jx"
+    r = subprocess.run(["cmd", "/c", "mklink", "/J", str(junction), str(outside)], capture_output=True) \
+        if config.IS_WINDOWS else None
+    if not config.IS_WINDOWS:
+        os.symlink(outside, junction)
+    try:
+        if junction.exists():
+            pj = scene("s30_jonction", {"id": "y", "type": "image", "src": rel(AI) + "/jx/y.png", "w": 8, "h": 8})
+            cp = mograph("validate", str(pj))
+            cpv = mograph("assets", "verify")
+            check("jonction/lien sous le dossier IA qui en sort : REFUS à la compilation, signalé par verify",
+                  cp.returncode == 1 and "lien ou une jonction" in cp.stderr and "lien hors du dossier IA" in cpv.stdout,
+                  tail(cp, 1))
+        else:
+            check("jonction/lien sous le dossier IA : création impossible sur cette machine", False, str(r))
+    finally:
+        if junction.exists() or junction.is_symlink():
+            if config.IS_WINDOWS:
+                os.rmdir(junction)  # supprime la jonction elle-même, jamais son contenu
+            else:
+                junction.unlink()
+
+    # Deux « assets add » simultanés : aucune entrée perdue.
+    for n in (1, 2):
+        cv2.imwrite(str(SRC / f"c{n}.png"), np.full((8, 8, 3), 10 * n, np.uint8))
+    procs = [subprocess.Popen([PY, str(ROOT / "mograph.py"), "assets", "add", rel(SRC / f"c{n}.png"), "--tool", "T",
+                               "--model", "M", "--prompt", "P", "--license", "L"], cwd=ROOT, env=dict(os.environ),
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE) for n in (1, 2)]
+    codes = [p.wait(timeout=120) for p in procs]
+    keys = json.loads(LOCK.read_text(encoding="utf-8"))["assets"]
+    check("deux « assets add » simultanés : codes 0 et les deux entrées présentes dans le verrou",
+          codes == [0, 0] and rel(AI / "image" / "c1.png") in keys and rel(AI / "image" / "c2.png") in keys, str(codes))
+
+    # Cohérence CLI / schéma, QC sans relevé, rapport d'un asset absent du verrou, aperçu.
+    schema = json.loads((config.SCHEMA_DIR / "assets_lock.schema.json").read_text(encoding="utf-8"))
+    ent = schema["$defs"]["entry"]["properties"]
+    check("natures et sources de la CLI = énumérations du schéma",
+          set(assets.KINDS) == set(ent["kind"]["enum"]) and set(assets.SOURCES) == set(ent["provenance"]["properties"]["source"]["enum"]))
+    skip = qc.check_ai_lock({"scene_id": "x"})
+    lines = qc._provenance_lines({"provenance": None, "ai_assets": ["assets/ai/x.mp4"],
+                                  "ai_assets_lock": {"assets/ai/x.mp4": None}})
+    rep = json.loads((TEST / "out" / "s30_ok" / "qc_report.json").read_text(encoding="utf-8"))
+    check("QC : scene.ai_lock SKIP sans relevé ; rapport : « absent du verrou » ; clé ai_assets_lock dans le JSON",
+          skip["status"] == "SKIP" and skip["blocking"] is False and any("absent du verrou" in l for l in lines)
+          and key in (rep.get("ai_assets_lock") or {}))
+    from pipeline import preview
+    st = preview._State(p_ok, log=lambda m: None)
+    st.compiled = scene_mod.compile_scene(p_ok)
+    stamp = [Path(f) for f, _, _ in st._sources_stamp()]
+    check("aperçu : le verrou et les assets IA de la scène sont surveillés (recompilation = revérification)",
+          config.ASSETS_LOCK in stamp and (ROOT / key) in stamp)
+
+
 def main() -> int:
     assert TEST.parent.name == "_tests" and AI.parent.name == "_tests"
     for d in (TEST, AI, SRC):
@@ -298,14 +462,18 @@ def main() -> int:
             shutil.rmtree(d)
     SRC.mkdir(parents=True)
     t0 = time.perf_counter()
-    check("environnement isolé : verrou et dossier IA de test", config.ASSETS_LOCK == LOCK.resolve()
-          and config.AI_ASSETS_DIR == AI.resolve() and config.BUILD_DIR == (TEST / "build").resolve())
+    if not check("environnement isolé : verrou et dossier IA de test", config.ASSETS_LOCK == LOCK.resolve()
+                 and config.AI_ASSETS_DIR == AI.resolve() and config.BUILD_DIR == (TEST / "build").resolve()):
+        # Garde bloquante : sans isolation, les contrôles écriraient dans le vrai verrou et dans assets/ai/.
+        print("ÉCHEC : isolation impossible, arrêt avant toute écriture.")
+        return 1
     try:
         dest = test_add_verify_list()
         p_ok = test_ai_clip_compile(dest)
         test_full_render(p_ok)
         test_refusals(dest, p_ok)
         test_alpha()
+        test_lock_integrity(dest, p_ok)
     except Exception as exc:  # noqa: BLE001 — l'exception est rapportée comme un échec, pas masquée
         import traceback
         traceback.print_exc()

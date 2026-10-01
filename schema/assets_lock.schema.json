@@ -43,7 +43,7 @@
         "provenance": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["tool", "model", "date", "prompt", "license"],
+          "required": ["tool", "model", "date", "prompt", "license", "source"],
           "properties": {
             "tool": { "type": "string", "minLength": 1, "description": "Outil ou service (ex. Gemini/Flow, ElevenLabs, ACE-Step)." },
             "tool_version": { "type": "string" },

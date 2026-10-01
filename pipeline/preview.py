@@ -58,6 +58,10 @@ class _State:
         files = [self.scene_path, *sorted(config.PRESETS_DIR.glob("*.json"))]
         for ext in config.SUBTITLE_EXTENSIONS:
             files += sorted(config.ASSETS_DIR.rglob(f"*{ext}"))
+        # Assets IA gelés (CONTRACT §11.4) : un verrou ou un asset IA modifié recompile la scène, donc
+        # revérifie le verrou ; l'aperçu affiche alors l'erreur au lieu de servir un fichier non gelé.
+        files.append(config.ASSETS_LOCK)
+        files += [config.ROOT / a["path"] for a in ((self.compiled or {}).get("assets") or []) if a.get("ai")]
         out = []
         for f in files:
             try:
