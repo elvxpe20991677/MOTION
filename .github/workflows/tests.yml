@@ -105,6 +105,8 @@ jobs:
         run: .venv/bin/python tests/verify_step30_assets.py
       - name: Phase 4 — voix off (faux serveur ElevenLabs, aucun appel réel)
         run: .venv/bin/python tests/verify_step40_voice.py
+      - name: Phase 5 — musique gelée et repères (aucune IA appelée)
+        run: .venv/bin/python tests/verify_step50_music.py
       - name: Journaux et images de test (en cas d'échec)
         if: failure()
         uses: actions/upload-artifact@v4

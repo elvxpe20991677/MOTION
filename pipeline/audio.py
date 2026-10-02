@@ -779,6 +779,16 @@ TEMPO_HOP = 128
 # (60 / 120 / 240) comme les détecteurs usuels, sans empêcher un 90 ou un 174 bien marqués.
 TEMPO_PRIOR_BPM = 120.0
 TEMPO_PRIOR_OCTAVES = 1.0
+# Dérive (phase 5) : sur des fenêtres de 8 temps (pas de 4), décalage local qui aligne le mieux la grille
+# à tempo FIXE sur les attaques (± un quart de temps). Au-delà de 40 ms (une image à 25 i/s), les
+# références beat: ne tombent plus sur la musique : tempo variable ou instable (limite du contrat).
+TEMPO_DRIFT_WINDOW_BEATS = 8
+TEMPO_DRIFT_WARN_MS = config.TEMPO_DRIFT_WARN_MS
+# Fenêtres quasi muettes ignorées (montée max < 10 % de celle du morceau) : une intro sans attaques ne
+# donne pas de décalage.
+TEMPO_DRIFT_MIN_RISE = 0.1
+# Fiche d'analyse écrite par « beats --write » dans audio.analysis (repères reproductibles et datés).
+BEATS_GENERATOR_ID = "mograph-beats/1"
 
 
 def _decode_mono(path, rate: int = TEMPO_RATE) -> np.ndarray:
@@ -936,6 +946,8 @@ def analyse_tempo(path, *, bpm_min: float = 60.0, bpm_max: float = 200.0, beats_
         b_pos += period_ms
     confidence = hits / total_b if total_b else 0.0
 
+    drift_ms = _grid_drift(rise, period_ms, phase_ms) * unit_s * 1000.0
+
     # 5. Drop : plus forte hausse d'énergie RMS d'une mesure à la suivante (≥ 3 dB).
     bar_s = beat_s * beats_per_bar
     drop = None
@@ -953,4 +965,52 @@ def analyse_tempo(path, *, bpm_min: float = 60.0, bpm_max: float = 200.0, beats_
             drop = round(float(offset + (k + 1) * bar_s), 3)
 
     return {"bpm": round(float(bpm), 2), "offset": round(float(offset), 3), "beats_per_bar": int(beats_per_bar),
-            "confidence": round(confidence, 3), "drop": drop, "duration": round(float(duration), 3)}
+            "confidence": round(confidence, 3), "drop": drop, "duration": round(float(duration), 3),
+            "drift_ms": round(float(drift_ms), 1)}
+
+
+def _grid_drift(rise: np.ndarray, period: float, phase: float) -> float:
+    """Plus grand décalage local (en unités de l'enveloppe fine) entre la grille à tempo fixe et les
+    attaques, mesuré par fenêtres de TEMPO_DRIFT_WINDOW_BEATS temps ; 0 si le morceau est trop court."""
+    w = TEMPO_DRIFT_WINDOW_BEATS
+    n = int((rise.size - 1 - phase) // period)
+    if n < w:
+        return 0.0
+    pos = np.arange(rise.size, dtype=np.float64)
+    reach = int(period // 4)
+    shifts = np.arange(-reach, reach + 1, dtype=np.float64)
+    worst = 0.0
+    for start in range(0, n - w + 1, w // 2):
+        grid = phase + period * np.arange(start, start + w)
+        values = np.interp(grid[None, :] + shifts[:, None], pos, rise)
+        if float(values.max()) < TEMPO_DRIFT_MIN_RISE:
+            continue
+        worst = max(worst, abs(float(shifts[int(np.argmax(values.sum(axis=1)))])))
+    return worst
+
+
+def beats_block(src_rel: str, result: dict, sha256: str, *, bpm_range: tuple[float, float]) -> dict:
+    """Bloc audio écrit par « beats --write » : tempo, temps 0, mesure, marqueur drop, et fiche
+    d'analyse (empreinte du fichier analysé : repères reproductibles, obsolescence détectable)."""
+    block = {"src": src_rel, "bpm": result["bpm"], "offset": result["offset"], "beats_per_bar": result["beats_per_bar"],
+             "analysis": {"generator": BEATS_GENERATOR_ID, "sha256": sha256,
+                          "bpm_range": [float(bpm_range[0]), float(bpm_range[1])],
+                          "confidence": result["confidence"], "drift_ms": result["drift_ms"]}}
+    if result["drop"] is not None:
+        block["markers"] = [{"id": "drop", "time": result["drop"]}]
+    return block
+
+
+def write_beats_block(scene_path: Path, block: dict) -> None:
+    """Remplace tempo, temps 0, mesure, src et marqueur drop du bloc audio de la scène, garde le reste
+    (autres marqueurs, normalize…), retire synth ; écriture atomique (UTF-8 sans BOM)."""
+    data = json.loads(Path(scene_path).read_text(encoding="utf-8-sig"))
+    old = data.get("audio") or {}
+    markers = [m for m in old.get("markers", []) if m.get("id") != "drop"] + block.get("markers", [])
+    new = {**{k: v for k, v in old.items() if k != "synth"}, **block}
+    if markers:
+        new["markers"] = markers
+    data["audio"] = new
+    tmp = Path(scene_path).with_name(Path(scene_path).name + ".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
+    os.replace(tmp, scene_path)

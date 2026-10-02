@@ -111,7 +111,7 @@ build que la machine de rendu) ; chaque job vérifie d'abord les versions (`scri
 | `python mograph.py new <id> --template titre` | nouvelle scène depuis un modèle (`new --list` : les modèles) |
 | `python mograph.py batch <scènes…>` | rend plusieurs scènes (motifs acceptés : `"scenes/promo_*.json"`) |
 | `python mograph.py batch <modèle> --data lignes.csv` | **déclinaisons** : une vidéo par ligne du CSV |
-| `python mograph.py beats <musique> [--scene <scène> --write]` | tempo, premier temps fort et drop détectés |
+| `python mograph.py beats <musique> [--scene <scène> --write] [--json]` | tempo, premier temps fort, drop et dérive détectés ; musique d'IA : gelée d'abord |
 | `python mograph.py sheets <scène>` | planches contact (`out/<scène>/planche_contact.png`, `planche_alpha.png`) |
 | `python mograph.py assets add <fichier> --tool … --model … --prompt … --license …` | **geler** une sortie d'IA (copie sous `assets/ai/`, SHA-256 + provenance dans `assets.lock.json`) |
 | `python mograph.py assets verify` / `assets list` | assets IA présents et intacts / provenance |
@@ -138,9 +138,21 @@ sont relisibles dans `build/_variants/<modèle>/` ; le bilan du lot dans `build/
 ### Musique
 `beats <fichier>` (wav, mp3, m4a, ou vidéo) estime le tempo (± 0,1 BPM), le premier temps fort
 (± 5 ms) et le « drop » (plus forte hausse d'énergie d'une mesure à la suivante), avec un indice de
-confiance ; `--scene <scène> --write` écrit le bloc `audio` (src, bpm, offset, marqueur `drop`).
-Tempo fixe uniquement. `"audio": {"normalize": true}` ramène la piste à `qc.loudness_target_lufs`
-(mesure puis gain linéaire, true peak ≤ −1,5 dBTP).
+confiance et la dérive de la grille ; `--scene <scène> --write` écrit le bloc `audio` (src, bpm,
+offset, marqueur `drop`, et la fiche `analysis` : empreinte du fichier analysé). Même fichier → même
+analyse, au bit près. Tempo fixe uniquement : un tempo variable est détecté (dérive > 40 ms) et
+signalé ; calez alors les moments clés par marqueurs. `"audio": {"normalize": true}` ramène la piste
+à `qc.loudness_target_lufs` (mesure puis gain linéaire, true peak ≤ −1,5 dBTP).
+
+Musique générée par une IA (Eleven Music dans l'interface web d'ElevenLabs, Lyria dans l'application
+Gemini) : téléchargez-la, gelez-la une fois, puis calez la scène dessus :
+```bash
+python mograph.py assets add musique.mp3 --tool "ElevenLabs Music" --model music_v1 --prompt "…" --license "Conditions Eleven Music, offre payante : usage commercial hors film, TV, radio et jeux « Studio »" --source manual_import
+python mograph.py beats assets/ai/audio/musique.mp3 --scene ma_scene --write
+```
+`beats` refuse une musique de `assets/ai/` qui n'est pas gelée. Eleven Music (offres payantes) :
+usage commercial autorisé sauf film, TV, radio et jeux « Studio » ; Lyria : vérifiez les conditions
+avant un usage commercial (filigrane SynthID dans le fichier).
 
 ### Rendu en parallèle
 Les plans sans plaque 3D sont rendus par Chromium **pendant** que Blender calcule les plaques
@@ -355,7 +367,8 @@ marqueurs : la relecture humaine commence par elles.
 - Pas de P3 ni de HDR : chaîne sRGB → Rec.709 SDR uniquement.
 - EEVEE et Grease Pencil exigent un GPU (EEVEE sans GPU : 68 s pour un cube) : le pipeline utilise Cycles.
 - Zones sûres 9:16 approximatives (interfaces TikTok / Reels / Shorts évolutives).
-- Détection des temps (`beats`) pour les morceaux à tempo FIXE seulement (pas de tempo variable).
+- Détection des temps (`beats`) pour les morceaux à tempo FIXE seulement : un tempo variable est
+  détecté et signalé (dérive), pas suivi (CONTRACT §11.6).
 - Aperçu en direct : fidèle mais pas au pixel près (navigateur de bureau) ; seul `all` fait foi.
 - Rendu logiciel lent sans GPU (Chromium SwiftShader, Cycles CPU).
 - Windows : pas de `tmux` ; `--detach` le remplace. `--font-render-hinting=none` n'a d'effet que

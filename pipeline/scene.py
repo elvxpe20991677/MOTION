@@ -2675,6 +2675,16 @@ class _Compiler:
             self.err(("audio", "src"), f"fichier audio introuvable : {path}. Placez-le, corrigez le chemin (relatif à la racine) "
                                        "ou ajoutez \"synth\": {\"kind\": \"beat\"} pour générer une piste de test.")
         self._note_asset(config.ROOT / src if src else path, "audio")
+        analysis = audio.get("analysis")
+        if analysis and src and not synth and path.is_file():
+            # Repères de « beats --write » : liés à l'empreinte du fichier analysé (CONTRACT §11.6).
+            if assets_mod.file_sha256(path) != analysis.get("sha256"):
+                self.warn(("audio", "analysis"), f"bpm, offset et drop ont été calculés sur une autre version de {_q(src)} : "
+                                                 f"relancez « python mograph.py beats {src} --scene {self.scene_id} --write ».")
+            elif float(analysis.get("drift_ms") or 0) > config.TEMPO_DRIFT_WARN_MS:
+                self.warn(("audio", "analysis"), f"tempo variable ou instable mesuré (dérive {_fr(float(analysis['drift_ms']), max_dec=1)} ms "
+                                                 f"> {_fr(config.TEMPO_DRIFT_WARN_MS)} ms) : les références beat: s'écartent de la "
+                                                 "musique ; calez les moments clés par marqueurs (marker:id).")
         target = float(synth["target_lufs"]) if synth and "target_lufs" in synth else self.qc["loudness_target_lufs"]
         return {
             "src": str(path),

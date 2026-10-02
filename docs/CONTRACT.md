@@ -485,7 +485,8 @@ rééchantillonnage), en alpha prémultiplié, progression = `fade_weight` (smoo
 ```python
 # pipeline/audio.py
 def analyse_tempo(path, *, bpm_min=60.0, bpm_max=200.0, beats_per_bar=4) -> dict
-    # {bpm, offset (1er temps fort), beats_per_bar, confidence 0..1, drop (s|None), duration}
+    # {bpm, offset (1er temps fort), beats_per_bar, confidence 0..1, drop (s|None), duration,
+    #  drift_ms (phase 5, §11.6)}
 # pipeline/encode.py
 def loudnorm_prefix(src, duration: str, target_lufs: float) -> str   # 2 passes, loudnorm linéaire
 # pipeline/media.py
@@ -783,3 +784,62 @@ l'API de l'aperçu).
 CLI : `mograph voice <scène> [--dry-run] [--yes] [--budget N] [--regenerate]` ; `mograph voice
 --quota`. Ctrl+C pendant l'appel : message « il a pu être décompté », ligne de journal.
 Tests : `tests/verify_step40_voice.py` (faux serveur, 0 caractère consommé).
+
+### 11.6 Phase 5 — musique gelée et repères (`mograph beats`)
+Sources vérifiées le 03/10/2026. **Eleven Music** (elevenlabs.io/eleven-music-model-specific-terms,
+mise à jour du 26/05/2026) : offres gratuite et payantes « self-serve », usage commercial en ligne et
+hors ligne SAUF film, TV, radio et jeux « Studio » ; mention « Eleven Music » exigée seulement sur
+l'offre gratuite ; revente et banques de sons interdites ; téléchargement MP3 44,1 kHz ou WAV.
+**Lyria 3 / 3 Pro** (application Gemini, blog.google) : MP3/MP4 de 30 s (Lyria 3) à 3 min (Lyria 3
+Pro), filigrane SynthID inaudible intégré au fichier (il ne gêne ni le gel par SHA-256 ni l'analyse) ;
+conditions d'usage commercial non établies à la source : à vérifier avant tout usage commercial.
+ChatGPT : pas de génération musicale relevée. **ACE-Step 1.5** (github.com/ace-step/ACE-Step-1.5) :
+code ET poids sous licence MIT ; Python 3.11–3.12, gestionnaire `uv`, venv propre au dépôt ; 8–16 Go
+de VRAM recommandés (≤ 6 Go avec quantification INT8 + déchargement CPU complet) ; poids ≈ 4,7 Go
+(DiT 2B) + modèle de langage (0,6B à 4B) téléchargés depuis huggingface.co/ACE-Step ; morceaux
+jusqu'à 10 min ; Windows pris en charge (scripts .bat). Reproductibilité par graine et format de
+sortie non documentés à la source. Non installé en phase 5 (plusieurs Go à télécharger, environnement
+séparé) : relève de la phase 8 (fournisseurs locaux expérimentaux) ; sa sortie se gèlerait par
+`assets add … --source local`, exactement comme un import manuel.
+
+Ordre des sources (feuille de route) : 1) import MANUEL d'un téléchargement (Eleven Music dans
+l'interface web, crédits de l'abonnement ; Lyria dans l'application Gemini) gelé par
+`python mograph.py assets add <fichier> --tool "ElevenLabs Music" --model … --prompt … --license
+… --source manual_import` (rangé sous `assets/ai/audio/`) ; 2) local gratuit (ACE-Step, phase 8).
+La musique gelée sert d'`audio.src` comme toute piste : relevée comme asset IA (compilation, verrou
+contrôlé au rendu et à l'encodage, provenance au rapport QC) ; un MP3 est décodé par FFmpeg.
+
+`mograph beats <fichier> [--bpm-min] [--bpm-max] [--beats-per-bar] [--scene <scène> --write]
+[--json]` :
+- fichier sous le dossier IA : REFUS (code 1) s'il n'est pas gelé à jour (« non verrouillé »,
+  « modifié », lien sortant) — les repères ne se calculent que sur une sortie d'IA immuable ; hors du
+  dossier IA (musique de l'utilisateur), analyse libre ;
+- `analyse_tempo` renvoie en plus `drift_ms` : plus grand décalage local (fenêtres de 8 temps, pas de
+  4, recherche ± un quart de temps, fenêtres quasi muettes ignorées) entre la grille à tempo FIXE et
+  les attaques ; mesuré : 1–2 ms sur une piste à tempo fixe (WAV ou MP3 identiques), 117 ms sur une
+  piste qui passe de 120 à 126 BPM ;
+- `--write` exige `--scene` ; il remplace `src` (clé du verrou pour une musique gelée, sinon chemin
+  relatif à la racine), `bpm`, `offset`, `beats_per_bar`, le marqueur `drop`, retire `synth`, garde
+  les autres clés et marqueurs, et écrit la fiche `audio.analysis = {generator "mograph-beats/1",
+  sha256 du fichier analysé, bpm_range, confidence, drift_ms}` ; scène lue en UTF-8 avec ou sans BOM,
+  réécrite atomiquement sans BOM ;
+- `--json` : `{"analyse": …, "audio": <bloc>}` sur une ligne (scripts, couche agent de la phase 6).
+
+Schéma : `audio.analysis` optionnel (une scène sans ce champ compile à l'identique). Compilateur :
+avec `audio.analysis` et un `src` présent, empreinte différente du fichier → avertissement « relancez
+beats … --write » ; sinon dérive > `config.TEMPO_DRIFT_WARN_MS` (40 ms, une image à 25 i/s) →
+avertissement « tempo variable ou instable ». La scène compilée n'est pas modifiée (aucune clé
+ajoutée).
+
+**Reproductibilité** : même fichier → même analyse au bit près (contrôlé dans 3 processus distincts,
+WAV et MP3, tempo non entier 97,3 BPM) ; la fiche d'analyse lie les repères à l'empreinte du fichier.
+
+**Limite : tempo fixe seulement.** Un tempo variable n'est PAS pris en charge : `beat:N` (instant),
+`beats:N` (durée, sans origine dans le contrat), `on_beats` du glitch et `beats_per_bar` supposent
+une période constante ; une carte de tempo changerait le sens de `beats:N` et de `on_beats` pour des
+scènes existantes, ce que la feuille de route interdit (« uniquement si le contrat le permet sans
+casse »). Le tempo variable est donc DÉTECTÉ (dérive) et signalé ; les moments clés se calent alors
+par marqueurs (`audio.markers`, `marker:id`).
+
+Tests : `tests/verify_step50_music.py` (aucune IA appelée ; « musique d'IA » simulée par une piste de
+test encodée en MP3 et gelée en import manuel).

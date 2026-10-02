@@ -81,6 +81,10 @@ VOICE_DUCK_DB: float = -12.0
 VOICE_DUCK_ATTACK_S: float = 0.08
 VOICE_DUCK_RELEASE_S: float = 0.35
 VOICE_DUCK_MERGE_S: float = 0.4
+# Musique (phase 5, CONTRACT §11.6) : dérive maximale tolérée entre la grille à tempo FIXE de
+# « mograph beats » et les attaques du morceau (40 ms = une image à 25 i/s) ; au-delà, avertissement :
+# le contrat ne gère qu'un tempo fixe (beat:, beats:, on_beats).
+TEMPO_DRIFT_WARN_MS: float = 40.0
 
 # Nature d'un asset IA déduite de son extension (verrou, CLI « assets add »).
 AI_ASSET_KINDS: dict[str, tuple[str, ...]] = {

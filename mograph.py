@@ -16,7 +16,7 @@ Commandes :
     preview      <scène>   aperçu en direct dans le navigateur (rechargé à chaque sauvegarde)
     new          <id>      nouvelle scène depuis un modèle (templates/) : --template titre
     batch        <scènes>  rend plusieurs scènes, ou une scène modèle × un CSV (--data)
-    beats        <audio>   détecte tempo, premier temps et drop d'une musique (--scene … --write)
+    beats        <audio>   détecte tempo, premier temps, drop et dérive d'une musique (--scene … --write, --json)
     sheets       <scène>   planches contact (out/<scène>/planche_contact.png)
     assets       add|verify|list   assets IA gelés : verrou assets.lock.json (empreinte + provenance)
     voice        <scène>   voix off ElevenLabs du bloc voiceover : estimation, garde-fou de quota, cache, gel
@@ -596,39 +596,62 @@ def cmd_batch(args) -> int:
 
 
 def cmd_beats(args) -> int:
-    from pipeline import audio
+    """Tempo, temps 0, mesure, drop et dérive d'une musique (CONTRACT §11.6) ; --write les inscrit dans la scène.
 
+    Une musique rangée sous assets/ai/ (sortie d'IA) doit être GELÉE (verrou à jour) avant toute analyse :
+    les repères écrits sont alors liés à l'empreinte d'un fichier immuable.
+    """
+    from pipeline import assets, audio
+
+    if args.write and not args.scene:
+        print("--write exige --scene <scène> (scène dont le bloc audio sera remplacé).", file=sys.stderr)
+        return EXIT_FAIL
     src = Path(args.audio)
     if not src.is_absolute():
         src = (config.ROOT / src) if (config.ROOT / src).exists() else src.resolve()
     if not src.is_file():
         print(f"Fichier audio introuvable : {src}", file=sys.stderr)
         return EXIT_FAIL
-    r = audio.analyse_tempo(src, bpm_min=args.bpm_min, bpm_max=args.bpm_max, beats_per_bar=args.beats_per_bar)
-    print(f"{src.name} : {r['bpm']} BPM, premier temps fort à {r['offset']} s, mesure à {r['beats_per_bar']} temps, "
-          f"confiance {r['confidence']:.0%}, durée {r['duration']} s"
-          + (f", drop à {r['drop']} s" if r["drop"] is not None else ", pas de drop net"))
-    if r["confidence"] < 0.6:
-        print("  Confiance faible : tempo variable ou peu marqué ; vérifiez à l'oreille dans l'aperçu (preview).")
     try:
-        rel = src.resolve().relative_to(config.ROOT).as_posix()
-    except ValueError:
-        rel = str(src)
-    block = {"src": rel, "bpm": r["bpm"], "offset": r["offset"], "beats_per_bar": r["beats_per_bar"]}
-    if r["drop"] is not None:
-        block["markers"] = [{"id": "drop", "time": r["drop"]}]
-    if args.scene and args.write:
-        path = resolve_scene_path(args.scene)
-        data = json.loads(path.read_text(encoding="utf-8"))
-        old = data.get("audio") or {}
-        markers = [m for m in old.get("markers", []) if m.get("id") != "drop"] + block.get("markers", [])
-        new = {**{k: v for k, v in old.items() if k != "synth"}, **block}
-        if markers:
-            new["markers"] = markers
-        data["audio"] = new
-        path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        print(f"Bloc audio écrit dans {path} (vérifiez avec : python mograph.py validate {path.stem}).")
+        in_ai = assets.ai_location(src) != "out"
+        if in_ai:
+            status = assets.status_of(src)
+            if status != "ok":
+                hint = {"non verrouillé": f"gelez-la d'abord : python mograph.py assets add {assets._cmd_path(assets.lock_key(src))} "
+                                          "--tool … --model … --prompt … --license … --source manual_import",
+                        "modifié": "restaurez le fichier gelé (ou gelez la nouvelle version : assets add … --replace)",
+                        "absent": "fichier absent"}.get(status, status)
+                print(f"REFUSÉ : musique sous {assets._rel(config.AI_ASSETS_DIR)}/ non gelée ({status}) : {hint}. Les "
+                      "repères ne sont calculés que sur une sortie d'IA gelée.", file=sys.stderr)
+                return EXIT_FAIL
+        rel = assets.lock_key(src) if in_ai else None
+    except assets.AssetError as exc:
+        print(f"REFUSÉ : {exc}", file=sys.stderr)
+        return EXIT_FAIL
+    if rel is None:
+        try:
+            rel = src.resolve().relative_to(config.ROOT).as_posix()
+        except ValueError:
+            rel = str(src)
+    r = audio.analyse_tempo(src, bpm_min=args.bpm_min, bpm_max=args.bpm_max, beats_per_bar=args.beats_per_bar)
+    block = audio.beats_block(rel, r, audio._sha256_file(src), bpm_range=(args.bpm_min, args.bpm_max))
+    if args.json:
+        print(json.dumps({"analyse": r, "audio": block}, ensure_ascii=False, sort_keys=True))
     else:
+        print(f"{src.name} : {r['bpm']} BPM, premier temps fort à {r['offset']} s, mesure à {r['beats_per_bar']} temps, "
+              f"confiance {r['confidence']:.0%}, dérive {r['drift_ms']} ms, durée {r['duration']} s"
+              + (f", drop à {r['drop']} s" if r["drop"] is not None else ", pas de drop net"))
+    if r["drift_ms"] > audio.TEMPO_DRIFT_WARN_MS:
+        print(f"  ATTENTION tempo variable ou instable : la grille à tempo fixe s'écarte jusqu'à {r['drift_ms']} ms des "
+              f"attaques (seuil {audio.TEMPO_DRIFT_WARN_MS:g} ms, une image à 25 i/s). Le contrat ne gère qu'un tempo "
+              "fixe : calez les moments clés par marqueurs (audio.markers, marker:id) plutôt que par beat:.", file=sys.stderr)
+    elif r["confidence"] < 0.6:
+        print("  Confiance faible : tempo peu marqué ; vérifiez à l'oreille dans l'aperçu (preview).", file=sys.stderr)
+    if args.write:
+        path = resolve_scene_path(args.scene)
+        audio.write_beats_block(path, block)
+        print(f"Bloc audio écrit dans {path} (vérifiez avec : python mograph.py validate {path.stem}).")
+    elif not args.json:
         print('Bloc à mettre dans la scène :\n"audio": ' + json.dumps(block, ensure_ascii=False, indent=2))
     return EXIT_OK
 
@@ -866,6 +889,7 @@ def build_parser() -> argparse.ArgumentParser:
     be.add_argument("--beats-per-bar", type=int, default=4)
     be.add_argument("--scene", help="scène dont remplacer le bloc audio (avec --write)")
     be.add_argument("--write", action="store_true", help="écrire le bloc audio dans --scene")
+    be.add_argument("--json", action="store_true", help="sortie JSON (analyse + bloc audio), pour les scripts et l'agent")
     be.set_defaults(func=cmd_beats)
     s = scene_cmd("status", cmd_status, "avancement d'un rendu")
     s.add_argument("--lines", type=int, default=8, help="lignes de journal affichées")
