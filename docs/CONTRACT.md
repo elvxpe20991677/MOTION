@@ -569,7 +569,7 @@ statement?}`, `roles` ⊂ {scene, text, image, video, music, voice, subtitles, 3
 
 Scène compilée, clés ajoutées (§4) :
 - `assets` : `[{path (relatif à la racine, « / » ; absolu seulement pour une piste audio hors du
-  projet), kinds ⊂ {image, video, subtitles, audio}, ai, sha256 (assets IA verrouillés, phase 3)}]`,
+  projet), kinds ⊂ {image, video, subtitles, audio, text (alignement de la voix off, §11.5)}, ai, sha256 (assets IA verrouillés, phase 3)}]`,
   trié par chemin ; `ai` = fichier sous `config.AI_ASSETS_DIR`. Relevé des fichiers réellement
   utilisés (images, vidéos, sous-titres, piste audio, y compris la piste test générée).
 - `provenance` : bloc normalisé (`authors`, `tools`, `ai_disclosure`) ou `null`.
@@ -683,65 +683,103 @@ Sources vérifiées le 01/10/2026 : API « text-to-speech with timestamps »
 (`POST /v1/text-to-speech/{voice_id}/with-timestamps?output_format=…`, réponse `audio_base64`,
 `alignment.characters`, `character_start_times_seconds`, `character_end_times_seconds`), quota
 (`GET /v1/user/subscription` : `character_count`, `character_limit`,
-`next_character_count_reset_unix`, `can_extend_character_limit`). L'alignement mot à mot vient du
-MÊME appel (aucun coût en plus) ; l'API « forced alignment » n'est pas utilisée (coût non publié).
-PCM/WAV 44,1 kHz exigent l'offre Pro : format retenu `mp3_44100_128` (toutes offres).
+`next_character_count_reset_unix`, `can_extend_character_limit`), historique (`GET /v1/history`).
+Le 02/10/2026 : limite de caractères d'une requête par modèle (elevenlabs.io/docs/models :
+`eleven_multilingual_v2` 10 000, `eleven_v3` 5 000, `eleven_flash_v2_5` 40 000…,
+`config.VOICE_MAX_CHARS_PER_REQUEST`). L'alignement mot à mot vient du MÊME appel (aucun coût en
+plus) ; l'API « forced alignment » n'est pas utilisée (coût non publié). PCM/WAV 44,1 kHz exigent
+l'offre Pro : format retenu `mp3_44100_128` (toutes offres).
 
 Scène : bloc `voiceover = {text, voice_id?, model?, language?, seed?, settings?, asset?, alignment?,
 start?, gain_db?, duck?{db, attack, release}}`. `[[id]]` dans `text` crée `marker:id` au début du mot
-suivant (retiré du texte envoyé). Temps : `word:N[±x]` = début du mot N (0 = premier) de la voix, en
-temps GLOBAL. Calque `subtitles` avec `"voice": true` : répliques déduites de l'alignement
-(`voice.cues_from_words` : coupe en fin de phrase, sur un silence > `config.VOICE_SUB_GAP_S`, ou
-au-delà de `VOICE_SUB_MAX_CHARS` / `VOICE_SUB_MAX_S` ; tenue `VOICE_SUB_HOLD_S`).
+suivant (retiré du texte envoyé ; position comptée dans le texte FINAL, blancs de bord retirés,
+marqueurs consécutifs compris). Temps : `word:N[±x]` = début du mot N (0 = premier mot PRONONCÉ) de
+la voix, en temps GLOBAL : la ponctuation isolée est rattachée à un mot — l'ouvrante (« ( [ — – - ¿ ¡
+“ ‘) et celle qui précède le premier mot au mot SUIVANT, toute autre au mot précédent. Calque
+`subtitles` avec `"voice": true` : répliques déduites de l'alignement (`voice.cues_from_words` :
+coupe en fin de phrase — ponctuation finale éventuellement suivie de ponctuation fermante, « fini. »
+» —, sur un silence > `config.VOICE_SUB_GAP_S`, ou au-delà de `VOICE_SUB_MAX_CHARS` /
+`VOICE_SUB_MAX_S` ; tenue `VOICE_SUB_HOLD_S`, coupée au début de la réplique suivante).
 
 `pipeline/voice.py` :
 ```python
-class VoiceError(RuntimeError)
+class VoiceError(RuntimeError) ; class ApiRefused(VoiceError)   # refus HTTP / connexion : rien produit
 def split_markers(text) -> tuple[str, list[tuple[str, int]]]
 def request_params(vo) -> tuple[dict, str, bool] ; def request_key(params) -> str ; def billed_chars(params) -> int
 def subscription(key) -> dict                      # lecture seule : tier, used, limit, remaining, reset, can_extend
-def billed_from_history(key, params, since_unix) -> int | None   # décompte réel (historique du compte)
+def quota_now(key) -> dict                         # idem, compteur corrigé par l'historique récent (+ lag)
+def billed_from_history(key, params, since_unix) -> int | None   # décompte réel ; ne lève jamais
 def words_from_alignment(text, alignment) -> list[dict]   # {text, start, end, char_start, char_end}
 def cues_from_words(words) -> list[tuple[float, float, str]]
-def generate(scene_path, *, yes=False, dry_run=False, budget=None, log=print, ask=None) -> dict
+def generate(scene_path, *, yes=False, dry_run=False, budget=None, regenerate=False, log=print, ask=None) -> dict
 def load_alignment(path) -> dict                   # contrat mograph-voice-alignment/1
+def secret_values() -> list[str] ; def redact(text) -> str   # masquage de la clé et de la voix de .env
 ```
-`generate` : empreinte de la requête (texte nettoyé, voix, modèle, réglages, langue, graine,
-format) → fichiers `assets/ai/voice/<scène>_<empreinte[:12]>.mp3` et `.words.json`. **Cache** : si
-ces fichiers existent avec la même empreinte, 0 appel, 0 caractère. Sinon, **garde-fous AVANT tout
-appel payant** : caractères = longueur du texte envoyé ; budget de la commande
-(`config.VOICE_BUDGET_CHARS`, env `MOGRAPH_VOICE_BUDGET`, option `--budget`) ; quota restant lu sur
-le compte ; confirmation au-delà de `config.VOICE_CONFIRM_ABOVE` (env `MOGRAPH_VOICE_CONFIRM_ABOVE`)
-sauf `--yes` (refus sans vraie console). Un seul appel, puis gel des deux fichiers (`assets.add`,
-source `api`, outil ElevenLabs, prompt = texte, coût, empreinte de la voix), chemins écrits dans la
-scène, ligne JSON ajoutée à `config.VOICE_USAGE_LOG` (`voice_usage.jsonl`, versionné : date, scène,
-caractères envoyés `chars_estimated`, caractères décomptés `chars_billed`, cache, quota restant avant
-l'appel). Le décompte réel est lu dans l'historique du compte (`GET /v1/history` :
-`character_count_change_from` → `_to`, élément de même texte et modèle) : mesuré le 01/10/2026, le
-compteur agrégé de `/v1/user/subscription` reste en retard après un appel, et le décompte peut être
-inférieur au nombre de caractères envoyés (27 envoyés, 11 décomptés) ; `chars_estimated` est donc un
-majorant utilisé par les garde-fous. **Secrets** : clé lue dans
-l'environnement puis `config.ENV_FILE` (`.env`, env `MOGRAPH_ENV_FILE`), jamais affichée ni écrite ;
-un identifiant de voix venu de `.env` n'est consigné que par son empreinte (y compris dans les
-messages d'erreur). API redirigeable (`MOGRAPH_ELEVENLABS_API`) : les tests utilisent un faux serveur
-local, sans aucune consommation.
+`generate` : empreinte de la requête (texte nettoyé, voix, modèle, réglages — nombres normalisés,
+`1` = `1.0` —, langue, graine, format). **Cache partagé entre scènes** : toute paire son +
+alignement déjà produite pour cette empreinte (fichiers `assets/ai/voice/<empreinte[:16]>.mp3` et
+`.words.json` ; anciens noms `<scène>_<empreinte[:12]>` retrouvés par le verrou, note « requête
+<empreinte[:12]> ») est réutilisée : 0 appel, 0 caractère, chemins écrits dans la scène.
+**Voix gelée disparue** (entrée du verrou, fichier absent ou modifié — médias non versionnés,
+clone neuf) : REFUS sans appel (« restaurez-le depuis votre sauvegarde ») ; `--regenerate` seul la
+régénère (nouvelle consommation, après les garde-fous) aux MÊMES chemins, gelés avec `replace`
+(champ `replaces` du verrou). **Garde-fous AVANT tout appel payant** : variables
+`MOGRAPH_VOICE_BUDGET` / `MOGRAPH_VOICE_CONFIRM_ABOVE` valides (entiers ≥ 0, sinon refus français de
+`mograph voice` seulement, `config.VOICE_ENV_ERRORS`) ; caractères = longueur du texte envoyé ;
+limite d'une requête du modèle ; budget de la commande (`config.VOICE_BUDGET_CHARS`, `--budget`,
+entier ≥ 0) ; quota restant (`quota_now` : le compteur agrégé de l'abonnement reste en retard après
+un appel, l'historique de l'heure écoulée le corrige) ; confirmation au-delà de
+`config.VOICE_CONFIRM_ABOVE` (seuil strict) sauf `--yes` (refus sans vraie console). Une seule
+génération à la fois par empreinte (fichier exclusif `voice/.<empreinte[:16]>.lck`) : une seconde
+commande simultanée attend, puis trouve le cache. **Un seul appel**, dont la réponse payée est
+écrite AUSSITÔT dans `voice/.<empreinte[:16]>.reponse.json` (contrat `mograph-voice-response/1`,
+ignoré par `assets verify`) puis journalisée, avant toute exploitation : si l'alignement est
+inexploitable ou le gel échoue, la relance reprend cette réponse sans nouvel appel (statut
+« reprise »). Alignement : temps par POINT DE CODE (un élément multi-points — accent décomposé,
+émoji — voit ses temps répétés ; normalisation NFC tentée), correspondance position par position
+(caractère normalisé par le service accepté), refus si les longueurs diffèrent. Puis gel des deux
+fichiers (`assets.add`, source `api`, outil ElevenLabs, prompt = texte, coût, empreinte de la voix ;
+alignement de nature `text`, champ `characters_sent` = caractères ENVOYÉS — l'alignement gelé de
+`demo_voix` porte l'ancien nom `characters_billed`, même sens), chemins écrits dans la scène,
+réponse en attente supprimée. Journal `config.VOICE_USAGE_LOG` (`voice_usage.jsonl`, versionné) :
+une ligne par commande — date, scène, empreinte, caractères envoyés `chars_estimated`, décomptés
+`chars_billed` (lus dans l'historique du compte : `character_count_change_from` → `_to` de l'élément
+de même texte et modèle ; **null** si l'élément n'y figure pas encore ou si l'historique est
+illisible, `chars_estimated` restant le majorant ; mesuré le 01/10/2026 : 27 envoyés, 11
+décomptés), `cache`, `dry_run`, `reprise`, `erreur` (« réponse perdue après l'envoi » : 200
+illisible, délai dépassé ; « interrompu pendant l'appel » : Ctrl+C), quota restant avant l'appel.
+`--dry-run` n'écrit ni la scène ni le verrou (voix en cache : « en cache », 0 caractère).
+**Secrets** : clé lue dans l'environnement (blancs de bord retirés) puis `config.ENV_FILE` (`.env`,
+env `MOGRAPH_ENV_FILE` ; lu comme un shell : guillemets, commentaire de fin de ligne, `export`,
+dernière occurrence ; UTF-8 exigé), validée (ASCII imprimable, sans blanc) sans jamais être
+affichée ; un identifiant de voix venu de `.env` n'est consigné que par son empreinte ; les détails
+d'erreur de l'API sont masqués (voix et clé remplacées, `input` des erreurs de validation jamais
+affiché), et la frontière du CLI (`mograph.main`, `cmd_voice`) passe trace et message par `redact`.
+API redirigeable (`MOGRAPH_ELEVENLABS_API`) : les tests utilisent un faux serveur local, sans
+aucune consommation.
 
 Compilateur : `_load_voice` (après `_setup`) exige `asset` et `alignment` gelés sous le dossier IA
-(contrôlés par le verrou comme tout asset IA), vérifie que `alignment.text` = texte nettoyé (sinon
-REFUS « a changé depuis la génération »), place les mots en temps global (`start` = secondes, `beat:`
-ou `marker:` audio), ajoute les marqueurs `[[id]]` (doublon = REFUS). Scène compilée : clé
-`voiceover = {asset, alignment, start, gain_db, duck, duration, text, model, words[{i, text, start,
-end}], markers[{id, time}]}` ou null ; avec une voix, `audio` porte `mix` (build/<scène>/audio/
-mix.wav) et `normalize` vaut true par défaut (loudness d'un mixage inconnue d'avance) ; sans musique,
-`audio.src` est null.
+(contrôlés par le verrou comme tout asset IA ; fichier absent : « restaurez-le », `mograph voice` le
+retrouve s'il existe sous un autre nom, `--regenerate` sinon), vérifie que `alignment.text` = texte
+nettoyé (sinon REFUS « a changé depuis la génération »), place les mots en temps global (`start` =
+secondes, `beat:` ou `marker:` audio ; départ < 0 = REFUS ; départ ≥ durée de la vidéo = REFUS,
+voix finissant après la vidéo = avertissement « la fin sera coupée »), ajoute les marqueurs `[[id]]`
+(doublon = REFUS). Scène compilée : clé `voiceover = {asset, alignment, start, gain_db, duck,
+duration, text, model, words[{i, text, start, end}], markers[{id, time}]}` ou null ; avec une voix,
+`audio` porte `mix` (build/<scène>/audio/mix.wav) et `normalize` vaut true par défaut (loudness d'un
+mixage inconnue d'avance) ; sans musique, `audio.src` est null.
 
 Mixage (`audio.build_mix`, appelé par `audio.ensure_scene_audio`) : voix décodée en 48 kHz stéréo,
-placée à l'échantillon `round(start × 48000)`, gain `gain_db` ; musique (si présente) multipliée par
-`1 + w × (10^(duck.db/20) − 1)`, w = enveloppe de ducking (`audio.duck_envelope` : rampe linéaire
-d'attaque AVANT chaque passage de parole, 1 pendant, rampe de relâchement après ; mots fusionnés si
-silence < `config.VOICE_DUCK_MERGE_S`) ; garde-fou d'écrêtage à 0,999 ; écriture WAV 24 bits
-`-bitexact` + fiche `mix.wav.json` (mixage non refait s'il est à jour). L'encodeur livre `audio.mix`
-s'il existe, sinon `audio.src` ; l'aperçu fait entendre la musique, sinon la voix gelée.
+placée à l'échantillon `round(start × 48000)` (un départ négatif coupe le début, par défense), gain
+`gain_db` ; musique (si présente) multipliée par `1 + w × (10^(duck.db/20) − 1)`, w = enveloppe de
+ducking (`audio.duck_envelope` : rampe linéaire d'attaque AVANT chaque passage de parole, 1 pendant,
+rampe de relâchement après ; mots fusionnés si silence < `config.VOICE_DUCK_MERGE_S`) ; garde-fou
+d'écrêtage à 0,999 ; écriture WAV 24 bits `-bitexact` + fiche `mix.wav.json` (mixage non refait s'il
+est à jour). L'encodeur livre `audio.mix` s'il existe, sinon `audio.src` ; une piste muette (mesure
+loudnorm infinie) est refusée par `encode.loudnorm_prefix` (EncodeError explicite). L'aperçu fait
+entendre la musique, sinon la voix gelée décalée de `voiceover.start` (champ `audio_offset` de
+l'API de l'aperçu).
 
-CLI : `mograph voice <scène> [--dry-run] [--yes] [--budget N]` ; `mograph voice --quota`.
+CLI : `mograph voice <scène> [--dry-run] [--yes] [--budget N] [--regenerate]` ; `mograph voice
+--quota`. Ctrl+C pendant l'appel : message « il a pu être décompté », ligne de journal.
 Tests : `tests/verify_step40_voice.py` (faux serveur, 0 caractère consommé).

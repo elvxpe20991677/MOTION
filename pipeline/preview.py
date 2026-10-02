@@ -113,8 +113,10 @@ class _State:
                           "direction": tr.get("direction", "left"), "url": f"/shot/{s['index']}?v={self.version}"})
         audio = c.get("audio") or None
         audio_url = None
-        # Aperçu : musique, sinon voix off gelée (le mixage final n'est construit qu'au rendu).
+        # Aperçu : musique, sinon voix off gelée (le mixage final n'est construit qu'au rendu), décalée de
+        # voiceover.start pour rester calée sur word:N / marker:id.
         listen = (audio or {}).get("src") or (c.get("voiceover") or {}).get("asset")
+        audio_offset = 0.0 if (audio or {}).get("src") else float((c.get("voiceover") or {}).get("start") or 0)
         if listen:
             p = Path(listen).resolve()
             try:
@@ -123,7 +125,7 @@ class _State:
                 audio_url = None
         out.update({"scene_id": c["scene_id"], "title": c["title"], "fps": c["format"]["fps"], "frames": c["frames"],
                     "canvas": c["canvas"], "alpha": c["format"]["alpha"], "shots": shots,
-                    "audio": audio_url, "missing_plates": missing_plates})
+                    "audio": audio_url, "audio_offset": audio_offset, "missing_plates": missing_plates})
         return out
 
     def shot_html(self, index: int) -> str | None:
@@ -217,6 +219,7 @@ let S = null, frames = {}, ready = {}, frameNow = 0, playing = false, busy = fal
 let seq = 0, waiters = {}, version = -1, t0 = 0, f0 = 0;
 const stage = document.getElementById("stage"), scrub = document.getElementById("scrub");
 const audio = document.getElementById("audio"), msg = document.getElementById("msg");
+let audioTimer = null;
 const smooth = (x) => x * x * (3 - 2 * x);
 
 function tc(g) { const f = g % S.fps, s = Math.floor(g / S.fps); return `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}:${String(f).padStart(2,"0")}`; }
@@ -283,10 +286,17 @@ function tick() {
 function start(from) {
   f0 = from; t0 = performance.now(); playing = true;
   document.getElementById("play").textContent = "❚❚ Pause";
-  if (S.audio) { audio.currentTime = from / S.fps; audio.play().catch(() => {}); }
+  clearTimeout(audioTimer);
+  if (S.audio) {
+    // Voix off seule : le fichier commence à voiceover.start (audio_offset), pas au temps 0 de la vidéo.
+    const t = from / S.fps - (S.audio_offset || 0);
+    if (t >= 0) { audio.currentTime = t; audio.play().catch(() => {}); }
+    else { audio.pause(); audio.currentTime = 0;
+           audioTimer = setTimeout(() => { if (playing) audio.play().catch(() => {}); }, -t * 1000); }
+  }
   requestAnimationFrame(tick);
 }
-function stop() { playing = false; document.getElementById("play").textContent = "▶ Lecture"; audio.pause(); }
+function stop() { playing = false; clearTimeout(audioTimer); document.getElementById("play").textContent = "▶ Lecture"; audio.pause(); }
 
 function fit() {
   if (!S) return;

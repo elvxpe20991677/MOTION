@@ -705,7 +705,7 @@ def duck_envelope(n: int, spans: list[tuple[float, float]], attack: float, relea
 def build_mix(compiled: dict, music: Path | None, *, log=print) -> Path:
     """Mixage déterministe voix off + musique, avec ducking calculé depuis l'alignement mot à mot.
 
-    Écrit build/<scène>/audio/mix.wav (48 kHz, 24 bits, stéréo, -bitexact) et sa fiche mix.json ; un
+    Écrit build/<scène>/audio/mix.wav (48 kHz, 24 bits, stéréo, -bitexact) et sa fiche mix.wav.json ; un
     mixage à jour (mêmes entrées et réglages) n'est pas refait.
     """
     from pipeline import assets
@@ -727,11 +727,14 @@ def build_mix(compiled: dict, music: Path | None, *, log=print) -> Path:
         except (OSError, ValueError):
             pass
     assets.check_compiled(compiled, stage="Mixage de la voix off")
-    voice = _decode_stereo(vo["asset"], n)
-    # Voix placée à son temps de départ (échantillon entier) puis coupée à la durée de la vidéo.
+    # Voix placée à son temps de départ (échantillon entier) puis coupée à la durée de la vidéo ; un départ
+    # négatif (refusé par le compilateur) coupe le début au lieu de décaler la voix en fin de tableau.
     off = int(round(vo["start"] * SAMPLE_RATE))
+    voice = _decode_stereo(vo["asset"], n + max(0, -off))
     placed = np.zeros((n, 2), np.float32)
-    if off < n:
+    if off < 0:
+        placed[:] = voice[-off:-off + n]
+    elif off < n:
         placed[off:] = voice[:n - off]
     placed *= np.float32(10 ** (vo["gain_db"] / 20))
     mix = placed

@@ -137,8 +137,9 @@ plans, empreinte du maître `e03ac824…`, et SHA-256 des deux livrables.
 | Phase | Commit mesuré | `compare` | Écarts (NOTE) | Données |
 |---|---|---|---|---|
 | 1 — consolidation | ad9ed78 (arbre propre) | **aucune régression** | PASS en hausse : compilateur 147 → 157, QC 91 → 107, QC de la scène 26 → 27 (contrôle `scene.ai_disclosure`) ; empreintes des 175 images, du maître et octets HEVC/ProRes identiques ; porte 8/8 | [`baseline/phase-1.json`](baseline/phase-1.json) |
+| 3 — assets IA gelés | 8718f1d (arbre propre) | **aucune régression** | PASS en hausse : compilateur 147 → 158, QC 91 → 108, nouveau `verify_step30_assets` (44 PASS), QC de la scène 26 → 28 (`scene.ai_disclosure`, `scene.ai_lock`) ; empreintes des images, du maître et octets HEVC/ProRes identiques ; porte 8/8 | [`baseline/phase-3.json`](baseline/phase-3.json) |
 
 Coût mesuré de la phase 1 : la mesure R103 décode toutes les images de chaque livrable (QC de
 `demo_flat_riso` : 5 s → 19 s ; `verify_step17_qc` : 54 s → 175 s ; Éclosion Urbaine, 744 images :
 1 min 30 s pour les deux livrables).
-| 3 — assets IA gelés | 8718f1d (arbre propre) | **aucune régression** | PASS en hausse : compilateur 147 → 158, QC 91 → 108, nouveau `verify_step30_assets` (44 PASS), QC de la scène 26 → 28 (`scene.ai_disclosure`, `scene.ai_lock`) ; empreintes des images, du maître et octets HEVC/ProRes identiques ; porte 8/8 | [`baseline/phase-3.json`](baseline/phase-3.json) |
+

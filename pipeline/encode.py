@@ -171,6 +171,9 @@ def loudnorm_prefix(src: Path, duration: str, target_lufs: float) -> str:
     if r.returncode != 0 or start < 0:
         raise EncodeError(f"Mesure de loudness impossible pour {src} : {text.strip()[-300:]}")
     m = json.loads(text[start:text.rfind("}") + 1])
+    if str(m.get("input_i", "")).lstrip("+-").lower() in ("inf", "nan"):
+        raise EncodeError(f"Piste audio silencieuse ({src}) : normalisation EBU R128 impossible. Vérifiez la piste "
+                          "(voix off hors de la vidéo, musique muette) ou désactivez audio.normalize.")
     return (f"{base}:measured_I={m['input_i']}:measured_TP={m['input_tp']}:measured_LRA={m['input_lra']}:"
             f"measured_thresh={m['input_thresh']}:offset={m['target_offset']}:linear=true:print_format=none,"
             f"aresample={config.AUDIO_RATE}")

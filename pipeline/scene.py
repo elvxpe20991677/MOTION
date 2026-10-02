@@ -1285,7 +1285,9 @@ class _Compiler:
                 return
             if not p.is_file():
                 self.err(where + (field,), f"{_q(vo[field])} introuvable sur le disque : les médias de assets/ai/ ne sont "
-                                           "pas versionnés ; replacez-le, ou relancez « mograph voice » (cache ou génération).")
+                                           "pas versionnés ; restaurez-le depuis votre sauvegarde (« python mograph.py voice "
+                                           "<scène> » le retrouve s'il existe sous un autre nom, sans consommer ; s'il est "
+                                           "perdu, « --regenerate » le régénère, ce qui consomme à nouveau).")
                 return
             self._note_asset(p, kind)
             paths[field] = p
@@ -1308,6 +1310,10 @@ class _Compiler:
                 start = self._ref_global(_TIME_RE.match(str(start_raw)), start_raw, where + ("start",))
             except _Skip:
                 return
+        if start < 0:
+            self.err(where + ("start",), f"la voix off démarrerait à {_fr(start, max_dec=3)} s, avant le début de la vidéo : "
+                                         "choisissez un départ ≥ 0 (secondes, beat: ou marker:).")
+            return
         words = [{"i": k, "text": w["text"], "start": _r(start + float(w["start"])), "end": _r(start + float(w["end"])),
                   "char_start": int(w.get("char_start", 0))} for k, w in enumerate(doc["words"])]
         voice_markers = {}
@@ -2696,7 +2702,11 @@ class _Compiler:
                      "synth": None, "target_lufs": self.qc["loudness_target_lufs"]}
         voice_end = self.voice["words"][-1]["end"]
         total_s = (self.timing[-1].global_start + self.timing[-1].frames) / self.fps if self.timing else 0
-        if voice_end > total_s + 1e-6:
+        if self.voice["start"] >= total_s - 1e-6:
+            # Voix entièrement hors de la vidéo : piste muette, normalisation impossible à l'encodage.
+            self.err(("voiceover", "start"), f"la voix off démarre à {_fr(self.voice['start'], max_dec=2)} s mais la vidéo "
+                                             f"dure {_fr(total_s, max_dec=2)} s : avancez son départ ou allongez la scène.")
+        elif voice_end > total_s + 1e-6:
             self.warn(("voiceover",), f"la voix off finit à {_fr(voice_end, max_dec=2)} s mais la vidéo dure "
                                       f"{_fr(total_s, max_dec=2)} s : la fin sera coupée.")
         return {**audio, "normalize": bool(raw_a.get("normalize", True)),

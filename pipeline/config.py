@@ -38,13 +38,37 @@ ASSETS_LOCK: Path = Path(os.environ.get("MOGRAPH_ASSETS_LOCK", ROOT / "assets.lo
 # .env (jamais versionné) ; API redirigeable (tests : faux serveur local, aucun caractère consommé).
 ENV_FILE: Path = Path(os.environ.get("MOGRAPH_ENV_FILE", ROOT / ".env")).resolve()
 ELEVENLABS_API_BASE: str = os.environ.get("MOGRAPH_ELEVENLABS_API", "https://api.elevenlabs.io")
-VOICE_DEFAULT_MODEL: str = "eleven_multilingual_v2"     # meilleur français ; 1 crédit par caractère
+VOICE_DEFAULT_MODEL: str = "eleven_multilingual_v2"     # meilleur français ; décompte réel lu dans l'historique
+# Limite de caractères d'UNE requête par modèle (elevenlabs.io/docs/models, relevé le 02/10/2026) ;
+# modèle absent de la table : pas de contrôle local, l'API répond 400 au besoin.
+VOICE_MAX_CHARS_PER_REQUEST: dict[str, int] = {
+    "eleven_v4": 10_000, "eleven_v3": 5_000, "eleven_flash_v2_5": 40_000, "eleven_flash_v2": 30_000,
+    "eleven_multilingual_v2": 10_000, "eleven_multilingual_v1": 10_000}
 # MP3 44,1 kHz 128 kb/s : seul format de qualité ouvert à toutes les offres (PCM/WAV 44,1 kHz : offre Pro).
 VOICE_OUTPUT_FORMAT: str = "mp3_44100_128"
 VOICE_HTTP_TIMEOUT_S: float = 120.0
-# Garde-fou de quota : plafond de caractères par commande, confirmation au-delà d'un seuil.
-VOICE_BUDGET_CHARS: int = int(os.environ.get("MOGRAPH_VOICE_BUDGET", "1000"))
-VOICE_CONFIRM_ABOVE: int = int(os.environ.get("MOGRAPH_VOICE_CONFIRM_ABOVE", "200"))
+# Garde-fou de quota : plafond de caractères par commande, confirmation au-delà d'un seuil. Une valeur
+# d'environnement invalide ne casse aucune autre commande : « mograph voice » la refuse (VOICE_ENV_ERRORS).
+VOICE_ENV_ERRORS: list[str] = []
+
+
+def _env_count(name: str, default: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        value = -1
+    if value < 0:
+        VOICE_ENV_ERRORS.append(f"{name} doit être un entier ≥ 0 (valeur actuelle « {raw} ») : corrigez-la ou "
+                                "supprimez-la")
+        return default
+    return value
+
+
+VOICE_BUDGET_CHARS: int = _env_count("MOGRAPH_VOICE_BUDGET", 1000)
+VOICE_CONFIRM_ABOVE: int = _env_count("MOGRAPH_VOICE_CONFIRM_ABOVE", 200)
 # Journal de consommation (une ligne JSON par commande « mograph voice », versionné : suivi du quota).
 VOICE_USAGE_LOG: Path = Path(os.environ.get("MOGRAPH_VOICE_USAGE_LOG", ROOT / "voice_usage.jsonl")).resolve()
 # Sous-titres générés depuis l'alignement : coupe en fin de phrase, sur un silence, ou au-delà de ces limites.

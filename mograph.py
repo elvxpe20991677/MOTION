@@ -697,6 +697,17 @@ def cmd_versions(args) -> int:
     return EXIT_OK
 
 
+def _count(value: str) -> int:
+    """Entier ≥ 0 pour argparse (budget de caractères)."""
+    try:
+        n = int(value)
+    except ValueError:
+        n = -1
+    if n < 0:
+        raise argparse.ArgumentTypeError(f"« {value} » : entier ≥ 0 attendu")
+    return n
+
+
 def cmd_voice(args) -> int:
     """Voix off (CONTRACT §11.5) : génère UNE fois (ou retrouve en cache), gèle, inscrit dans la scène."""
     from pipeline import voice
@@ -711,12 +722,16 @@ def cmd_voice(args) -> int:
             print("Indiquez la scène (python mograph.py voice <scène>), ou --quota pour lire le quota.", file=sys.stderr)
             return EXIT_FAIL
         r = voice.generate(resolve_scene_path(args.scene), yes=args.yes, dry_run=args.dry_run, budget=args.budget,
-                           log=_log)
+                           regenerate=args.regenerate, log=_log)
     except voice.VoiceError as exc:
-        print(f"REFUSÉ : {exc}", file=sys.stderr)
+        print(f"REFUSÉ : {voice.redact(str(exc))}", file=sys.stderr)
+        return EXIT_FAIL
+    except KeyboardInterrupt:
+        print("\nInterrompu : si l'appel ElevenLabs était parti, il a pu être décompté ; vérifiez « python mograph.py "
+              "voice --quota » (et l'historique du compte) avant de relancer.", file=sys.stderr)
         return EXIT_FAIL
     if r["status"] == "estimation":
-        print(f"Estimation : {r['chars']} caractère(s) ; rien n'a été consommé (--dry-run).")
+        print(f"Estimation : {r['chars']} caractère(s) envoyé(s) au plus ; rien n'a été consommé (--dry-run).")
     return EXIT_OK
 
 
@@ -860,9 +875,11 @@ def build_parser() -> argparse.ArgumentParser:
     vc.add_argument("scene", nargs="?", default=None, help="chemin d'un .json ou id de scène (scenes/<id>.json)")
     vc.add_argument("--dry-run", action="store_true", help="estimer seulement (caractères, quota restant), sans appel payant")
     vc.add_argument("--yes", action="store_true", help="confirmer d'avance au-delà du seuil (MOGRAPH_VOICE_CONFIRM_ABOVE)")
-    vc.add_argument("--budget", type=int, default=None,
+    vc.add_argument("--budget", type=_count, default=None,
                     help="plafond de caractères de cette commande (défaut : MOGRAPH_VOICE_BUDGET)")
     vc.add_argument("--quota", action="store_true", help="afficher seulement le quota du compte (lecture, aucune consommation)")
+    vc.add_argument("--regenerate", action="store_true",
+                    help="régénérer une voix déjà gelée dont les fichiers ont disparu (NOUVELLE consommation)")
     vc.set_defaults(func=cmd_voice)
 
     asp = sub.add_parser("assets", help="assets IA gelés : add (geler), verify, list (assets.lock.json)")
@@ -920,8 +937,10 @@ def main(argv: list[str] | None = None) -> int:
         print("\nInterrompu : relancez la même commande, le rendu reprend image par image.", file=sys.stderr)
         return EXIT_FAIL
     except Exception as exc:  # noqa: BLE001 — frontière du CLI : tout échec devient un message + code 1
-        traceback.print_exc()
-        print(f"\nÉCHEC : {exc}", file=sys.stderr)
+        # Trace et message sans aucune valeur secrète (clé ElevenLabs, voix de .env), même inattendue.
+        from pipeline.voice import redact
+        print(redact(traceback.format_exc()), end="", file=sys.stderr)
+        print(f"\nÉCHEC : {redact(str(exc))}", file=sys.stderr)
         return EXIT_FAIL
 
 
