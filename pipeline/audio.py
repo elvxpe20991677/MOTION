@@ -779,13 +779,12 @@ TEMPO_HOP = 128
 # (60 / 120 / 240) comme les détecteurs usuels, sans empêcher un 90 ou un 174 bien marqués.
 TEMPO_PRIOR_BPM = 120.0
 TEMPO_PRIOR_OCTAVES = 1.0
-# Dérive (phase 5) : sur des fenêtres de 8 temps (pas de 4), décalage local qui aligne le mieux la grille
-# à tempo FIXE sur les attaques (± un quart de temps). Au-delà de 40 ms (une image à 25 i/s), les
-# références beat: ne tombent plus sur la musique : tempo variable ou instable (limite du contrat).
-TEMPO_DRIFT_WINDOW_BEATS = 8
+# Dérive (phase 5) : pour chaque temps de la grille à tempo FIXE, écart avec l'attaque la plus forte à
+# ± une demi-période ; dérive = maximum des médianes de 3 écarts consécutifs. Au-delà de 40 ms (une
+# image à 25 i/s), les références beat: ne tombent plus sur la musique : tempo variable, rupture ou
+# syncope (limite du contrat : tempo fixe seulement).
 TEMPO_DRIFT_WARN_MS = config.TEMPO_DRIFT_WARN_MS
-# Fenêtres quasi muettes ignorées (montée max < 10 % de celle du morceau) : une intro sans attaques ne
-# donne pas de décalage.
+# Temps sans attaque nette ignorés (montée max < 10 % de celle du morceau : silence, nappe).
 TEMPO_DRIFT_MIN_RISE = 0.1
 # Fiche d'analyse écrite par « beats --write » dans audio.analysis (repères reproductibles et datés).
 BEATS_GENERATOR_ID = "mograph-beats/1"
@@ -919,6 +918,14 @@ def analyse_tempo(path, *, bpm_min: float = 60.0, bpm_max: float = 200.0, beats_
             period_ms *= 2
             bs = beat_strengths(period_ms, phase_ms)
 
+    # 3 bis. Période et phase recalées sur les attaques, temps par temps (droite robuste) : la grille de
+    # 81 périodes candidates laisse une erreur (~0,05 % de période) qui s'accumule sur un long morceau.
+    fit = _robust_line(_beat_deviations(rise, period_ms, phase_ms), period_ms)
+    if fit is not None and abs(fit[1]) <= 0.01 * period_ms and abs(fit[0]) <= period_ms / 4:
+        phase_ms += fit[0]
+        period_ms += fit[1]
+        bs = beat_strengths(period_ms, phase_ms)
+
     # 4. Premier temps de la mesure : position où les basses frappent le plus fort.
     bar_scores = [float(bs[k::beats_per_bar].mean()) if bs[k::beats_per_bar].size else 0.0
                   for k in range(beats_per_bar)]
@@ -946,7 +953,7 @@ def analyse_tempo(path, *, bpm_min: float = 60.0, bpm_max: float = 200.0, beats_
         b_pos += period_ms
     confidence = hits / total_b if total_b else 0.0
 
-    drift_ms = _grid_drift(rise, period_ms, phase_ms) * unit_s * 1000.0
+    drift = _drift(_beat_deviations(rise, period_ms, phase_ms))
 
     # 5. Drop : plus forte hausse d'énergie RMS d'une mesure à la suivante (≥ 3 dB).
     bar_s = beat_s * beats_per_bar
@@ -966,51 +973,125 @@ def analyse_tempo(path, *, bpm_min: float = 60.0, bpm_max: float = 200.0, beats_
 
     return {"bpm": round(float(bpm), 2), "offset": round(float(offset), 3), "beats_per_bar": int(beats_per_bar),
             "confidence": round(confidence, 3), "drop": drop, "duration": round(float(duration), 3),
-            "drift_ms": round(float(drift_ms), 1)}
+            "drift_ms": None if drift is None else round(float(drift) * unit_s * 1000.0, 1)}
 
 
-def _grid_drift(rise: np.ndarray, period: float, phase: float) -> float:
-    """Plus grand décalage local (en unités de l'enveloppe fine) entre la grille à tempo fixe et les
-    attaques, mesuré par fenêtres de TEMPO_DRIFT_WINDOW_BEATS temps ; 0 si le morceau est trop court."""
-    w = TEMPO_DRIFT_WINDOW_BEATS
-    n = int((rise.size - 1 - phase) // period)
-    if n < w:
-        return 0.0
-    pos = np.arange(rise.size, dtype=np.float64)
-    reach = int(period // 4)
-    shifts = np.arange(-reach, reach + 1, dtype=np.float64)
-    worst = 0.0
-    for start in range(0, n - w + 1, w // 2):
-        grid = phase + period * np.arange(start, start + w)
-        values = np.interp(grid[None, :] + shifts[:, None], pos, rise)
-        if float(values.max()) < TEMPO_DRIFT_MIN_RISE:
-            continue
-        worst = max(worst, abs(float(shifts[int(np.argmax(values.sum(axis=1)))])))
-    return worst
+def _beat_deviations(rise: np.ndarray, period: float, phase: float) -> list[tuple[int, float]]:
+    """(n° du temps, écart) pour chaque temps de la grille à tempo fixe : écart (unités de l'enveloppe
+    fine) entre le temps et l'attaque la plus forte à ± une demi-période. Temps sans attaque nette
+    (montée max < TEMPO_DRIFT_MIN_RISE : silence, nappe) ignorés. Couvre tout le morceau, fin comprise."""
+    out: list[tuple[int, float]] = []
+    half = period / 2
+    k = 0
+    while True:
+        g = phase + k * period
+        if g - half >= rise.size - 1:
+            break
+        lo, hi = int(max(0, math.ceil(g - half))), int(min(rise.size - 1, math.floor(g + half)))
+        if hi > lo:
+            win = rise[lo:hi + 1]
+            if float(win.max()) >= TEMPO_DRIFT_MIN_RISE:
+                out.append((k, float(lo + int(np.argmax(win))) - g))
+        k += 1
+    return out
+
+
+def _robust_line(devs: list[tuple[int, float]], period: float) -> tuple[float, float] | None:
+    """Droite écart = a + b × n (moindres carrés, forme fermée : déterministe), refaite 3 fois sans les
+    temps à plus d'un huitième de période (syncope, temps manquant) ; None si moins de 8 temps retenus."""
+    if len(devs) < 8:
+        return None
+    ks = np.array([k for k, _ in devs], dtype=np.float64)
+    ds = np.array([d for _, d in devs], dtype=np.float64)
+    keep = np.ones(ks.size, dtype=bool)
+    a = b = 0.0
+    for _ in range(3):
+        if int(keep.sum()) < 8:
+            return None
+        km, dm = float(ks[keep].mean()), float(ds[keep].mean())
+        var = float(((ks[keep] - km) ** 2).sum())
+        b = float(((ks[keep] - km) * (ds[keep] - dm)).sum()) / var if var > 0 else 0.0
+        a = dm - b * km
+        new = np.abs(ds - (a + b * ks)) <= period / 8
+        if bool((new == keep).all()):
+            break
+        keep = new
+    return a, b
+
+
+def _drift(devs: list[tuple[int, float]]) -> float | None:
+    """Plus grand écart « robuste » entre la grille et les attaques : maximum, sur les temps mesurés
+    successifs, de la médiane de 3 écarts consécutifs (un coup isolé, fill ou syncope d'un temps, ne
+    compte pas) ; None (non mesurée) si moins de 4 temps mesurés."""
+    if len(devs) < 4:
+        return None
+    a = np.abs(np.array([d for _, d in devs], dtype=np.float64))
+    return float(max(np.median(a[max(0, i - 1):i + 2]) for i in range(a.size)))
 
 
 def beats_block(src_rel: str, result: dict, sha256: str, *, bpm_range: tuple[float, float]) -> dict:
     """Bloc audio écrit par « beats --write » : tempo, temps 0, mesure, marqueur drop, et fiche
-    d'analyse (empreinte du fichier analysé : repères reproductibles, obsolescence détectable)."""
+    d'analyse (empreinte du fichier analysé et grille mesurée : repères reproductibles, obsolescence et
+    retouches manuelles détectables)."""
     block = {"src": src_rel, "bpm": result["bpm"], "offset": result["offset"], "beats_per_bar": result["beats_per_bar"],
              "analysis": {"generator": BEATS_GENERATOR_ID, "sha256": sha256,
                           "bpm_range": [float(bpm_range[0]), float(bpm_range[1])],
+                          "bpm": result["bpm"], "offset": result["offset"], "beats_per_bar": result["beats_per_bar"],
                           "confidence": result["confidence"], "drift_ms": result["drift_ms"]}}
     if result["drop"] is not None:
         block["markers"] = [{"id": "drop", "time": result["drop"]}]
     return block
 
 
-def write_beats_block(scene_path: Path, block: dict) -> None:
-    """Remplace tempo, temps 0, mesure, src et marqueur drop du bloc audio de la scène, garde le reste
-    (autres marqueurs, normalize…), retire synth ; écriture atomique (UTF-8 sans BOM)."""
-    data = json.loads(Path(scene_path).read_text(encoding="utf-8-sig"))
+def read_scene_for_beats(scene_path: Path) -> dict:
+    """Scène à compléter par « beats --write », lue AVANT l'analyse : objet JSON, bloc audio objet,
+    marqueurs en liste d'objets (sinon AudioError en français, rien n'est écrit)."""
+    try:
+        data = json.loads(Path(scene_path).read_text(encoding="utf-8-sig"))
+    except OSError as exc:
+        raise AudioError(f"Scène illisible : {scene_path} ({exc}).") from None
+    except ValueError as exc:
+        raise AudioError(f"Scène {scene_path} : JSON invalide ({exc}) ; corrigez-la (python mograph.py validate) "
+                         "avant beats --write.") from None
+    audio = data.get("audio") if isinstance(data, dict) else None
+    if not isinstance(data, dict) or (audio is not None and not isinstance(audio, dict)) \
+            or not isinstance((audio or {}).get("markers", []), list) \
+            or not all(isinstance(m, dict) for m in (audio or {}).get("markers", [])):
+        raise AudioError(f"Scène {scene_path} mal formée (scène, bloc audio ou audio.markers) : corrigez-la "
+                         "(python mograph.py validate) avant beats --write.")
+    return data
+
+
+def write_beats_block(scene_path: Path, block: dict, data: dict | None = None) -> None:
+    """Remplace tempo, temps 0, mesure, src, fiche d'analyse et marqueur drop du bloc audio de la scène
+    (un ancien drop est retiré même si la nouvelle analyse n'en trouve pas), garde le reste (autres
+    marqueurs, normalize…), retire synth. La scène obtenue est validée contre le schéma (refus si
+    l'écriture y ajoute une erreur), puis écrite atomiquement (temporaire propre au processus, UTF-8
+    sans BOM) ; en cas d'échec, rien n'est écrit et aucun temporaire ne reste."""
+    from pipeline import scene as scene_mod
+
+    data = read_scene_for_beats(scene_path) if data is None else data
+    before = set(scene_mod.schema_problems(data))
     old = data.get("audio") or {}
     markers = [m for m in old.get("markers", []) if m.get("id") != "drop"] + block.get("markers", [])
-    new = {**{k: v for k, v in old.items() if k != "synth"}, **block}
+    new = {**{k: v for k, v in old.items() if k not in ("synth", "markers")}, **block}
+    new.pop("markers", None)
     if markers:
         new["markers"] = markers
-    data["audio"] = new
-    tmp = Path(scene_path).with_name(Path(scene_path).name + ".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
-    os.replace(tmp, scene_path)
+    out = {**data, "audio": new}
+    added = [e for e in scene_mod.schema_problems(out) if e not in before]
+    if added:
+        raise AudioError("Bloc audio refusé (la scène deviendrait invalide) : " + " ; ".join(added))
+    try:
+        text = json.dumps(out, ensure_ascii=False, indent=2, allow_nan=False) + "\n"
+    except ValueError as exc:
+        raise AudioError(f"Bloc audio non écrit : valeur non finie ({exc}).") from None
+    path = Path(scene_path)
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    try:
+        tmp.write_text(text, encoding="utf-8", newline="\n")
+        os.replace(tmp, path)
+    except OSError as exc:
+        tmp.unlink(missing_ok=True)
+        raise AudioError(f"Scène non écrite ({path}) : en lecture seule ou ouverte par un autre programme "
+                         f"({type(exc).__name__}) ; fermez-la ou vérifiez ses droits, puis relancez.") from None

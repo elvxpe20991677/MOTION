@@ -811,25 +811,54 @@ contrôlé au rendu et à l'encodage, provenance au rapport QC) ; un MP3 est dé
 
 `mograph beats <fichier> [--bpm-min] [--bpm-max] [--beats-per-bar] [--scene <scène> --write]
 [--json]` :
+- avec `--write` (qui exige `--scene`), la scène est lue AVANT l'analyse : introuvable, JSON invalide,
+  bloc audio ou marqueurs mal formés → REFUS (code 1), rien n'est analysé ; options par défaut = celles
+  de la scène (`audio.beats_per_bar`, `audio.analysis.bpm_range`), sinon 4 et 60–200 ; options bornées
+  (1 ≤ mesure ≤ 16, 0 < bpm-min < bpm-max ≤ 400, valeurs finies), sinon REFUS ;
 - fichier sous le dossier IA : REFUS (code 1) s'il n'est pas gelé à jour (« non verrouillé »,
   « modifié », lien sortant) — les repères ne se calculent que sur une sortie d'IA immuable ; hors du
-  dossier IA (musique de l'utilisateur), analyse libre ;
-- `analyse_tempo` renvoie en plus `drift_ms` : plus grand décalage local (fenêtres de 8 temps, pas de
-  4, recherche ± un quart de temps, fenêtres quasi muettes ignorées) entre la grille à tempo FIXE et
-  les attaques ; mesuré : 1–2 ms sur une piste à tempo fixe (WAV ou MP3 identiques), 117 ms sur une
-  piste qui passe de 120 à 126 BPM ;
-- `--write` exige `--scene` ; il remplace `src` (clé du verrou pour une musique gelée, sinon chemin
-  relatif à la racine), `bpm`, `offset`, `beats_per_bar`, le marqueur `drop`, retire `synth`, garde
-  les autres clés et marqueurs, et écrit la fiche `audio.analysis = {generator "mograph-beats/1",
-  sha256 du fichier analysé, bpm_range, confidence, drift_ms}` ; scène lue en UTF-8 avec ou sans BOM,
-  réécrite atomiquement sans BOM ;
-- `--json` : `{"analyse": …, "audio": <bloc>}` sur une ligne (scripts, couche agent de la phase 6).
+  dossier IA (musique de l'utilisateur), analyse libre ; fichier hors du projet avec `--write` : REFUS
+  (une scène ne cite que des chemins relatifs à la racine), avec la clé gelée correspondante si le
+  fichier figure déjà au verrou ;
+- `analyse_tempo` : après l'octave, période et phase sont RECALÉES par une droite robuste (moindres
+  carrés en forme fermée, 3 passes sans les temps à plus d'un huitième de période) sur les écarts
+  temps par temps ; elle renvoie en plus `drift_ms` : pour chaque temps de la grille à tempo fixe,
+  écart avec l'attaque la plus forte à ± une demi-période (temps sans attaque nette ignorés : silence,
+  nappe), dérive = maximum des médianes de 3 écarts consécutifs (un coup isolé ne compte pas), tout
+  le morceau compris ; `null` (« non mesurée ») si moins de 4 temps mesurés. Mesuré (03/10/2026,
+  pistes de test) : 0,4–1,2 ms à tempo fixe (30 s, intro muette, 5 min à 123,7 BPM — tempo retrouvé à
+  0,01 BPM près), 187 ms pour un ralenti sur les 8 derniers temps, 250 ms pour un temps de 750 ms à
+  120 BPM, 223 ms pour 120 puis 126 BPM ; une syncope tenue (basse seule sur la double croche
+  pendant 8 s) donne aussi ~125 ms : l'avertissement dit donc « tempo variable, rupture ou syncope »
+  et invite à vérifier à l'oreille ;
+- `--write` remplace `src` (clé du verrou pour une musique gelée, sinon chemin relatif à la racine),
+  `bpm`, `offset`, `beats_per_bar`, le marqueur `drop` (un ancien drop est retiré même si la nouvelle
+  analyse n'en trouve pas), retire `synth`, garde les autres clés et marqueurs, et écrit la fiche
+  `audio.analysis = {generator "mograph-beats/1", sha256 du fichier analysé, bpm_range, bpm, offset,
+  beats_per_bar (grille mesurée), confidence, drift_ms|null}` ; la scène obtenue est validée contre le
+  schéma (REFUS si l'écriture y ajoute une erreur) puis écrite atomiquement (temporaire propre au
+  processus, supprimé en cas d'échec — scène en lecture seule ou ouverte ailleurs : message français),
+  UTF-8 sans BOM, sans valeur non finie ;
+- `--json` : stdout = UN objet JSON sur une ligne `{"analyse", "audio", "written": chemin|null}` ;
+  tous les messages vont alors sur stderr (scripts, couche agent de la phase 6) ;
+- erreurs d'analyse (fichier illisible, trop court) : « ÉCHEC : … », code 1, sans trace.
 
-Schéma : `audio.analysis` optionnel (une scène sans ce champ compile à l'identique). Compilateur :
-avec `audio.analysis` et un `src` présent, empreinte différente du fichier → avertissement « relancez
-beats … --write » ; sinon dérive > `config.TEMPO_DRIFT_WARN_MS` (40 ms, une image à 25 i/s) →
-avertissement « tempo variable ou instable ». La scène compilée n'est pas modifiée (aucune clé
-ajoutée).
+API (`pipeline/audio.py`, `pipeline/scene.py`, `pipeline/assets.py`) :
+```python
+def beats_block(src_rel, result, sha256, *, bpm_range) -> dict      # bloc audio + fiche analysis
+def read_scene_for_beats(scene_path) -> dict                        # AudioError si scène mal formée
+def write_beats_block(scene_path, block, data=None) -> None         # fusion, schéma, écriture atomique
+def schema_problems(raw) -> list[str]                               # scene.py : erreurs de schéma seules
+def quote_cmd(text) -> str ; def display_path(path) -> str          # assets.py : chemins pour messages
+```
+
+Schéma : `audio.analysis` optionnel (une scène sans ce champ compile à l'identique). Compilateur,
+avec `audio.analysis` et un `src` présent : empreinte différente du fichier → avertissement « relancez
+« python mograph.py beats <src> --scene <fichier de la scène> --write » » (chemins cités ; la commande
+fonctionne telle quelle et reprend mesure et plage de tempo) ; sinon bpm, offset ou mesure de la scène
+différents de la grille mesurée → avertissement « modifié(s) à la main depuis l'analyse » (dérive non
+vérifiée) ; sinon dérive > `config.TEMPO_DRIFT_WARN_MS` (40 ms, une image à 25 i/s) → avertissement
+« tempo variable, rupture ou syncope ». La scène compilée n'est pas modifiée (aucune clé ajoutée).
 
 **Reproductibilité** : même fichier → même analyse au bit près (contrôlé dans 3 processus distincts,
 WAV et MP3, tempo non entier 97,3 BPM) ; la fiche d'analyse lie les repères à l'empreinte du fichier.

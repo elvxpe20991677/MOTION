@@ -119,6 +119,16 @@ def _cmd_path(key: str) -> str:
     return shlex.quote(key) if os.name != "nt" else (f'"{key}"' if any(c in key for c in ' &()^%!"') else key)
 
 
+def quote_cmd(text: str) -> str:
+    """Chemin cité pour une commande à copier-coller (API publique de _cmd_path)."""
+    return _cmd_path(text)
+
+
+def display_path(path: Path | str) -> str:
+    """Chemin affiché : relatif à la racine du projet si possible (API publique de _rel)."""
+    return _rel(path)
+
+
 def file_sha256(path: Path | str) -> str:
     """SHA-256 des octets du fichier (lecture par blocs : les clips vidéo peuvent peser des centaines de Mo)."""
     h = hashlib.sha256()

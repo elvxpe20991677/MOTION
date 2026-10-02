@@ -2677,14 +2677,31 @@ class _Compiler:
         self._note_asset(config.ROOT / src if src else path, "audio")
         analysis = audio.get("analysis")
         if analysis and src and not synth and path.is_file():
-            # Repères de « beats --write » : liés à l'empreinte du fichier analysé (CONTRACT §11.6).
+            # Repères de « beats --write » : liés à l'empreinte du fichier analysé et à la grille mesurée
+            # (CONTRACT §11.6). Commande de relance copiable : chemins cités, scène désignée par son fichier ;
+            # beats --write reprend la mesure et la plage de tempo de la scène.
+            scene_ref = self.source or self.scene_id
+            if self.source:
+                try:
+                    scene_ref = Path(self.source).resolve().relative_to(config.ROOT.resolve()).as_posix()
+                except ValueError:
+                    pass
+            redo = (f"python mograph.py beats {assets_mod.quote_cmd(str(src))} --scene "
+                    f"{assets_mod.quote_cmd(str(scene_ref))} --write")
+            grid = {"bpm": self.bpm, "offset": self.audio_offset, "beats_per_bar": int(audio.get("beats_per_bar", 4))}
+            changed = [k for k in grid if k in analysis and analysis[k] is not None
+                       and abs(float(analysis[k]) - float(grid[k] or 0)) > 1e-9]
+            drift = analysis.get("drift_ms")
             if assets_mod.file_sha256(path) != analysis.get("sha256"):
                 self.warn(("audio", "analysis"), f"bpm, offset et drop ont été calculés sur une autre version de {_q(src)} : "
-                                                 f"relancez « python mograph.py beats {src} --scene {self.scene_id} --write ».")
-            elif float(analysis.get("drift_ms") or 0) > config.TEMPO_DRIFT_WARN_MS:
-                self.warn(("audio", "analysis"), f"tempo variable ou instable mesuré (dérive {_fr(float(analysis['drift_ms']), max_dec=1)} ms "
+                                                 f"relancez « {redo} ».")
+            elif changed:
+                self.warn(("audio", "analysis"), f"{', '.join(changed)} modifié(s) à la main depuis l'analyse : la dérive "
+                                                 f"mesurée ne vaut plus pour cette grille ; relancez « {redo} » pour la vérifier.")
+            elif drift is not None and float(drift) > config.TEMPO_DRIFT_WARN_MS:
+                self.warn(("audio", "analysis"), f"tempo variable, rupture ou syncope mesuré (dérive {_fr(float(drift), max_dec=1)} ms "
                                                  f"> {_fr(config.TEMPO_DRIFT_WARN_MS)} ms) : les références beat: s'écartent de la "
-                                                 "musique ; calez les moments clés par marqueurs (marker:id).")
+                                                 "musique ; vérifiez à l'oreille et calez les moments clés par marqueurs (marker:id).")
         target = float(synth["target_lufs"]) if synth and "target_lufs" in synth else self.qc["loudness_target_lufs"]
         return {
             "src": str(path),
@@ -2808,6 +2825,12 @@ class _Compiler:
 # ---------------------------------------------------------------------------------------------
 # API publique
 # ---------------------------------------------------------------------------------------------
+
+
+def schema_problems(raw: Any) -> list[str]:
+    """Erreurs de SCHÉMA seules d'une scène brute (messages français), sans les règles sémantiques ni
+    les fichiers : sert aux outils qui réécrivent une scène (beats --write) à ne pas la rendre invalide."""
+    return _schema_errors(_schemas()["validators"]["scene"], raw)
 
 
 def validate_scene(raw: dict) -> None:

@@ -9,9 +9,13 @@ Contrôles :
   B. gel exigé : musique sous le dossier IA non gelée -> beats REFUSE ; gelée -> analysée ;
   C. beats --write : bloc audio (src = clé du verrou, bpm, offset, drop, fiche d'analyse), autres
      marqueurs gardés, synth retiré, BOM accepté, écriture atomique ; --write sans --scene refusé ;
-  D. dérive : tempo fixe < 5 ms ; tempo variable (120 puis 126 BPM) > 40 ms -> avertissement (beats et
-     compilation) ;
-  E. compilation : beat:N calé sur la musique gelée ; fichier analysé modifié -> avertissement ; musique
+     --json --write = un seul objet JSON ; ancien drop retiré ; options bornées et reprises de la scène ;
+     scène illisible refusée AVANT l'analyse ; piste hors du projet refusée ; scène en lecture seule ;
+  D. dérive temps par temps : tempo fixe (court, intro muette, 5 min) < 5 ms sans avertissement ;
+     tempo variable, ralenti final, demi-temps > 40 ms ; morceau trop court : « non mesurée » (null) ;
+     unitaire sur une enveloppe synthétique ; seuil normatif 40 ms ;
+  E. compilation : beat:N calé sur la musique gelée ; fichier analysé modifié -> avertissement dont la
+     commande de relance fonctionne telle quelle ; grille retouchée à la main -> avertissement ; musique
      gelée modifiée -> REFUS (verrou) ;
   F. rendu complet (all) avec la musique gelée MP3 : déterminisme, QC CONFORME, provenance au rapport.
 """
@@ -87,6 +91,23 @@ def scene(sid: str, *, audio_block=None, layers=None, duration=4.0, bom=False) -
     return p
 
 
+def clicks(path: Path, times, duration: float, extra=None) -> Path:
+    """Grosses caisses (sinus 60 Hz amorti) aux instants donnés ; extra = [(instant, gain)]."""
+    import numpy as np
+    sr = 48000
+    tt = np.arange(int(0.12 * sr)) / sr
+    k = (np.sin(2 * np.pi * 60 * tt) * np.exp(-tt / 0.035)).astype(np.float32)
+    y = np.zeros(int(duration * sr) + sr, np.float32)
+    for at, g in [(x, 1.0) for x in times] + list(extra or []):
+        i = int(round(at * sr))
+        if 0 <= i < y.size:
+            seg = k[: y.size - i]
+            y[i:i + seg.size] += g * seg
+    subprocess.run([config.FFMPEG, "-v", "error", "-y", "-f", "f32le", "-ar", str(sr), "-ac", "1", "-i", "pipe:0",
+                    "-c:a", "pcm_s16le", str(path)], input=(y[: int(duration * sr)] * 0.5).tobytes(), check=True)
+    return path
+
+
 def make_tracks() -> dict[str, Path]:
     PLAIN.mkdir(parents=True, exist_ok=True)
     src = TEST / "src"
@@ -107,6 +128,8 @@ def make_tracks() -> dict[str, Path]:
            "-ar", "44100", str(t["music"]))
     t["plain"] = PLAIN / "piste.wav"
     shutil.copyfile(c120, t["plain"])
+    t["nodrop"] = PLAIN / "sans_drop.wav"
+    shutil.copyfile(c120, t["nodrop"])
     return t
 
 
@@ -167,13 +190,108 @@ def test_write(key: str) -> Path:
     check("scène réécrite en UTF-8 sans BOM, aucun fichier temporaire laissé, scène valide",
           not raw.startswith(b"\xef\xbb\xbf") and not list(p.parent.glob("*.tmp"))
           and mograph("validate", str(p)).returncode == 0)
+    check("fiche d'analyse : grille mesurée (bpm, offset, beats_per_bar) = bloc écrit",
+          an.get("bpm") == au.get("bpm") and an.get("offset") == au.get("offset") and an.get("beats_per_bar") == 4, str(an))
     return p
+
+
+def test_options(key: str, t: dict) -> None:
+    print("== C bis. Options, --json, drop, scène illisible, hors projet, lecture seule ==")
+    pj = scene("m_json", audio_block={"bpm": 120})
+    cp = mograph("beats", key, "--scene", str(pj), "--write", "--json")
+    try:
+        obj = json.loads(cp.stdout)
+    except ValueError:
+        obj = {}
+    check("--json --write : stdout = UN objet JSON (analyse, audio, written), message sur stderr",
+          cp.returncode == 0 and len(cp.stdout.strip().splitlines()) == 1 and obj.get("written") == str(pj.resolve())
+          and obj.get("audio", {}).get("src") == key and "Bloc audio écrit" in cp.stderr, cp.stdout[:120])
+    pd = scene("m_drop", audio_block={"bpm": 90, "markers": [{"id": "drop", "time": 3.0}]})
+    rel = t["nodrop"].relative_to(config.ROOT).as_posix()
+    cp = mograph("beats", rel, "--scene", str(pd), "--write")
+    au = json.loads(pd.read_text(encoding="utf-8"))["audio"]
+    check("nouvelle analyse sans drop : l'ancien drop (seul marqueur) est retiré", cp.returncode == 0 and "markers" not in au,
+          str(au.get("markers")))
+    for opts, label in ((["--beats-per-bar", "17"], "mesure 17"), (["--bpm-max", "inf"], "bpm-max infini"),
+                        (["--bpm-min", "200", "--bpm-max", "100"], "plage inversée"), (["--bpm-min", "0"], "bpm-min nul"),
+                        (["--beats-per-bar", "0"], "mesure 0")):
+        before = pd.read_bytes()
+        cp = mograph("beats", rel, "--scene", str(pd), "--write", *opts)
+        check(f"option invalide ({label}) : REFUS en français (code 1), sans trace, scène intacte",
+              cp.returncode == 1 and "hors bornes" in cp.stderr and "Traceback" not in cp.stderr and pd.read_bytes() == before,
+              tail(cp, 1))
+    pk = scene("m_keep", audio_block={"bpm": 120})
+    mograph("beats", rel, "--scene", str(pk), "--write", "--beats-per-bar", "3", "--bpm-min", "100", "--bpm-max", "140")
+    cp = mograph("beats", rel, "--scene", str(pk), "--write")
+    au = json.loads(pk.read_text(encoding="utf-8"))["audio"]
+    check("relance sans options : mesure (3) et plage (100–140) reprises de la scène",
+          cp.returncode == 0 and au.get("beats_per_bar") == 3 and au["analysis"].get("bpm_range") == [100.0, 140.0], str(au)[:160])
+    bad = TEST / "scenes" / "m_bad.json"
+    bad.write_text('{"id": "m_bad", "audio": {', encoding="utf-8")
+    cp = mograph("beats", rel, "--scene", str(bad), "--write")
+    check("scène JSON invalide : REFUS avant l'analyse (rien sur stdout), sans trace",
+          cp.returncode == 1 and "JSON invalide" in cp.stderr and not cp.stdout.strip() and "Traceback" not in cp.stderr, tail(cp, 1))
+    out_dir = TEST / "hors_projet"
+    out_dir.mkdir(exist_ok=True)
+    outside = Path(os.environ.get("TEMP", str(TEST))) / "mograph_step50_hors_projet.mp3"
+    shutil.copyfile(config.ROOT / key, outside)
+    try:
+        cp = mograph("beats", str(outside), "--scene", str(pj), "--write")
+    finally:
+        outside.unlink(missing_ok=True)
+    check("piste hors du projet + --write : REFUS (« hors du projet »), copie d'un fichier gelé -> clé gelée proposée",
+          cp.returncode == 1 and "hors du projet" in cp.stderr and key in cp.stderr, tail(cp, 1))
+    ro = scene("m_ro", audio_block={"bpm": 120})
+    os.chmod(ro, 0o444)
+    try:
+        cp = mograph("beats", rel, "--scene", str(ro), "--write")
+    finally:
+        os.chmod(ro, 0o666)
+    check("scène en lecture seule : REFUS en français, sans trace, aucun temporaire laissé",
+          cp.returncode == 1 and "lecture seule" in cp.stderr and "Traceback" not in cp.stderr
+          and not list(ro.parent.glob("m_ro.json*.tmp")), tail(cp, 1))
 
 
 def test_drift(t: dict) -> None:
     print("== D. Dérive : tempo fixe / tempo variable ==")
+    import numpy as np
+    check("seuil normatif de dérive : 40 ms (une image à 25 i/s, CONTRACT §11.6)", config.TEMPO_DRIFT_WARN_MS == 40.0)
     r = audio.analyse_tempo(t["c973_wav"])
     check("tempo fixe : dérive < 5 ms", r["drift_ms"] < 5, str(r["drift_ms"]))
+    rise = np.zeros(20_000)
+    for k in range(40):
+        rise[int(k * 500 - (60 if k >= 20 else 0)) if k else 0] = 1.0
+    d = audio._drift(audio._beat_deviations(rise, 500.0, 0.0))
+    check("unitaire : impulsions décalées de -60 unités dans la 2e moitié -> dérive 60", d is not None and abs(d - 60) < 1e-9, str(d))
+    sd = TEST / "src"
+    P = 0.5
+    rit = [k * P for k in range(48)]
+    tt = rit[-1]
+    for k in range(8):
+        tt += 0.5 + 0.25 * (k + 1) / 8
+        rit.append(tt)
+    cases = {"intro muette (6 s) puis 120 BPM fixe": ([6.0 + k * P for k in range(50)], False),
+             "5 min à 123,7 BPM fixe": (list(np.arange(0.25, 300, 60 / 123.7)), False),
+             "ralenti final sur 8 temps": (rit, True),
+             "un temps de 750 ms (décalage d'un demi-temps)": ([k * P for k in range(32)] + [16.75 + k * P for k in range(32)], True)}
+    for k, (label, (times, variable)) in enumerate(cases.items()):
+        f = clicks(sd / f"drift{k}.wav", times, max(times) + 1.0)
+        cp = mograph("beats", str(f), "--json")
+        r = json.loads(cp.stdout)["analyse"] if cp.returncode == 0 else {}
+        warned = "tempo variable" in cp.stderr
+        ok = (r.get("drift_ms") or 0) > config.TEMPO_DRIFT_WARN_MS and warned if variable else \
+            (r.get("drift_ms") is not None and r["drift_ms"] < 5 and not warned)
+        if k == 1:
+            ok = ok and abs(r.get("bpm", 0) - 123.7) <= 0.02
+        check(f"{label} : {'dérive > 40 ms et avertissement' if variable else 'dérive < 5 ms, aucun avertissement'}", ok,
+              f"bpm {r.get('bpm')} dérive {r.get('drift_ms')}")
+    f = clicks(sd / "court.wav", [0.1, 0.6, 1.1], 1.4)
+    ps = scene("m_court", audio_block={"bpm": 120})
+    cp = mograph("beats", str(f.relative_to(config.ROOT)) if f.is_relative_to(config.ROOT) else str(f), "--scene", str(ps), "--write")
+    an = (json.loads(ps.read_text(encoding="utf-8")).get("audio") or {}).get("analysis") or {}
+    check("morceau trop court : dérive « non mesurée » (null), scène valide",
+          cp.returncode == 0 and "non mesurée" in cp.stdout and "drift_ms" in an and an["drift_ms"] is None
+          and mograph("validate", str(ps)).returncode == 0, tail(cp, 1))
     p = scene("m_var", audio_block={"bpm": 120})
     cp = mograph("beats", str(t["var"]), "--scene", str(p), "--write")
     an = (json.loads(p.read_text(encoding="utf-8")).get("audio") or {}).get("analysis") or {}
@@ -181,8 +299,8 @@ def test_drift(t: dict) -> None:
           cp.returncode == 0 and an.get("drift_ms", 0) > config.TEMPO_DRIFT_WARN_MS and "tempo variable" in cp.stderr
           and "marker:" in cp.stderr, f"dérive {an.get('drift_ms')} ; {tail(cp, 1)}")
     c = scene_mod.compile_scene(p)
-    check("compilation : avertissement « tempo variable ou instable » sur audio.analysis",
-          any("tempo variable ou instable" in w for w in c.get("warnings", [])), str(c.get("warnings"))[:200])
+    check("compilation : avertissement « tempo variable, rupture ou syncope » sur audio.analysis",
+          any("tempo variable, rupture ou syncope" in w for w in c.get("warnings", [])), str(c.get("warnings"))[:200])
 
 
 def test_compile(key: str, p_ok: Path, t: dict) -> None:
@@ -202,8 +320,24 @@ def test_compile(key: str, p_ok: Path, t: dict) -> None:
     clean = not any("autre version" in w for w in c.get("warnings", []))
     audio.synth_beat(t["plain"], 120, 16, offset=0.1)
     c = scene_mod.compile_scene(pp)
+    w = next((w for w in c.get("warnings", []) if "autre version" in w), "")
     check("fichier analysé remplacé depuis beats --write : avertissement « autre version … relancez beats »",
-          clean and any("autre version" in w and "--write" in w for w in c.get("warnings", [])), str(c.get("warnings"))[:200])
+          clean and "--write" in w, str(c.get("warnings"))[:200])
+    redo = w.split("relancez « ", 1)[-1].rsplit(" »", 1)[0]
+    import shlex
+    argv = shlex.split(redo, posix=False)
+    cp = mograph(*[a.strip('"') for a in argv[2:]]) if argv[:2] == ["python", "mograph.py"] else None
+    c = scene_mod.compile_scene(pp)
+    check("la commande de relance proposée fonctionne telle quelle et efface l'avertissement",
+          cp is not None and cp.returncode == 0 and not any("autre version" in x for x in c.get("warnings", [])),
+          redo if cp is None else tail(cp, 1))
+    raw = json.loads(pp.read_text(encoding="utf-8"))
+    raw["audio"]["bpm"] = 121
+    pm = TEST / "scenes" / "m_main.json"
+    pm.write_text(json.dumps({**raw, "id": "m_main"}, ensure_ascii=False), encoding="utf-8")
+    c = scene_mod.compile_scene(pm)
+    check("grille retouchée à la main (bpm 121) : avertissement « modifié(s) à la main », pas de dérive annoncée",
+          any("modifié(s) à la main" in x for x in c.get("warnings", [])), str(c.get("warnings"))[:200])
     f = config.ROOT / key
     data = f.read_bytes()
     f.write_bytes(data[:-1] + bytes([data[-1] ^ 1]))
@@ -246,6 +380,7 @@ def main() -> int:
         test_reproducible(t)
         key = test_freeze(t)
         p = test_write(key)
+        test_options(key, t)
         test_drift(t)
         test_compile(key, p, t)
         test_render(p)

@@ -240,14 +240,17 @@
         "analysis": {
           "type": "object",
           "additionalProperties": false,
-          "description": "Fiche écrite par « mograph beats --write » : empreinte du fichier analysé (repères reproductibles ; avertissement s'il a changé), confiance et dérive de la grille à tempo fixe.",
+          "description": "Fiche écrite par « mograph beats --write » : empreinte du fichier analysé (repères reproductibles ; avertissement s'il a changé), grille mesurée (bpm, offset, beats_per_bar : retouche manuelle détectée), confiance et dérive de la grille à tempo fixe (null : non mesurée, morceau trop court).",
           "required": ["generator", "sha256"],
           "properties": {
             "generator": { "type": "string", "minLength": 1 },
             "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-            "bpm_range": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 },
+            "bpm_range": { "type": "array", "items": { "type": "number", "exclusiveMinimum": 0, "maximum": 400 }, "minItems": 2, "maxItems": 2 },
+            "bpm": { "type": "number", "exclusiveMinimum": 0, "maximum": 400 },
+            "offset": { "type": "number", "minimum": 0 },
+            "beats_per_bar": { "type": "integer", "minimum": 1, "maximum": 16 },
             "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
-            "drift_ms": { "type": "number", "minimum": 0 }
+            "drift_ms": { "type": ["number", "null"], "minimum": 0 }
           }
         }
       }

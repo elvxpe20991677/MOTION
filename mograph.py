@@ -601,11 +601,34 @@ def cmd_beats(args) -> int:
     Une musique rangée sous assets/ai/ (sortie d'IA) doit être GELÉE (verrou à jour) avant toute analyse :
     les repères écrits sont alors liés à l'empreinte d'un fichier immuable.
     """
+    import math
+
     from pipeline import assets, audio
 
+    say = (lambda m: print(m, file=sys.stderr)) if args.json else print  # --json : stdout = un seul objet JSON
     if args.write and not args.scene:
         print("--write exige --scene <scène> (scène dont le bloc audio sera remplacé).", file=sys.stderr)
         return EXIT_FAIL
+    # 1) Scène lue AVANT l'analyse : introuvable ou mal formée -> refus immédiat, rien n'est analysé.
+    scene_path, data = None, None
+    if args.write:
+        scene_path = resolve_scene_path(args.scene)
+        try:
+            data = audio.read_scene_for_beats(scene_path)
+        except audio.AudioError as exc:
+            print(f"REFUSÉ : {exc}", file=sys.stderr)
+            return EXIT_FAIL
+    # 2) Options : à défaut, celles de la scène (mesure, plage de tempo de l'analyse précédente).
+    old = (data or {}).get("audio") or {}
+    prev_range = (old.get("analysis") or {}).get("bpm_range") or [60.0, 200.0]
+    bpb = args.beats_per_bar if args.beats_per_bar is not None else int(old.get("beats_per_bar") or 4)
+    bpm_min = args.bpm_min if args.bpm_min is not None else float(prev_range[0])
+    bpm_max = args.bpm_max if args.bpm_max is not None else float(prev_range[1])
+    if not (1 <= bpb <= 16) or not (math.isfinite(bpm_min) and math.isfinite(bpm_max) and 0 < bpm_min < bpm_max <= 400):
+        print(f"REFUSÉ : options hors bornes (--beats-per-bar {bpb} : 1 à 16 ; --bpm-min {bpm_min:g} / --bpm-max "
+              f"{bpm_max:g} : 0 < min < max ≤ 400).", file=sys.stderr)
+        return EXIT_FAIL
+    # 3) Fichier analysé : sous le dossier IA, gelé à jour ; ailleurs, dans le projet (chemin relatif).
     src = Path(args.audio)
     if not src.is_absolute():
         src = (config.ROOT / src) if (config.ROOT / src).exists() else src.resolve()
@@ -617,41 +640,60 @@ def cmd_beats(args) -> int:
         if in_ai:
             status = assets.status_of(src)
             if status != "ok":
-                hint = {"non verrouillé": f"gelez-la d'abord : python mograph.py assets add {assets._cmd_path(assets.lock_key(src))} "
+                hint = {"non verrouillé": f"gelez-la d'abord : python mograph.py assets add {assets.quote_cmd(str(src.resolve()))} "
                                           "--tool … --model … --prompt … --license … --source manual_import",
                         "modifié": "restaurez le fichier gelé (ou gelez la nouvelle version : assets add … --replace)",
                         "absent": "fichier absent"}.get(status, status)
-                print(f"REFUSÉ : musique sous {assets._rel(config.AI_ASSETS_DIR)}/ non gelée ({status}) : {hint}. Les "
-                      "repères ne sont calculés que sur une sortie d'IA gelée.", file=sys.stderr)
+                print(f"REFUSÉ : musique sous {assets.display_path(config.AI_ASSETS_DIR)}/ non gelée ({status}) : {hint}. "
+                      "Les repères ne sont calculés que sur une sortie d'IA gelée.", file=sys.stderr)
                 return EXIT_FAIL
         rel = assets.lock_key(src) if in_ai else None
     except assets.AssetError as exc:
         print(f"REFUSÉ : {exc}", file=sys.stderr)
         return EXIT_FAIL
+    digest = assets.file_sha256(src)
     if rel is None:
         try:
-            rel = src.resolve().relative_to(config.ROOT).as_posix()
+            rel = src.resolve().relative_to(config.ROOT.resolve()).as_posix()
         except ValueError:
-            rel = str(src)
-    r = audio.analyse_tempo(src, bpm_min=args.bpm_min, bpm_max=args.bpm_max, beats_per_bar=args.beats_per_bar)
-    block = audio.beats_block(rel, r, audio._sha256_file(src), bpm_range=(args.bpm_min, args.bpm_max))
-    if args.json:
-        print(json.dumps({"analyse": r, "audio": block}, ensure_ascii=False, sort_keys=True))
-    else:
+            rel = None
+    if rel is None and args.write:
+        frozen = [k for k, e in assets.load_lock()["assets"].items() if e.get("sha256") == digest]
+        print(f"REFUSÉ : {src} est hors du projet : une scène ne cite que des chemins relatifs à la racine. Copiez la "
+              "piste sous assets/audio/, ou gelez-la si c'est une sortie d'IA (python mograph.py assets add …)"
+              + (f" ; ce fichier est déjà gelé sous {frozen[0]} : analysez plutôt cette clé." if frozen else "."),
+              file=sys.stderr)
+        return EXIT_FAIL
+    # 4) Analyse.
+    try:
+        r = audio.analyse_tempo(src, bpm_min=bpm_min, bpm_max=bpm_max, beats_per_bar=bpb)
+    except audio.AudioError as exc:
+        print(f"ÉCHEC : {exc}", file=sys.stderr)
+        return EXIT_FAIL
+    block = audio.beats_block(rel or str(src), r, digest, bpm_range=(bpm_min, bpm_max))
+    if not args.json:
+        drift = "non mesurée (morceau trop court)" if r["drift_ms"] is None else f"{r['drift_ms']} ms"
         print(f"{src.name} : {r['bpm']} BPM, premier temps fort à {r['offset']} s, mesure à {r['beats_per_bar']} temps, "
-              f"confiance {r['confidence']:.0%}, dérive {r['drift_ms']} ms, durée {r['duration']} s"
+              f"confiance {r['confidence']:.0%}, dérive {drift}, durée {r['duration']} s"
               + (f", drop à {r['drop']} s" if r["drop"] is not None else ", pas de drop net"))
-    if r["drift_ms"] > audio.TEMPO_DRIFT_WARN_MS:
-        print(f"  ATTENTION tempo variable ou instable : la grille à tempo fixe s'écarte jusqu'à {r['drift_ms']} ms des "
-              f"attaques (seuil {audio.TEMPO_DRIFT_WARN_MS:g} ms, une image à 25 i/s). Le contrat ne gère qu'un tempo "
-              "fixe : calez les moments clés par marqueurs (audio.markers, marker:id) plutôt que par beat:.", file=sys.stderr)
+    if r["drift_ms"] is not None and r["drift_ms"] > audio.TEMPO_DRIFT_WARN_MS:
+        print(f"  ATTENTION tempo variable, rupture ou syncope : la grille à tempo fixe s'écarte jusqu'à {r['drift_ms']} ms "
+              f"des attaques (seuil {audio.TEMPO_DRIFT_WARN_MS:g} ms, une image à 25 i/s). Le contrat ne gère qu'un tempo "
+              "fixe : vérifiez à l'oreille et calez les moments clés par marqueurs (audio.markers, marker:id) plutôt "
+              "que par beat:.", file=sys.stderr)
     elif r["confidence"] < 0.6:
         print("  Confiance faible : tempo peu marqué ; vérifiez à l'oreille dans l'aperçu (preview).", file=sys.stderr)
     if args.write:
-        path = resolve_scene_path(args.scene)
-        audio.write_beats_block(path, block)
-        print(f"Bloc audio écrit dans {path} (vérifiez avec : python mograph.py validate {path.stem}).")
-    elif not args.json:
+        try:
+            audio.write_beats_block(scene_path, block, data)
+        except audio.AudioError as exc:
+            print(f"REFUSÉ : {exc}", file=sys.stderr)
+            return EXIT_FAIL
+        say(f"Bloc audio écrit dans {scene_path} (vérifiez avec : python mograph.py validate {scene_path.stem}).")
+    if args.json:
+        print(json.dumps({"analyse": r, "audio": block, "written": str(scene_path) if args.write else None},
+                         ensure_ascii=False, sort_keys=True, allow_nan=False))
+    elif not args.write:
         print('Bloc à mettre dans la scène :\n"audio": ' + json.dumps(block, ensure_ascii=False, indent=2))
     return EXIT_OK
 
@@ -884,9 +926,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     be = sub.add_parser("beats", help="détecter tempo, premier temps et drop d'une musique")
     be.add_argument("audio", help="fichier audio (wav, mp3, m4a…) ou vidéo")
-    be.add_argument("--bpm-min", type=float, default=60.0)
-    be.add_argument("--bpm-max", type=float, default=200.0)
-    be.add_argument("--beats-per-bar", type=int, default=4)
+    be.add_argument("--bpm-min", type=float, default=None, help="défaut : plage de l'analyse précédente de la scène, sinon 60")
+    be.add_argument("--bpm-max", type=float, default=None, help="défaut : plage de l'analyse précédente de la scène, sinon 200")
+    be.add_argument("--beats-per-bar", type=int, default=None, help="défaut : mesure de la scène, sinon 4")
     be.add_argument("--scene", help="scène dont remplacer le bloc audio (avec --write)")
     be.add_argument("--write", action="store_true", help="écrire le bloc audio dans --scene")
     be.add_argument("--json", action="store_true", help="sortie JSON (analyse + bloc audio), pour les scripts et l'agent")

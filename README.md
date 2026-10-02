@@ -139,9 +139,11 @@ sont relisibles dans `build/_variants/<modèle>/` ; le bilan du lot dans `build/
 `beats <fichier>` (wav, mp3, m4a, ou vidéo) estime le tempo (± 0,1 BPM), le premier temps fort
 (± 5 ms) et le « drop » (plus forte hausse d'énergie d'une mesure à la suivante), avec un indice de
 confiance et la dérive de la grille ; `--scene <scène> --write` écrit le bloc `audio` (src, bpm,
-offset, marqueur `drop`, et la fiche `analysis` : empreinte du fichier analysé). Même fichier → même
-analyse, au bit près. Tempo fixe uniquement : un tempo variable est détecté (dérive > 40 ms) et
-signalé ; calez alors les moments clés par marqueurs. `"audio": {"normalize": true}` ramène la piste
+offset, marqueur `drop`, et la fiche `analysis` : empreinte du fichier analysé, grille mesurée) en
+reprenant la mesure et la plage de tempo déjà choisies pour la scène. Même fichier → même analyse,
+au bit près. Tempo fixe uniquement : un tempo variable, une rupture ou une syncope tenue sont
+détectés (dérive > 40 ms) et signalés ; vérifiez à l'oreille et calez alors les moments clés par
+marqueurs. `"audio": {"normalize": true}` ramène la piste
 à `qc.loudness_target_lufs` (mesure puis gain linéaire, true peak ≤ −1,5 dBTP).
 
 Musique générée par une IA (Eleven Music dans l'interface web d'ElevenLabs, Lyria dans l'application
