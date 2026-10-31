@@ -184,6 +184,19 @@ l'appel (`claude auth status`) que la CLI est connectée par l'abonnement claude
 - `validate`, `status`, `sheets` et `beats` acceptent `--json` (un seul objet JSON sur la sortie
   standard) pour les scripts. CLI introuvable : `MOGRAPH_CLAUDE=<chemin de claude>`.
 
+### Finition dans DaVinci Resolve
+Livrable conseillé : `prores_422hq` (étiquettes BT.709, plage vidéo, timecode 01:00:00:00). Vérification
+d'un aller-retour par l'API de scripting officielle (Resolve **Studio** lancé, Préférences > Système >
+Général > « External scripting using » = Local) :
+```bash
+python scripts/resolve_roundtrip.py out/<scène>/<scène>_prores_422hq.mov            # sans étalonnage
+python scripts/resolve_roundtrip.py out/<scène>/<scène>_prores_422hq.mov --force-reencode
+```
+Mesuré : sans étalonnage, Resolve recopie le flux au bit près ; avec un étalonnage neutre, plage,
+étiquettes couleur et timecode restent conservés (PSNR 60 dB). Le script crée puis supprime son propre
+projet. Le serveur MCP annoncé pour Resolve 21.1 n'est pas utilisé : aucune documentation officielle ne
+le confirme (`docs/CONTRACT.md` §11.10).
+
 ### Rendu en parallèle
 Les plans sans plaque 3D sont rendus par Chromium **pendant** que Blender calcule les plaques
 (gain total avec un GPU). `MOGRAPH_MAX_WORKERS` (défaut 4) règle le nombre de navigateurs

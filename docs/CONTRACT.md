@@ -1175,3 +1175,48 @@ Essai du 31/10/2026 avec bpy 5.2.3 LTS sous CPython 3.13.13 (`.venv-blender52`, 
 Basculer change donc les empreintes des scènes 3D et deux versions épinglées : c'est une décision de
 l'utilisateur, qui exige une nouvelle baseline. Détail : `docs/ESSAI_BLENDER_52.md`.
 
+### 11.10 Phase 9 (optionnelle) — finition DaVinci Resolve : aller-retour d'un maître
+**MCP natif de Resolve 21.1 : NON utilisé.** La presse spécialisée l'annonce (« File > Setup AI
+Assistants »), mais aucune documentation officielle lisible ne l'a confirmé le 31/10/2026 :
+- page « What's new » de blackmagicdesign.com : aucune mention ;
+- forum et communiqués : inaccessibles ;
+- README de scripting officiel (« Last Updated: 31 Aug 2026 ») : aucune mention ;
+- journal des versions fourni par le logiciel : s'arrête à 21.0.4.
+
+On passe donc par l'**API de scripting officielle** de Blackmagic (`README.md` et
+`DaVinciResolveScript.pyi` livrés avec Resolve dans `Support/Developer/Scripting`).
+- Prérequis : Resolve **Studio** lancé et « External scripting using » réglé sur Local
+  (Préférences > Système > Général).
+- Ce réglage de sécurité relève de l'utilisateur : mograph ne le modifie jamais.
+
+`scripts/resolve_roundtrip.py <maître.mov> [--force-reencode] [--keep]` :
+- crée un projet DÉDIÉ `mograph_aller_retour_<date>` (aucun projet existant touché), supprimé à la fin
+  sauf `--keep` ;
+- réglages : cadence et résolution du fichier, `videoDataLevelsRetainSubblockAndSuperWhiteData` = 1,
+  timecode de départ de la timeline = celui de la source (`Timeline.SetStartTimecode`) ;
+- rend un ProRes 422 HQ « Same as Project » dans `build/_resolve/<date>/` ;
+- compare source et retour : ffprobe, signalstats (min et max de Y, U, V, moyenne de Y), PSNR et MD5 du
+  flux vidéo ; écrit `aller_retour.json` ;
+- code 0 si étiquettes couleur, nombre d'images, timecode et plage sont conservés. Plage conservée =
+  même étiquette, luminance moyenne à ±2 codes 10 bits (une confusion vidéo/pleine la décalerait de
+  dizaines de codes) et extrêmes à ±12 codes.
+
+Mesuré le 31/10/2026 (Resolve Studio 21.1.1.10, maître `demo_flat_riso` ProRes 422 HQ, 165 images) :
+- **Sans étalonnage** : flux vidéo identique au bit près (Resolve recopie le ProRes sans réencoder) ;
+  étiquettes BT.709 ×3 et plage tv conservées ; 165 images ; niveaux identiques ; timecode 01:00:00:00
+  conservé une fois la timeline réglée. Sans ce réglage, le retour repart de 00:00:00:00.
+- **Avec un CDL neutre** (`--force-reencode`, cas d'un étalonnage réel) :
+  - flux réencodé, PSNR 60,1 dB ;
+  - étiquettes, images et timecode conservés, aucun décalage de niveau (luminance moyenne 822,42 →
+    822,40) ;
+  - extrêmes resserrés de 2 à 10 codes, identiques avec ou sans conservation des super-blancs : il
+    s'agit du lissage des pixels de dépassement des contours par le passage 4:2:2 → RVB → 4:2:2, pas d'un
+    écrêtage.
+
+Livrable conseillé pour Resolve : `prores_422hq` (MOV, étiquettes `colr` BT.709, plage tv, timecode
+01:00:00:00, audio PCM 24 bits). Le script ne s'occupe pas de l'audio (`ExportAudio` désactivé). Aucun
+LUT/DCTL n'est nécessaire : l'aller-retour conserve la colorimétrie. Non testé : ProRes 4444 avec alpha.
+
+Tests : `tests/verify_step90_resolve.py` (SKIP si Resolve n'est pas lancé ou si le scripting externe est
+fermé : ni la baseline ni la CI n'ouvrent Resolve).
+
