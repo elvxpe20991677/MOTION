@@ -1,0 +1,206 @@
+{
+  "$schema": "../schema/scene.schema.json",
+  "version": "1.0",
+  "id": "cafe_ouverture",
+  "title": "Ouverture du café de quartier",
+  "brief": "Annonce chaleureuse de l'ouverture d'un café de quartier en trois plans : accroche, lieu, date et invitation. Aplats riso bleu, rose et jaune sur papier bleuté, typographie très grasse.",
+  "seed": 445657,
+  "preset": "flat_riso",
+  "format": {
+    "aspect": "16:9",
+    "resolution": "1080p",
+    "fps": 25,
+    "alpha": false
+  },
+  "storyboard": [
+    {
+      "shot": "accroche",
+      "intent": "Annoncer qu'un nouveau café arrive"
+    },
+    {
+      "shot": "quartier",
+      "intent": "Situer le café dans le quartier"
+    },
+    {
+      "shot": "invitation",
+      "intent": "Donner la date et inviter chaleureusement"
+    }
+  ],
+  "provenance": {
+    "ai_disclosure": {
+      "ai_used": true,
+      "roles": [
+        "scene",
+        "text"
+      ],
+      "date": "2026-10-31",
+      "tools": [
+        {
+          "name": "Claude Code (claude -p)",
+          "model": "claude-sonnet-5-5",
+          "role": "scène générée par mograph brief"
+        }
+      ]
+    }
+  },
+  "outputs": [
+    {
+      "profile": "hevc_main10"
+    }
+  ],
+  "qc": {
+    "safe_zone": "title",
+    "safe_zone_tolerance_s": 0.5,
+    "allow_black_s": 0,
+    "determinism_frames": 4,
+    "loudness_target_lufs": -14
+  },
+  "shots": [
+    {
+      "id": "accroche",
+      "duration": 3.0,
+      "layers": [
+        {
+          "id": "soleil",
+          "type": "shape",
+          "x": "75%",
+          "y": "50%",
+          "anchor": "center",
+          "shape": "ellipse",
+          "w": 620,
+          "h": 620,
+          "fill": "blush",
+          "anim": [
+            {
+              "move": "pop",
+              "at": 0.2
+            }
+          ]
+        },
+        {
+          "id": "titre-accroche",
+          "type": "text",
+          "x": "safe:30%",
+          "y": "safe:50%",
+          "anchor": "center",
+          "text": "Un nouveau café",
+          "style": "display",
+          "size": 130,
+          "color": "primary",
+          "anim": [
+            {
+              "move": "chars_up",
+              "at": 0.6
+            }
+          ]
+        }
+      ],
+      "background": "paper"
+    },
+    {
+      "id": "quartier",
+      "duration": 2.6,
+      "layers": [
+        {
+          "id": "titre-quartier",
+          "type": "text",
+          "x": "safe:50%",
+          "y": "safe:40%",
+          "anchor": "center",
+          "text": "ouvre ses portes",
+          "style": "display",
+          "size": 120,
+          "color": "cream",
+          "anim": [
+            {
+              "move": "slide_anticipate",
+              "at": 0.2
+            }
+          ]
+        },
+        {
+          "id": "trait-quartier",
+          "type": "shape",
+          "x": "50%",
+          "y": "56%",
+          "anchor": "center",
+          "shape": "line",
+          "w": 700,
+          "h": 8,
+          "stroke": "accent",
+          "strokeWidth": 10,
+          "anim": [
+            {
+              "move": "draw",
+              "at": 0.9
+            }
+          ]
+        },
+        {
+          "id": "sous-quartier",
+          "type": "text",
+          "x": "safe:50%",
+          "y": "safe:68%",
+          "anchor": "center",
+          "text": "dans ton quartier",
+          "style": "body",
+          "size": 56,
+          "color": "cream",
+          "anim": [
+            {
+              "move": "rise",
+              "at": 1.2
+            }
+          ]
+        }
+      ],
+      "background": "primary",
+      "transition_in": {
+        "type": "push",
+        "dur": 0.4,
+        "direction": "left"
+      }
+    },
+    {
+      "id": "invitation",
+      "duration": 2.4,
+      "layers": [
+        {
+          "id": "titre-date",
+          "type": "text",
+          "x": "safe:50%",
+          "y": "safe:42%",
+          "anchor": "center",
+          "text": "Samedi dès 8h",
+          "style": "display",
+          "size": 130,
+          "color": "fg",
+          "anim": [
+            {
+              "move": "pop",
+              "at": 0.2
+            }
+          ]
+        },
+        {
+          "id": "sous-date",
+          "type": "text",
+          "x": "safe:50%",
+          "y": "safe:64%",
+          "anchor": "center",
+          "text": "Premier café offert",
+          "style": "body",
+          "size": 56,
+          "color": "primary",
+          "anim": [
+            {
+              "move": "rise",
+              "at": 0.9
+            }
+          ]
+        }
+      ],
+      "background": "accent"
+    }
+  ]
+}
