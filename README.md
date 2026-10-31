@@ -356,8 +356,9 @@ signature intègre). Le manifeste déclare le type de source IPTC (`compositeSyn
 gelés (empreintes, outils, modèles — jamais les prompts). **Tout réencodage, et même un remux
 `-c copy`, supprime le manifeste** : ne plus toucher aux fichiers signés ; `c2pa sign <scène>` resigne
 sans réencoder, mais seulement des livrables produits par mograph pour la scène actuelle et passés au QC
-CONFORME (après un `encode` : lancer `qc` puis `c2pa sign`). Sans horodatage (`MOGRAPH_C2PA_TSA`, appel
-réseau), les manifestes deviennent invalides à l'expiration du certificat local (825 jours). Vérification : `c2pa verify <fichier>` (SDK + c2patool, installé par
+CONFORME (après un `encode` : lancer `qc` puis `c2pa sign`). Chaque signature est horodatée par
+l'autorité publique de DigiCert (un appel réseau par livrable ; `MOGRAPH_C2PA_TSA=off` pour signer hors
+ligne ; autorité injoignable : signature sans horodatage, signalée). Certificat local valable 10 ans. Vérification : `c2pa verify <fichier>` (SDK + c2patool, installé par
 `python scripts/install_c2patool.py`). MP4 (HEVC, AV1) et MOV (ProRes 422 HQ, 4444 avec alpha) testés.
 **Mention visible** : `"visible_label": {"text": "Contenu créé avec l'aide de l'IA", "corner":
 "bottom-right"}` l'ajoute à chaque plan, dans la zone sûre. Rappel AI Act (art. 50, applicable depuis

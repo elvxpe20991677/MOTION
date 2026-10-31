@@ -2,8 +2,8 @@
 
 Lancement depuis la racine :  .venv/Scripts/python.exe tests/verify_step70_c2pa_av1.py
 Isolé : build/_tests/step70/ (build, out, scènes, certificat C2PA de test, verrou), dossier IA
-assets/_tests/ai70/. Aucun appel réseau (pas d'horodatage tiers). AV1 : SKIP si av1_nvenc est absent
-(pas de GPU NVIDIA, CI Linux).
+assets/_tests/ai70/. Hors ligne (MOGRAPH_C2PA_TSA=off) sauf test_timestamp : un horodatage DigiCert réel
+(SKIP si l'autorité est injoignable). AV1 : SKIP si av1_nvenc est absent (pas de GPU NVIDIA, CI Linux).
 Contrôles :
   A. schéma et compilateur : profil av1_nvenc et cq (défaut 30, crf ignoré avec avertissement) ;
      provenance.c2pa et visible_label conservés ; mention ajoutée à chaque plan (coin de la zone sûre,
@@ -20,7 +20,8 @@ Contrôles :
      manifeste invalide ; verify d'un fichier non signé -> code 1 ;
   E. scène à fond transparent : MOV ProRes 4444 (alpha) signé, QC relancé sur le fichier signé conforme ;
      scène sans IA : algorithmicMedia ; valeur imposée par la scène respectée ; c2pa sign autonome ;
-     QC non conforme -> livrables non signés.
+     QC non conforme -> livrables non signés ; F. horodatage : certificat de 10 ans, autorité injoignable ->
+     signature sans horodatage signalée, autorité DigiCert -> date certifiée dans le manifeste.
 """
 
 from __future__ import annotations
@@ -430,7 +431,7 @@ def main() -> int:
         import traceback
         traceback.print_exc()
         check("les contrôles s'exécutent sans exception", False, f"{type(exc).__name__} : {exc}"[:200])
-    print(f"\nDurée : {time.perf_counter() - t0:.0f} s ; aucun appel réseau")
+    print(f"\nDurée : {time.perf_counter() - t0:.0f} s ; réseau : seulement l'horodatage DigiCert (test_timestamp)")
     if FAILS:
         print(f"ÉCHEC : {len(FAILS)} contrôle(s) : {FAILS}")
         return 1

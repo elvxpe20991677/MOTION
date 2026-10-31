@@ -1041,14 +1041,23 @@ Sources vérifiées le 31/10/2026 :
   0.38.2 ne publient que des paquets macOS.
 - Certificat : `python mograph.py c2pa init` crée dans `config.C2PA_DIR` (`MOGRAPH_C2PA_DIR`, défaut
   `.c2pa/`, ignoré par git) une autorité locale « mograph CA locale » (clé jetée après usage) et un
-  certificat de signature ES256 (P-256, `digitalSignature`, EKU `emailProtection`, 825 jours).
+  certificat de signature ES256 (P-256, `digitalSignature`, EKU `emailProtection`, 10 ans).
   - fichiers : `signer_chain.pem` et `signer.key` (PKCS#8, droits restreints) ;
   - un second `init` est refusé sans `--force`.
-- Pas d'horodatage tiers par défaut (aucun appel réseau). CONSÉQUENCE mesurée : à l'expiration du
-  certificat (825 jours), les manifestes deviennent `Invalid` (`signingCredential.expired`) au SDK comme à
-  c2patool, sans que le fichier ait changé. Avant l'échéance : `c2pa init --force` puis `c2pa sign` des
-  livrables encore en main ; ou horodatage RFC 3161 facultatif, `MOGRAPH_C2PA_TSA=<URL d'une autorité
-  d'horodatage>` (APPEL RÉSEAU à chaque signature, autorité choisie par l'utilisateur).
+- Horodatage RFC 3161 ACTIF par défaut, par l'autorité publique gratuite de DigiCert
+  (`http://timestamp.digicert.com`, celle des exemples officiels de c2pa-python) : un appel réseau par
+  livrable signé.
+  - le manifeste porte la date de signature certifiée (`signature_info.time`, champ `signed_at` de
+    `c2pa verify`) ;
+  - `MOGRAPH_C2PA_TSA=<URL>` désigne une autre autorité, `MOGRAPH_C2PA_TSA=off` signe hors ligne ;
+  - autorité injoignable : signature SANS horodatage, signalée dans le journal et dans le rapport
+    (`timestamped: false`, `timestamp_note`), jamais silencieuse.
+- Validité : le certificat local dure 10 ans. Mesuré (SDK 0.38.0, c2patool 0.28.4, réglages par défaut,
+  certificat raccourci à 40 s) : à l'expiration du certificat, un manifeste devient `Invalid`
+  (`signingCredential.expired`), AVEC comme SANS horodatage. L'autorité d'horodatage n'étant pas dans une
+  liste de confiance configurée, ces outils n'utilisent pas la date certifiée. L'horodatage reste la
+  preuve de date pour un validateur qui fait confiance à DigiCert. Avant l'échéance : `c2pa init --force`
+  puis `c2pa sign` des livrables encore en main.
 - Les lecteurs C2PA signalent `signingCredential.untrusted` (certificat absent des listes de confiance) :
   la signature est intègre, mais le signataire n'est pas reconnu. Pour une chaîne reconnue, il faut un
   certificat d'une autorité de la liste de confiance C2PA (décision et coût à la charge de l'utilisateur).
