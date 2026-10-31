@@ -1159,3 +1159,19 @@ dépendances, dans `constraints.txt`) ; c2patool est facultatif et référencé 
 
 Tests : `tests/verify_step70_c2pa_av1.py` (rendu complet signé, 3 conteneurs, tests négatifs ; AV1 SKIP
 sans NVENC ; sans c2patool, vérification par le SDK seulement).
+
+### 11.9 Phase 2 (optionnelle) — essai Blender 5.2 LTS, sans bascule
+La référence reste **bpy 5.0.1 / CPython 3.11.15** (§0, `versions.json`). `MOGRAPH_BLENDER_VENV`
+(défaut `.venv-blender`) fait utiliser un autre venv Blender pour un ESSAI. Défaut inchangé : aucun effet
+sur les pixels ni sur les empreintes.
+
+Essai du 31/10/2026 avec bpy 5.2.3 LTS sous CPython 3.13.13 (`.venv-blender52`, ignoré par git) :
+- `verify_step13_blender` : 37 PASS ;
+- CPU bit-exact d'un rendu à l'autre ;
+- pipeline complet de `demo_clay_3d` : CONFORME ;
+- plaques de `demo_clay_3d` NON identiques à celles de 5.0.1 : 0 image sur 72 identique, PSNR médian
+  63 dB, écarts sur les bords des objets.
+
+Basculer change donc les empreintes des scènes 3D et deux versions épinglées : c'est une décision de
+l'utilisateur, qui exige une nouvelle baseline. Détail : `docs/ESSAI_BLENDER_52.md`.
+

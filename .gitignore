@@ -42,3 +42,4 @@ assets/ai/*
 out/**/encode_record.json
 out/**/c2pa_report.json
 out/**/c2pa_report.md
+.venv-blender52/
