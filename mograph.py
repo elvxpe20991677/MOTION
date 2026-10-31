@@ -670,7 +670,7 @@ def _run_all(compiled: dict, t0: float, *, workers: int | None, count: int | Non
         # Phase 7 (CONTRACT §11.8) : signature C2PA en TOUTE DERNIÈRE étape, sur les fichiers livrés.
         ok = step_c2pa(compiled)
     elif not ok and ((compiled.get("provenance") or {}).get("c2pa") or {}).get("sign"):
-        _log("Livrables NON signés (C2PA) : QC non conforme. Corrigez, puis relancez « all » (ou « c2pa sign »).")
+        _log("Livrables NON signés (C2PA) : QC non conforme. Corrigez la scène, puis relancez « all ».")
     _log(f"Durée totale : {time.perf_counter() - t0:.1f} s")
     return EXIT_OK if ok else EXIT_FAIL
 
@@ -1212,6 +1212,9 @@ def cmd_c2pa(args) -> int:
             return EXIT_OK
         if args.c2pa_cmd == "sign":
             compiled = compile_or_exit(args.scene)
+            if not ((compiled.get("provenance") or {}).get("c2pa") or {}).get("sign"):
+                raise c2pa_sign.C2paError("la scène ne demande pas de signature : ajoutez \"provenance\": {\"c2pa\": "
+                                          "{\"sign\": true}} puis relancez.")
             with _RenderLock(compiled["scene_id"]):
                 c2pa_sign.sign_outputs(compiled, log=_log)
             return EXIT_OK

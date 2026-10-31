@@ -93,6 +93,9 @@ TEMPO_DRIFT_WARN_MS: float = 40.0
 C2PA_DIR: Path = Path(os.environ.get("MOGRAPH_C2PA_DIR", ROOT / ".c2pa")).resolve()
 C2PATOOL_VERSION: str = "0.28.4"
 C2PA_IPTC_BASE: str = "http://cv.iptc.org/newscodes/digitalsourcetype/"
+# Horodatage RFC 3161 facultatif (URL d'une autorité d'horodatage) : appel RÉSEAU à chaque signature ;
+# sans lui, un manifeste devient « Invalid » à l'expiration du certificat local (825 jours).
+C2PA_TSA_URL: str | None = os.environ.get("MOGRAPH_C2PA_TSA") or None
 
 
 def c2patool_path() -> str | None:

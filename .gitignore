@@ -38,3 +38,7 @@ assets/ai/*
 # Provenance C2PA : certificat et clé privée locaux (phase 7) ; outils téléchargés (c2patool)
 .c2pa/
 .tools/
+# Fiche d'encodage et rapports C2PA : état local (chemins, empreintes de la machine), non versionnés
+out/**/encode_record.json
+out/**/c2pa_report.json
+out/**/c2pa_report.md

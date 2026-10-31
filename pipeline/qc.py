@@ -616,14 +616,17 @@ def check_output(path, expected: dict) -> list[dict]:
         act = v.get("codec_name")
         ok = act == expected["codec"]
         add("codec", "codec vidéo", "PASS" if ok else "FAIL", expected["codec"], act, True,
-            "" if ok else f"Codec {act} au lieu de {expected['codec']} : vérifiez « -c:v » (libx265 / prores_ks) "
-                          "dans out/<scène>/encode_commands.sh puis ré-encodez.")
+            "" if ok else f"Codec {act} au lieu de {expected['codec']} : vérifiez « -c:v » ("
+                          + {"hevc": "libx265", "prores": "prores_ks", "av1": "av1_nvenc"}.get(expected["codec"], "?")
+                          + ") dans out/<scène>/encode_commands.sh puis ré-encodez.")
     if expected.get("codec_profile"):
         act = v.get("profile")
         ok = act == expected["codec_profile"]
         add("profile", "profil du codec", "PASS" if ok else "FAIL", expected["codec_profile"], act, True,
-            "" if ok else "Profil inattendu : « -profile:v main10 » pour HEVC, « -profile:v 3 » (HQ) ou "
-                          "« -profile:v 4 » (4444) pour prores_ks.")
+            "" if ok else ("Profil inattendu : AV1 Main attendu (av1_nvenc avec « -pix_fmt p010le »)."
+                           if expected["codec"] == "av1" else
+                           "Profil inattendu : « -profile:v main10 » pour HEVC, « -profile:v 3 » (HQ) ou "
+                           "« -profile:v 4 » (4444) pour prores_ks."))
 
     # --- Format de pixel -------------------------------------------------------------------------
     if expected.get("pix_fmts"):

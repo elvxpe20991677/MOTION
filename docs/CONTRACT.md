@@ -1044,7 +1044,11 @@ Sources vérifiées le 31/10/2026 :
   certificat de signature ES256 (P-256, `digitalSignature`, EKU `emailProtection`, 825 jours).
   - fichiers : `signer_chain.pem` et `signer.key` (PKCS#8, droits restreints) ;
   - un second `init` est refusé sans `--force`.
-- Aucun horodatage tiers (aucun appel réseau).
+- Pas d'horodatage tiers par défaut (aucun appel réseau). CONSÉQUENCE mesurée : à l'expiration du
+  certificat (825 jours), les manifestes deviennent `Invalid` (`signingCredential.expired`) au SDK comme à
+  c2patool, sans que le fichier ait changé. Avant l'échéance : `c2pa init --force` puis `c2pa sign` des
+  livrables encore en main ; ou horodatage RFC 3161 facultatif, `MOGRAPH_C2PA_TSA=<URL d'une autorité
+  d'horodatage>` (APPEL RÉSEAU à chaque signature, autorité choisie par l'utilisateur).
 - Les lecteurs C2PA signalent `signingCredential.untrusted` (certificat absent des listes de confiance) :
   la signature est intègre, mais le signataire n'est pas reconnu. Pour une chaîne reconnue, il faut un
   certificat d'une autorité de la liste de confiance C2PA (décision et coût à la charge de l'utilisateur).
@@ -1060,8 +1064,24 @@ plus être modifié :
 - `python mograph.py c2pa sign <scène>` (re)signe les livrables existants sans réencodage, et un fichier
   déjà signé reçoit un nouveau manifeste.
 
+*Préconditions de toute signature* (`all` comme `c2pa sign`, refus avec message sinon) : jamais de
+manifeste sur un fichier que mograph n'a pas produit et contrôlé pour la scène ACTUELLE.
+- `provenance.c2pa.sign` vaut true ;
+- `encode` écrit à la fin de l'encodage la fiche `out/<scène>/encode_record.json` : empreinte de la scène
+  compilée, sans `provenance.c2pa`, et SHA-256 de chaque livrable. L'empreinte de scène doit être celle de
+  la scène actuelle (scène modifiée depuis l'encodage → REFUS) ;
+- chaque livrable doit être identique à l'octet près au fichier encodé, ou à sa dernière version signée
+  (empreinte notée dans `c2pa_report.json`, pour resigner). Fichier remplacé, remuxé ou modifié → REFUS ;
+- `qc_report.json` doit être CONFORME, de la même scène, et écrit APRÈS la fiche d'encodage (après un
+  `encode`, lancer `qc` avant `c2pa sign`) ;
+- `encode` retire la fiche et les rapports C2PA précédents avant de réécrire les livrables (aucun rapport
+  ne décrit des fichiers disparus).
+
 *Signature d'un fichier*
-- écriture dans un temporaire de même extension, puis remplacement atomique ;
+- TOUT OU RIEN : chaque livrable est d'abord signé dans une copie (même dossier, même extension), puis
+  vérifiée ; les remplacements atomiques n'ont lieu que si toutes les copies sont valides. Sinon aucun
+  livrable n'est modifié et les copies sont supprimées. Seul un remplacement impossible en cours de route
+  (fichier ouvert ailleurs, Windows) peut laisser un lot partiel, signalé par le message ;
 - le contenu média est inchangé (images décodées identiques) ; les octets du conteneur changent (boîte
   JUMBF), ce qui est sans effet sur la porte de déterminisme, qui porte sur les images du maître.
 
@@ -1101,13 +1121,20 @@ présent, à l'état `Valid` ou `Trusted`, et sans autre statut que `signingCred
 - SDK c2pa-python, plus c2patool s'il est installé (**0.28.4**, MIT OU Apache-2.0,
   `scripts/install_c2patool.py` : archive officielle, SHA-256 de `versions.json` vérifiée AVANT
   extraction, dans `.tools/`, non versionné ; `MOGRAPH_C2PATOOL` pour un autre chemin).
-- Après signature, `all` et `c2pa sign` vérifient chaque livrable, écrivent `out/<scène>/c2pa_report.json`
-  (+ `.md`) et échouent (code 1) si une vérification échoue.
+- `all` et `c2pa sign` vérifient chaque copie signée et échouent (code 1) si une vérification échoue.
+  `out/<scène>/c2pa_report.json` (+ `.md`) est FIDÈLE : il ne liste que les livrables effectivement
+  signés, avec leur SHA-256, et il est retiré si rien n'a été signé.
 
 **Mention visible** `provenance.visible_label = {text (1–80 caractères), corner bottom-right|bottom-left|
 top-right|top-left, size?, color?}` :
 - un calque texte ordinaire `mention-ia` (style body, taille par défaut 2,6 % du petit côté du canevas,
-  couleur fg, z 99) est ajouté à CHAQUE plan, ancré dans le coin choisi de la zone sûre ;
+  couleur fg, z 99) est ajouté à CHAQUE plan :
+  - ancré dans le coin choisi, en retrait de 2 % dans la zone sûre (jamais collé au bord) ;
+  - largeur bornée à 45 % de la zone sûre titre : un texte long passe à la ligne au lieu de déborder ;
+- plan avec sous-titres ancrés en bas et coin `bottom-*` : la mention passe dans le coin haut du même
+  côté, avec un avertissement ;
+- limite : la mention appartient à chaque plan, donc elle se déplace avec lui pendant une transition
+  push ou wipe, ce que signale un avertissement (fondu et cut : fixe) ;
 - il passe par les mêmes polices, glyphes, zones sûres et porte de déterminisme que tout calque ;
 - l'id `mention-ia` est réservé (REFUS s'il est déjà utilisé) ;
 - il change les pixels, mais seulement pour une scène qui le demande.

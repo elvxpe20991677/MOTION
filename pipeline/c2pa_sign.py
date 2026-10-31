@@ -8,8 +8,15 @@ l'encodage et après le QC, sur le fichier livré tel quel ; on ne modifie plus 
 Certificat : chaîne LOCALE (autorité « mograph CA locale » + certificat de signature ES256, EKU
 emailProtection), créée par « python mograph.py c2pa init » dans config.C2PA_DIR (jamais versionnée).
 Elle n'est reconnue par aucune liste de confiance : les lecteurs affichent « signingCredential.untrusted »
-(signature intègre, signataire non reconnu). Aucun horodatage tiers (pas d'appel réseau) : la date de
-signature est celle de la machine.
+(signature intègre, signataire non reconnu). Pas d'horodatage tiers par défaut (aucun appel réseau) :
+à l'expiration du certificat (825 jours), les manifestes deviennent « Invalid » (signingCredential.expired)
+— resigner avant (c2pa init --force puis c2pa sign) ou activer un horodatage RFC 3161
+(MOGRAPH_C2PA_TSA, appel réseau à l'autorité choisie).
+
+Préconditions de signature (jamais de manifeste sur un fichier que mograph n'a pas produit et contrôlé) :
+fiche d'encodage out/<scène>/encode_record.json dont l'empreinte de scène est celle de la scène
+actuelle, chaque livrable identique à l'octet près à celui encodé (ou à sa dernière version signée,
+pour resigner), et qc_report.json CONFORME écrit APRÈS cet encodage.
 
 Manifeste : c2pa.actions (c2pa.created, digitalSourceType IPTC de la vidéo, logiciel mograph) et une
 assertion « org.mograph.provenance » (scène, auteurs, déclaration d'usage de l'IA, assets IA gelés avec
@@ -99,8 +106,9 @@ def _signer():
     p = _paths()
     if not (p["chain"].is_file() and p["key"].is_file()):
         raise C2paError(f"certificat de signature absent ({p['dir']}) : lancez une fois « python mograph.py c2pa init ».")
+    tsa = config.C2PA_TSA_URL.encode("utf-8") if config.C2PA_TSA_URL else None
     info = c2pa.C2paSignerInfo(alg=c2pa.C2paSigningAlg.ES256, sign_cert=p["chain"].read_bytes(),
-                               private_key=p["key"].read_bytes(), ta_url=None)
+                               private_key=p["key"].read_bytes(), ta_url=tsa)
     return c2pa.Signer.from_info(info)
 
 
@@ -149,23 +157,32 @@ def manifest_for(compiled: dict, output: dict) -> dict:
     }
 
 
-def sign_file(path: Path, manifest: dict) -> None:
-    """Signe `path` sur place (fichier temporaire de même extension puis remplacement atomique)."""
+def _signed_copy(path: Path, manifest: dict) -> Path:
+    """Copie signée de `path` (même dossier, même extension) ; le livrable n'est pas encore touché."""
     import c2pa
 
     path = Path(path)
     if path.suffix.lower() not in MIME:
         raise C2paError(f"{path.name} : conteneur non pris en charge pour la signature (MP4 ou MOV).")
-    tmp = path.with_name(f"{path.stem}.c2pa-{os.getpid()}{path.suffix}")
+    tmp = path.with_name(f"{path.stem}.c2pa-{os.getpid()}{path.suffix.lower()}")
     try:
         with _signer() as signer, c2pa.Builder(json.dumps(manifest, ensure_ascii=False)) as builder:
             builder.sign_file(str(path), str(tmp), signer)
-        os.replace(tmp, path)
-    except c2pa.C2paError as exc:
+    except (c2pa.C2paError, OSError) as exc:
+        tmp.unlink(missing_ok=True)
         raise C2paError(f"signature de {path.name} impossible : {exc}") from None
-    finally:
-        if tmp.exists():
-            tmp.unlink()
+    return tmp
+
+
+def sign_file(path: Path, manifest: dict) -> None:
+    """Signe `path` sur place (copie signée puis remplacement atomique)."""
+    tmp = _signed_copy(path, manifest)
+    try:
+        os.replace(tmp, path)
+    except OSError as exc:
+        tmp.unlink(missing_ok=True)
+        raise C2paError(f"remplacement de {Path(path).name} impossible ({exc}) : fichier ouvert dans un autre "
+                        "programme ? Fermez-le puis relancez.") from None
 
 
 def verify(path: Path) -> dict:
@@ -220,29 +237,104 @@ def _with_c2patool(out: dict, path: Path) -> dict:
     return out
 
 
-def sign_outputs(compiled: dict, *, log=print) -> dict:
-    """Signe chaque livrable de la scène puis le vérifie ; écrit out/<scène>/c2pa_report.json (+ .md).
+def check_signable(compiled: dict) -> None:
+    """Refuse (C2paError) de signer des livrables que mograph n'a pas produits et contrôlés pour la scène
+    ACTUELLE : fiche d'encodage, empreinte de scène, empreinte de chaque fichier, QC CONFORME postérieur."""
+    from pipeline import encode
 
-    Lève C2paError si un livrable manque ou si une vérification échoue après signature."""
+    out_dir = config.scene_out_dir(compiled["scene_id"])
+    rec_path, qc_path = out_dir / encode.ENCODE_RECORD, out_dir / "qc_report.json"
+    redo = f"relancez « python mograph.py all {compiled['scene_id']} »"
+    try:
+        rec = json.loads(rec_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise C2paError(f"aucune fiche d'encodage ({rec_path.name}) : les livrables n'ont pas été produits par mograph "
+                        f"pour cette scène ; {redo}.") from None
+    if rec.get("scene_fingerprint") != encode.compiled_fingerprint(compiled):
+        raise C2paError(f"la scène a changé depuis l'encodage des livrables (contenu, assets ou réglages) : le manifeste "
+                        f"les décrirait faussement ; {redo}.")
+    try:
+        prev = json.loads((out_dir / "c2pa_report.json").read_text(encoding="utf-8"))
+        signed = {Path(o["file"]).name: o.get("sha256") for o in prev.get("outputs") or []}
+    except (OSError, ValueError):
+        signed = {}
+    for o in compiled["outputs"]:
+        path = Path(o["path"])
+        if not path.is_file():
+            raise C2paError(f"livrable absent : {path} ; {redo}.")
+        sha = encode.file_sha256(path)
+        if sha not in (rec.get("outputs", {}).get(path.name), signed.get(path.name)):
+            raise C2paError(f"{path.name} n'est pas le fichier encodé par mograph (empreinte différente : remplacé, "
+                            f"remuxé ou modifié) ; {redo}.")
+    try:
+        qc = json.loads(qc_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise C2paError(f"aucun rapport QC ({qc_path.name}) : la signature exige un QC CONFORME ; {redo}.") from None
+    if qc.get("verdict") != "CONFORME" or qc.get("scene_id") != compiled["scene_id"] \
+            or qc_path.stat().st_mtime < rec_path.stat().st_mtime:
+        raise C2paError(f"QC non conforme ou antérieur au dernier encodage ({qc_path.name} : {qc.get('verdict')}) : "
+                        f"lancez « python mograph.py qc {compiled['scene_id']} » puis resignez, ou {redo}.")
+
+
+def sign_outputs(compiled: dict, *, log=print) -> dict:
+    """Signe TOUS les livrables de la scène ou aucun : préconditions (check_signable), copies signées et
+    vérifiées, puis remplacements ; écrit out/<scène>/c2pa_report.json (+ .md) avec l'état réel.
+
+    Lève C2paError si une précondition, une signature ou une vérification échoue (aucun livrable modifié
+    dans ces cas)."""
+    check_signable(compiled)
     out_dir = config.scene_out_dir(compiled["scene_id"])
     report = {"contract": C2PA_CONTRACT, "scene_id": compiled["scene_id"],
               "date_utc": _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
               "digital_source_type": digital_source_type(compiled), "outputs": []}
-    failures = []
-    for o in compiled["outputs"]:
-        path = Path(o["path"])
-        if not path.is_file():
-            raise C2paError(f"livrable absent : {path} (lancez « all » ou « encode » avant de signer).")
-        sign_file(path, manifest_for(compiled, o))
-        v = verify(path)
-        report["outputs"].append({"profile": o["profile"], **v})
-        tool = v.get("c2patool") or {}
-        tool_ok = not tool.get("available") or (tool.get("exit") == 0 and set(tool.get("statuses") or []) <= UNTRUSTED_OK)
-        if not (v["valid"] and tool_ok):
-            failures.append(path.name)
-        log(f"[c2pa] {path.name} : signé, {v['state']}"
-            + (f" ({', '.join(v['statuses'])})" if v["statuses"] else "")
-            + (f" ; c2patool : {tool.get('state')}" if tool.get("available") else " ; c2patool absent"))
+    failures, temps = [], []
+    try:
+        for o in compiled["outputs"]:
+            path = Path(o["path"])
+            tmp = _signed_copy(path, manifest_for(compiled, o))
+            temps.append((tmp, path, o))
+            v = verify(tmp)
+            tool = v.get("c2patool") or {}
+            tool_ok = not tool.get("available") or (tool.get("exit") == 0
+                                                     and set(tool.get("statuses") or []) <= UNTRUSTED_OK)
+            if not (v["valid"] and tool_ok):
+                failures.append(f"{path.name} ({v['state']}, {', '.join(v['statuses'])})")
+            report["outputs"].append({"profile": o["profile"], **v, "file": str(path)})
+        if failures:
+            raise C2paError(f"vérification C2PA en échec : {', '.join(failures)} ; aucun livrable n'a été modifié.")
+        for (tmp, path, o), entry in zip(temps, report["outputs"]):
+            try:
+                os.replace(tmp, path)
+            except OSError as exc:
+                raise C2paError(f"remplacement de {path.name} impossible ({exc}) : fichier ouvert dans un autre "
+                                "programme ? Les livrables déjà remplacés sont signés ; fermez-le puis relancez "
+                                "« c2pa sign ».") from None
+            entry["sha256"] = encode_sha(path)
+            log(f"[c2pa] {path.name} : signé, {entry['state']}"
+                + (f" ({', '.join(entry['statuses'])})" if entry["statuses"] else "")
+                + (f" ; c2patool : {entry['c2patool'].get('state')}" if (entry.get('c2patool') or {}).get("available")
+                   else " ; c2patool absent"))
+    finally:
+        for tmp, _path, _o in temps:
+            Path(tmp).unlink(missing_ok=True)
+        report["outputs"] = [e for e in report["outputs"] if e.get("sha256")]
+        _write_report(out_dir, compiled, report)
+    return report
+
+
+def encode_sha(path: Path) -> str:
+    from pipeline import encode
+
+    return encode.file_sha256(path)
+
+
+def _write_report(out_dir: Path, compiled: dict, report: dict) -> None:
+    """Rapport FIDÈLE : seuls les livrables effectivement signés y figurent (avec leur empreinte) ; aucun
+    rapport si rien n'a été signé (un rapport précédent est retiré)."""
+    if not report["outputs"]:
+        for name in ("c2pa_report.json", "c2pa_report.md"):
+            (out_dir / name).unlink(missing_ok=True)
+        return
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "c2pa_report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     lines = [f"# Provenance C2PA — {compiled['scene_id']}", "",
@@ -253,6 +345,3 @@ def sign_outputs(compiled: dict, *, log=print) -> dict:
         lines.append(f"- {Path(o['file']).name} : {o['state']} ({', '.join(o['statuses']) or 'aucun statut'})"
                      + (f", c2patool {o['c2patool'].get('state')}" if (o.get('c2patool') or {}).get('available') else ""))
     (out_dir / "c2pa_report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
-    if failures:
-        raise C2paError(f"vérification C2PA en échec après signature : {', '.join(failures)} (voir {out_dir / 'c2pa_report.json'}).")
-    return report

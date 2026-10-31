@@ -1966,6 +1966,9 @@ class _Compiler:
             layers = shot.get("layers") or []
             if not any(layer.get("type") == "subtitles" for layer in layers):
                 continue
+            if any(layer.get("type") == "subtitles" and str(layer.get("anchor", "bottom")).startswith("bottom")
+                   for layer in layers):
+                self._bottom_subtitles = getattr(self, "_bottom_subtitles", set()) | {i}
             st = self.timing[i]
             out: list[dict] = []
             for j, layer in enumerate(layers):
@@ -2755,18 +2758,33 @@ class _Compiler:
         lab = (self.raw.get("provenance") or {}).get("visible_label")
         if not lab:
             return
-        corner = lab.get("corner", "bottom-right")
-        vert, horiz = corner.split("-")
+        corner0 = lab.get("corner", "bottom-right")
         size = float(lab.get("size") or round(0.026 * min(self.canvas_w, self.canvas_h), 1))
+        wrap = round(0.45 * config.safe_rect(self.aspect, "title")["width"], 1)
         for i, shot in enumerate(self.raw["shots"]):
             layers = shot.setdefault("layers", [])
             if any(isinstance(la, dict) and la.get("id") == "mention-ia" for la in layers):
                 self.err(("shots", i, "layers"), "l'id « mention-ia » est réservé à provenance.visible_label : renommez ce "
                                                  "calque.")
                 continue
+            corner = corner0
+            # Sous-titres (répliques en bas de la zone sûre) : la mention passe dans le coin haut du même côté.
+            if corner.startswith("bottom") and i in getattr(self, "_bottom_subtitles", set()):
+                corner = corner.replace("bottom", "top")
+                self.warn(("provenance", "visible_label", "corner"),
+                          f"plan {shot.get('id')} : sous-titres en bas de l'image, mention déplacée en {corner}.")
+            vert, horiz = corner.split("-")
+            # Retrait de 2 % dans la zone sûre : jamais collée au bord (alerte « près du bord » évitée) ; largeur
+            # bornée à 45 % de la zone : un texte long passe à la ligne au lieu de déborder.
             layers.append({"id": "mention-ia", "type": "text", "text": lab["text"], "style": "body", "size": size,
-                           "color": lab.get("color", "fg"), "x": "safe:100%" if horiz == "right" else "safe:0%",
-                           "y": "safe:100%" if vert == "bottom" else "safe:0%", "anchor": corner, "z": 99})
+                           "color": lab.get("color", "fg"), "maxWidth": wrap, "align": horiz,
+                           "x": "safe:98%" if horiz == "right" else "safe:2%",
+                           "y": "safe:98%" if vert == "bottom" else "safe:2%", "anchor": corner, "z": 99})
+        if any(isinstance(s.get("transition_in"), (dict, str)) and
+               (s["transition_in"] if isinstance(s["transition_in"], str) else s["transition_in"].get("type"))
+               in ("push", "wipe") for s in self.raw["shots"]):
+            self.warn(("provenance", "visible_label"), "transitions push/wipe : la mention appartient à chaque plan et "
+                                                       "se déplace avec lui pendant la transition (fondu ou cut : fixe).")
 
     def _provenance(self) -> dict | None:
         """Bloc provenance normalisé (auteurs, outils, déclaration d'usage de l'IA), date vérifiée."""

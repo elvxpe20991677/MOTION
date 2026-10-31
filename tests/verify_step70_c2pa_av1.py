@@ -36,6 +36,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 TEST = ROOT / "build" / "_tests" / "step70"
 AI = ROOT / "assets" / "_tests" / "ai70"
+SUBS = ROOT / "assets" / "_tests" / "st70"           # sous-titres de test (doivent être sous assets/)
 SCENES = TEST / "scenes"
 os.environ.update({
     "MOGRAPH_BUILD_DIR": str(TEST / "build"), "MOGRAPH_OUT_DIR": str(TEST / "out"), "MOGRAPH_SCENES_DIR": str(SCENES),
@@ -135,6 +136,24 @@ def test_compile() -> None:
     except scene_mod.SceneError as exc:
         ok = any("réservé" in e for e in exc.errors)
     check("id « mention-ia » réservé : refus explicite", ok)
+    lab_layer = labels[0] if labels else {}
+    check("mention : retrait de 2 % dans la zone sûre et largeur bornée (passage à la ligne)",
+          lab_layer.get("anchor") == [1.0, 1.0] and lab_layer.get("max_width") and lab_layer.get("x") < 1824.0,
+          str({k: lab_layer.get(k) for k in ("x", "y", "anchor", "max_width")}))
+    subs = SUBS / "repliques.srt"
+    subs.parent.mkdir(parents=True, exist_ok=True)
+    subs.write_text("1\n00:00:00,000 --> 00:00:01,000\nUne réplique\n", encoding="utf-8")
+    d = json.loads(p.read_text(encoding="utf-8"))
+    d["shots"][0]["layers"].append({"id": "st", "type": "subtitles", "src": str(subs.relative_to(ROOT)).replace("\\", "/")})
+    d["shots"][1]["transition_in"] = {"type": "push", "dur": 0.4}
+    c2 = scene_mod.compile_scene(d)
+    lab0 = next(la for la in c2["shots"][0]["spec"]["layers"] if la.get("id") == "mention-ia")
+    lab1 = next(la for la in c2["shots"][1]["spec"]["layers"] if la.get("id") == "mention-ia")
+    check("sous-titres en bas : mention déplacée dans le coin haut du plan (avertissement), autres plans inchangés",
+          lab0.get("anchor") == [1.0, 0.0] and lab1.get("anchor") == [1.0, 1.0]
+          and any("sous-titres" in w for w in c2["warnings"]), str((lab0.get("anchor"), lab1.get("anchor"))))
+    check("transition push avec mention : avertissement (la mention suit son plan)",
+          any("push/wipe" in w for w in c2["warnings"]))
     plain = scene_mod.compile_scene(ROOT / "scenes" / "demo_flat_riso.json")
     check("scène sans bloc phase 7 : aucune clé c2pa/visible_label/cq ajoutée",
           "c2pa" not in json.dumps(plain.get("provenance")) and all("cq" not in x for x in plain["outputs"]))
@@ -185,9 +204,9 @@ def test_render(av1: bool) -> Path | None:
     by = {c["id"]: c for c in qc.get("checks", [])}
     if av1:
         check("QC AV1 : codec av1, profil Main, 10 bits, étiquette av01, couleurs BT.709",
-              all(by.get(f"av1_nvenc.{k}", {}).get("status") == "PASS" for k in ("codec", "av01", "color"))
-              and by.get("av1_nvenc.codec_profile", {}).get("status") in ("PASS", None),
-              str({k: by.get(f"av1_nvenc.{k}", {}).get("status") for k in ("codec", "codec_profile", "pix_fmt", "av01", "color")}))
+              all(by.get(f"av1_nvenc.{k}", {}).get("status") == "PASS"
+                  for k in ("codec", "profile", "pix_fmt", "av01", "color")),
+              str({k: by.get(f"av1_nvenc.{k}", {}).get("status") for k in ("codec", "profile", "pix_fmt", "av01", "color")}))
     files = {o["profile"]: Path(o["file"]) for o in rep.get("outputs", [])}
     signed_after = all(f.stat().st_mtime >= (out / "qc_report.json").stat().st_mtime for f in files.values()) if files else False
     check("signature APRÈS le QC (fichiers livrés modifiés après qc_report.json)", signed_after)
@@ -219,13 +238,50 @@ def test_negative(out: Path, av1: bool) -> None:
     hevc = out / "c70_rendu_hevc_main10.mp4"
     neg = TEST / "neg"
     neg.mkdir(parents=True, exist_ok=True)
-    md5_signed = frames_md5(hevc)
-    # Images décodées identiques à celles du livrable avant signature : on réencode le maître de la même
-    # façon dans un dossier à part et on compare aux images du fichier signé.
-    ref = neg / "ref.mp4"
-    ffmpeg("-i", str(hevc), "-map", "0:v:0", "-c", "copy", str(ref))
-    check("signature sans effet sur les images (images décodées identiques après remux du fichier signé)",
-          frames_md5(ref) == md5_signed)
+    sc = str(SCENES / "c70_rendu.json")
+    report = out / "c2pa_report.json"
+    cp = mograph("encode", sc)
+    unsigned_md5, unsigned_sha = frames_md5(hevc), hashlib.sha256(hevc.read_bytes()).hexdigest()
+    check("encode : livrables réécrits sans manifeste, rapport C2PA périmé retiré",
+          cp.returncode == 0 and not c2pa_sign.verify(hevc)["signed"] and not report.exists(), tail(cp, 1))
+    cp = mograph("c2pa", "sign", sc)
+    check("c2pa sign sans QC postérieur à l'encodage : refusé, rien de signé", cp.returncode == 1
+          and "QC" in cp.stderr and not c2pa_sign.verify(hevc)["signed"], tail(cp, 1))
+    cp = mograph("qc", sc)
+    cp2 = mograph("c2pa", "sign", sc)
+    check("qc puis c2pa sign : livrables signés et valides", cp.returncode == 0 and cp2.returncode == 0
+          and c2pa_sign.verify(hevc)["valid"], tail(cp2, 1))
+    check("signature sans effet sur les images (livrable non signé et signé : images décodées identiques, octets "
+          "différents)", frames_md5(hevc) == unsigned_md5 and hashlib.sha256(hevc.read_bytes()).hexdigest() != unsigned_sha)
+    cp = mograph("c2pa", "sign", sc)
+    check("resigner un livrable déjà signé (empreinte notée au rapport) : accepté", cp.returncode == 0
+          and c2pa_sign.verify(hevc)["valid"], tail(cp, 1))
+
+    # Fichier étranger au chemin d'un livrable : refus, et AUCUN livrable modifié (tout ou rien).
+    prores = out / "c70_rendu_prores_422hq.mov"
+    before = {f.name: hashlib.sha256(f.read_bytes()).hexdigest() for f in (hevc, prores)}
+    keep = neg / "prores_garde.mov"
+    shutil.copy(prores, keep)
+    ffmpeg("-f", "lavfi", "-i", "testsrc2=s=320x180:d=0.5", "-c:v", "prores_ks", str(prores))
+    cp = mograph("c2pa", "sign", sc)
+    check("fichier étranger au chemin d'un livrable : c2pa sign refusé, aucun livrable modifié",
+          cp.returncode == 1 and "pas le fichier encodé" in cp.stderr
+          and hashlib.sha256(hevc.read_bytes()).hexdigest() == before[hevc.name], tail(cp, 1))
+    shutil.copy(keep, prores)
+    d = json.loads((SCENES / "c70_rendu.json").read_text(encoding="utf-8"))
+    d2 = json.loads(json.dumps(d))
+    d2["shots"][0]["layers"][1]["text"] = "Autre texte"
+    (SCENES / "c70_rendu.json").write_text(json.dumps(d2, ensure_ascii=False), encoding="utf-8")
+    cp = mograph("c2pa", "sign", sc)
+    check("scène modifiée depuis l'encodage : c2pa sign refusé (le manifeste décrirait autre chose)",
+          cp.returncode == 1 and "scène a changé" in cp.stderr, tail(cp, 1))
+    d2 = json.loads(json.dumps(d))
+    d2["provenance"]["c2pa"]["sign"] = False
+    (SCENES / "c70_rendu.json").write_text(json.dumps(d2, ensure_ascii=False), encoding="utf-8")
+    cp = mograph("c2pa", "sign", sc)
+    check("scène sans provenance.c2pa.sign : c2pa sign refusé", cp.returncode == 1 and "ne demande pas" in cp.stderr,
+          tail(cp, 1))
+    (SCENES / "c70_rendu.json").write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
     for label, args in (("réencodage", ["-c:v", "libx265", "-x265-params", "log-level=error", "-tag:v", "hvc1"]),
                         ("remux -c copy", ["-c", "copy"])):
         dst = neg / f"{label.split()[0]}.mp4"
@@ -255,7 +311,9 @@ def test_negative(out: Path, av1: bool) -> None:
         print(f"INFO AV1 NVENC : deux encodages successifs -> images décodées {'identiques' if same else 'DIFFÉRENTES'} "
               "(hors contrat : la porte de déterminisme porte sur le maître)", flush=True)
         v = c2pa_sign.verify(a1)
-        check("réencodage (commande encode) : livrables à nouveau NON signés (resigner : c2pa sign)", not v["signed"])
+        check("réencodage (commande encode) : livrables à nouveau NON signés (resigner : qc puis c2pa sign)",
+              not v["signed"])
+        mograph("qc", str(SCENES / "c70_rendu.json"))
         cp = mograph("c2pa", "sign", str(SCENES / "c70_rendu.json"))
         check("c2pa sign autonome : livrables existants resignés et valides", cp.returncode == 0
               and c2pa_sign.verify(a1)["valid"], tail(cp, 1))
@@ -287,8 +345,8 @@ def test_no_ai() -> None:
 
 
 def main() -> int:
-    assert TEST.parent.name == "_tests" and AI.parent.name == "_tests"
-    for d in (TEST, AI):
+    assert TEST.parent.name == "_tests" and AI.parent.name == "_tests" and SUBS.parent.name == "_tests"
+    for d in (TEST, AI, SUBS):
         if d.exists():
             shutil.rmtree(d)
     SCENES.mkdir(parents=True)

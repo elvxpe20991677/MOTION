@@ -357,6 +357,10 @@ def encode_scene(compiled: dict, *, log=print) -> list[Path]:
 
     out_dir = config.scene_out_dir(scene_id)
     out_dir.mkdir(parents=True, exist_ok=True)
+    # Les livrables vont être réécrits SANS manifeste C2PA (phase 7) : rapport de signature et fiche
+    # d'encodage précédents retirés, pour qu'aucun ne décrive des fichiers qui n'existent plus.
+    for stale in ("c2pa_report.json", "c2pa_report.md", ENCODE_RECORD):
+        (out_dir / stale).unlink(missing_ok=True)
     # Le script est écrit AVANT l'encodage : en cas d'échec, les commandes exactes sont déjà là.
     script = out_dir / "encode_commands.sh"
     tmp = script.with_name(script.name + ".tmp")
@@ -423,7 +427,43 @@ def encode_scene(compiled: dict, *, log=print) -> list[Path]:
             ) from exc
         log(f"[encode] {output.name} : {output.stat().st_size / 1e6:.1f} Mo en {time.perf_counter() - t0:.1f} s")
         produced.append(output)
+    _write_record(compiled, produced)
     return produced
+
+
+ENCODE_RECORD = "encode_record.json"
+
+
+def compiled_fingerprint(compiled: dict) -> str:
+    """Empreinte de la scène compilée qui a produit les livrables, sans provenance.c2pa (demander la
+    signature ne change aucun pixel). Sert à refuser de signer des livrables périmés (CONTRACT §11.8)."""
+    import copy
+
+    from pipeline import scene as scene_mod
+
+    c = copy.deepcopy(compiled)
+    (c.get("provenance") or {}).pop("c2pa", None)
+    return scene_mod.sha256_json(c)
+
+
+def file_sha256(path: Path) -> str:
+    import hashlib
+
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _write_record(compiled: dict, produced: list[Path]) -> None:
+    out = config.scene_out_dir(compiled["scene_id"]) / ENCODE_RECORD
+    rec = {"contract": "mograph-encode-record/1", "scene_id": compiled["scene_id"],
+           "scene_fingerprint": compiled_fingerprint(compiled),
+           "outputs": {p.name: file_sha256(p) for p in produced}}
+    tmp = out.with_name(out.name + ".tmp")
+    tmp.write_text(json.dumps(rec, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    os.replace(tmp, out)
 
 
 def _remove_partial(partial: Path, output: Path, *, quiet: bool = False) -> None:

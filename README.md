@@ -342,7 +342,9 @@ signature intègre). Le manifeste déclare le type de source IPTC (`compositeSyn
 `algorithmicMedia` sinon ; `digital_source_type` pour l'imposer), la déclaration d'IA et les assets IA
 gelés (empreintes, outils, modèles — jamais les prompts). **Tout réencodage, et même un remux
 `-c copy`, supprime le manifeste** : ne plus toucher aux fichiers signés ; `c2pa sign <scène>` resigne
-sans réencoder. Vérification : `c2pa verify <fichier>` (SDK + c2patool, installé par
+sans réencoder, mais seulement des livrables produits par mograph pour la scène actuelle et passés au QC
+CONFORME (après un `encode` : lancer `qc` puis `c2pa sign`). Sans horodatage (`MOGRAPH_C2PA_TSA`, appel
+réseau), les manifestes deviennent invalides à l'expiration du certificat local (825 jours). Vérification : `c2pa verify <fichier>` (SDK + c2patool, installé par
 `python scripts/install_c2patool.py`). MP4 (HEVC, AV1) et MOV (ProRes) testés.
 **Mention visible** : `"visible_label": {"text": "Contenu créé avec l'aide de l'IA", "corner":
 "bottom-right"}` l'ajoute à chaque plan, dans la zone sûre. Rappel AI Act (art. 50, applicable depuis
