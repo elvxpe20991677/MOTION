@@ -109,6 +109,10 @@ jobs:
         run: .venv/bin/python tests/verify_step50_music.py
       - name: Phase 6 — couche agent (faux « claude », aucun appel réel)
         run: .venv/bin/python tests/verify_step60_agent.py
+      - name: c2patool épinglé (empreinte vérifiée, versions.json)
+        run: .venv/bin/python scripts/install_c2patool.py
+      - name: Phase 7 — provenance C2PA (AV1 NVENC : SKIP sans GPU NVIDIA)
+        run: .venv/bin/python tests/verify_step70_c2pa_av1.py
       - name: Journaux et images de test (en cas d'échec)
         if: failure()
         uses: actions/upload-artifact@v4

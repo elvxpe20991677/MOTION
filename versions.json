@@ -33,6 +33,16 @@
   "uv": "0.11.7",
   "no_pixel_effect": [
     "node",
-    "uv"
-  ]
+    "uv",
+    "c2patool"
+  ],
+  "c2patool": {
+    "version": "0.28.4",
+    "note": "Phase 7 : vérification indépendante des manifestes C2PA (facultatif : sans lui, vérification par le SDK c2pa-python). Installé par scripts/install_c2patool.py dans .tools/ (non versionné), empreinte vérifiée avant extraction. Sans effet sur les pixels.",
+    "license": "MIT OR Apache-2.0",
+    "windows_url": "https://github.com/contentauth/c2patool/releases/download/v0.28.4/v0.28.4-x86_64-pc-windows-msvc.zip",
+    "windows_sha256": "00e5bcfef95fcf913cc3d67825d7d50ea1eb1180c7fdbef746c9ce3b65e272f1",
+    "linux_url": "https://github.com/contentauth/c2patool/releases/download/v0.28.4/v0.28.4-x86_64-unknown-linux-gnu.tar.gz",
+    "linux_sha256": "097e9efaff765baf7738a40c640012419cad419ce3e1aa36cf68e0576309c971"
+  }
 }

@@ -548,6 +548,7 @@ def expected_for_output(compiled: dict, output: dict) -> dict:
         "fps": int(fmt["fps"]),
         "frames": int(compiled["frames"]),
         "hvc1": prof["codec"] == "hevc",
+        "av01": prof["codec"] == "av1",
         "timecode": prof["codec"] == "prores",
         "timecode_value": config.TIMECODE_START,
         "color": dict(_COLOR_EXPECTED),
@@ -574,7 +575,7 @@ def check_output(path, expected: dict) -> list[dict]:
 
     Clés obligatoires : ``fps`` (int), ``frames`` (int). Clés facultatives (absente/None/False =
     contrôle non effectué) : ``name`` (préfixe des id, défaut : nom du fichier), ``codec``,
-    ``codec_profile``, ``pix_fmts`` (liste acceptée), ``width``/``height``, ``hvc1`` (bool),
+    ``codec_profile``, ``pix_fmts`` (liste acceptée), ``width``/``height``, ``hvc1`` (bool), ``av01`` (bool),
     ``color`` (dict champ ffprobe -> valeur), ``timecode`` (bool) + ``timecode_value``, ``alpha``
     (bool), ``black`` ({allow_black_s, informative}), ``audio`` (None = scène sans audio, sinon
     {codecs, sample_rate, target_lufs, source_target_lufs}).
@@ -677,6 +678,12 @@ def check_output(path, expected: dict) -> list[dict]:
         add("hvc1", "étiquette HEVC hvc1", "PASS" if ok else "FAIL", "hvc1", act, True,
             "" if ok else "Étiquette hev1/absente : QuickTime et les appareils Apple refusent le fichier ; "
                           "ajoutez « -tag:v hvc1 ».")
+    if expected.get("av01"):
+        act = v.get("codec_tag_string")
+        ok = act == "av01"
+        add("av01", "étiquette AV1 av01 (MP4)", "PASS" if ok else "FAIL", "av01", act, True,
+            "" if ok else "Étiquette AV1 absente : lecteurs et navigateurs peuvent refuser le fichier ; "
+                          "encodez en MP4 avec av1_nvenc (étiquette av01 par défaut).")
 
     # --- Métadonnées couleur ---------------------------------------------------------------------
     if expected.get("color"):

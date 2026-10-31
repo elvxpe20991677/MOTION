@@ -34,3 +34,7 @@ assets/audio/essai_*_beat.wav.synth.json
 # Leur empreinte SHA-256 et leur provenance le sont, dans assets.lock.json (CONTRACT §11.4).
 assets/ai/*
 !assets/ai/README.md
+
+# Provenance C2PA : certificat et clé privée locaux (phase 7) ; outils téléchargés (c2patool)
+.c2pa/
+.tools/

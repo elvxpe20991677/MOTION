@@ -1128,6 +1128,7 @@ class _Compiler:
         # Sous-titres : chaque réplique devient un calque texte ordinaire (même validation, mêmes
         # polices, mêmes zones sûres) ; il faut les débuts globaux des plans, d'où après _timing.
         self._expand_subtitles()
+        self._visible_label()
         shots = []
         for i, shot in enumerate(raw["shots"]):
             try:
@@ -2623,10 +2624,19 @@ class _Compiler:
                 crf = int(o.get("crf", config.HEVC_CRF_DEFAULT))
             else:
                 if "crf" in o:
-                    self.warn(("outputs", n, "crf"), "crf ne concerne que hevc_main10 : ignoré pour ProRes (débit fixé par le profil).")
+                    self.warn(("outputs", n, "crf"), f"crf ne concerne que hevc_main10 : ignoré pour {prof}"
+                              + (" (utilisez « cq »)." if prof == "av1_nvenc" else " (débit fixé par le profil)."))
                 crf = None
-            outs.append({"profile": prof, "crf": crf, "suffix": suffix, "path": str(path),
-                         "alpha_flatten": bool(self.alpha and prof != "prores_4444")})
+            cq = None
+            if prof == "av1_nvenc":
+                cq = int(o.get("cq", config.AV1_CQ_DEFAULT))
+            elif "cq" in o:
+                self.warn(("outputs", n, "cq"), f"cq ne concerne que av1_nvenc : ignoré pour {prof}.")
+            out = {"profile": prof, "crf": crf, "suffix": suffix, "path": str(path),
+                   "alpha_flatten": bool(self.alpha and prof != "prores_4444")}
+            if cq is not None:
+                out["cq"] = cq
+            outs.append(out)
         return outs
 
     def _audio(self) -> dict | None:
@@ -2739,6 +2749,25 @@ class _Compiler:
         return {**audio, "normalize": bool(raw_a.get("normalize", True)),
                 "mix": str(config.scene_build_dir(self.scene_id) / "audio" / "mix.wav")}
 
+    def _visible_label(self) -> None:
+        """provenance.visible_label (phase 7) : mention fixe ajoutée à CHAQUE plan, dans un coin de la zone sûre
+        « action » (calque texte ordinaire : mêmes polices, glyphes et zones sûres), au-dessus des autres."""
+        lab = (self.raw.get("provenance") or {}).get("visible_label")
+        if not lab:
+            return
+        corner = lab.get("corner", "bottom-right")
+        vert, horiz = corner.split("-")
+        size = float(lab.get("size") or round(0.026 * min(self.canvas_w, self.canvas_h), 1))
+        for i, shot in enumerate(self.raw["shots"]):
+            layers = shot.setdefault("layers", [])
+            if any(isinstance(la, dict) and la.get("id") == "mention-ia" for la in layers):
+                self.err(("shots", i, "layers"), "l'id « mention-ia » est réservé à provenance.visible_label : renommez ce "
+                                                 "calque.")
+                continue
+            layers.append({"id": "mention-ia", "type": "text", "text": lab["text"], "style": "body", "size": size,
+                           "color": lab.get("color", "fg"), "x": "safe:100%" if horiz == "right" else "safe:0%",
+                           "y": "safe:100%" if vert == "bottom" else "safe:0%", "anchor": corner, "z": 99})
+
     def _provenance(self) -> dict | None:
         """Bloc provenance normalisé (auteurs, outils, déclaration d'usage de l'IA), date vérifiée."""
         prov = self.raw.get("provenance")
@@ -2762,6 +2791,13 @@ class _Compiler:
             out["ai_disclosure"] = {"ai_used": bool(ai["ai_used"]), "roles": list(ai.get("roles") or []),
                                     "tools": [dict(tool) for tool in ai.get("tools") or []],
                                     "date": ai.get("date"), "statement": ai.get("statement")}
+        # Phase 7 (CONTRACT §11.8) : signature C2PA demandée et mention visible ; ajoutées seulement si
+        # présentes (une scène sans ces blocs compile à l'identique).
+        if prov.get("c2pa"):
+            out["c2pa"] = {"sign": bool(prov["c2pa"].get("sign", False)),
+                           "digital_source_type": prov["c2pa"].get("digital_source_type")}
+        if prov.get("visible_label"):
+            out["visible_label"] = dict(prov["visible_label"])
         return out
 
     def _asset_list(self, provenance: dict | None) -> list[dict]:

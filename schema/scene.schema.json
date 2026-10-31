@@ -80,7 +80,28 @@
       "properties": {
         "authors": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Auteurs ou studio (texte libre)." },
         "tools": { "type": "array", "items": { "$ref": "#/$defs/provenanceTool" }, "description": "Outils de production non IA notables (ex. mograph, Blender, DaVinci Resolve)." },
-        "ai_disclosure": { "$ref": "#/$defs/aiDisclosure" }
+        "ai_disclosure": { "$ref": "#/$defs/aiDisclosure" },
+        "c2pa": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Manifeste C2PA (phase 7) : signature de chaque livrable en TOUTE DERNIÈRE étape (après encodage et QC), certificat local (python mograph.py c2pa init).",
+          "properties": {
+            "sign": { "type": "boolean", "default": false, "description": "Signer les livrables à la fin de « all » (et par « c2pa sign »)." },
+            "digital_source_type": { "enum": ["algorithmicMedia", "compositeSynthetic", "trainedAlgorithmicMedia", "compositeWithTrainedAlgorithmicMedia", "digitalCreation", "composite"], "description": "Type de source IPTC de la vidéo (défaut : compositeSynthetic si la vidéo contient des assets IA, sinon algorithmicMedia)." }
+          }
+        },
+        "visible_label": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["text"],
+          "description": "Mention visible à l'écran (ex. « Contenu créé avec l'aide de l'IA »), ajoutée à chaque plan dans un coin de la zone sûre.",
+          "properties": {
+            "text": { "type": "string", "minLength": 1, "maxLength": 80 },
+            "corner": { "enum": ["bottom-right", "bottom-left", "top-right", "top-left"], "default": "bottom-right" },
+            "size": { "type": "number", "minimum": 16, "maximum": 96, "description": "Taille en px logiques (défaut : 2,6 % du petit côté du canevas)." },
+            "color": { "type": "string", "description": "Couleur de la palette du preset ou #RRGGBB (défaut fg)." }
+          }
+        }
       }
     },
     "outputs": {
@@ -260,8 +281,9 @@
       "additionalProperties": false,
       "required": ["profile"],
       "properties": {
-        "profile": { "enum": ["hevc_main10", "prores_422hq", "prores_4444"] },
+        "profile": { "enum": ["hevc_main10", "prores_422hq", "prores_4444", "av1_nvenc"] },
         "crf": { "type": "integer", "minimum": 0, "maximum": 51, "description": "HEVC uniquement (défaut 18)." },
+        "cq": { "type": "integer", "minimum": 1, "maximum": 63, "description": "av1_nvenc uniquement : qualité constante NVENC (défaut 30 ; plus bas = meilleur)." },
         "suffix": { "type": "string", "pattern": "^[A-Za-z0-9_-]*$", "default": "" }
       }
     },

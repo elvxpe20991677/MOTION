@@ -24,7 +24,8 @@ from pipeline import config
 _COMMON = ["-y", "-hide_banner", "-nostdin"]
 # Étiquettes couleur Rec.709 plage limitée : identiques pour tous les profils (QC : bt709 ×3 + tv).
 _COLOR_TAGS = ["-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", "-color_range", "tv"]
-_PIX_FMT = {"hevc_main10": "yuv420p10le", "prores_422hq": "yuv422p10le", "prores_4444": "yuva444p10le"}
+_PIX_FMT = {"hevc_main10": "yuv420p10le", "prores_422hq": "yuv422p10le", "prores_4444": "yuva444p10le",
+            "av1_nvenc": "yuv420p10le"}
 
 # Le plan ALPHA ne passe jamais par les convertisseurs de FFmpeg 6.1 (Ubuntu 24.04), mesurés
 # inexacts : swscale rgba -> gbrap décale l'alpha ≥ 128 de +1, rgba -> rgba64le donne 65532 pour
@@ -134,7 +135,14 @@ def _partial_path(output: Path) -> Path:
     return output.with_name(f"{output.stem}.partial{output.suffix}")
 
 
-def _video_codec_args(profile: str, fps: int, crf: int) -> list[str]:
+def _video_codec_args(profile: str, fps: int, crf: int, cq: int | None = None) -> list[str]:
+    if profile == "av1_nvenc":
+        # NVENC AV1 Main 10 bits : p7 + hq (qualité maximale), VBR à qualité constante (cq, débit libre),
+        # 2 passes au quart de résolution, GOP de 2 s ; p010le = format natif 10 bits de NVENC. Le flux
+        # dépend du pilote et du GPU : le déterminisme se vérifie sur le maître, pas sur ces octets.
+        return ["-c:v", "av1_nvenc", "-preset", "p7", "-tune", "hq", "-multipass", "qres", "-rc", "vbr",
+                "-cq", str(config.AV1_CQ_DEFAULT if cq is None else int(cq)), "-b:v", "0", "-g", str(2 * fps),
+                "-pix_fmt", "p010le", *_COLOR_TAGS, "-movflags", "+faststart+write_colr"]
     if profile == "hevc_main10":
         # keyint/min-keyint en valeurs numériques (x265 n'évalue pas « 2*fps ») : une image clé
         # toutes les 2 s au plus, pas plus d'une par seconde ; aq-mode 3 protège les aplats sombres
@@ -182,7 +190,7 @@ def loudnorm_prefix(src: Path, duration: str, target_lufs: float) -> str:
 def _audio_args(profile: str, duration: str, prefix: str | None = None) -> list[str]:
     # apad complète le silence, atrim coupe l'excédent : la piste dure exactement D (= vidéo).
     af = ["-af", (f"{prefix}," if prefix else "") + f"apad=whole_dur={duration},atrim=end={duration}"]
-    if profile == "hevc_main10":
+    if profile in ("hevc_main10", "av1_nvenc"):
         return af + ["-c:a", "aac", "-b:a", "320k", "-ar", str(config.AUDIO_RATE)]
     # ProRes : PCM 24 bits, le format de travail des logiciels de montage (aucune perte).
     return af + ["-c:a", "pcm_s24le", "-ar", str(config.AUDIO_RATE)]
@@ -242,7 +250,7 @@ def build_commands(compiled: dict) -> list[dict]:
             argv += ["-map", "1:a:0"]
         # -frames:v N : nombre d'images exact même si des images en trop traînaient dans le dossier.
         argv += ["-frames:v", str(frames), "-vf", vf]
-        argv += _video_codec_args(profile, fps, crf)
+        argv += _video_codec_args(profile, fps, crf, out.get("cq"))
         if audio_src is not None:
             argv += _audio_args(profile, duration, norm)
         argv.append(_rel(output))

@@ -59,6 +59,10 @@ python mograph.py preview ma_video                 # aperçu en direct, recharg�
   `assets/ai/` non gelé est REFUSÉ à la compilation), puis déclarer
   `"provenance": {"ai_disclosure": {"ai_used": true, "roles": ["music"], "tools": [{"name": "…",
   "role": "…"}], "date": "AAAA-MM-JJ"}}` (sinon avertissement à la compilation et au QC).
+- **Provenance signée et mention visible** (phase 7) : `"provenance": {…, "c2pa": {"sign": true},
+  "visible_label": {"text": "Contenu créé avec l'aide de l'IA"}}` ; une fois pour toutes
+  `python mograph.py c2pa init`. La signature est la dernière étape de `all` : ne réencodez ni ne
+  remuxez plus les fichiers livrés (le manifeste disparaîtrait ; `c2pa sign <scène>` resigne).
 
 ## 4. Prompt pour un assistant IA
 **Le plus simple** : `python mograph.py brief "<votre idée>"` fait tout le cycle ci-dessous avec Claude

@@ -104,7 +104,7 @@ build que la machine de rendu) ; chaque job vérifie d'abord les versions (`scri
 | `python mograph.py compose <scène>` | séquence maître `build/<scène>/master/` |
 | `python mograph.py encode <scène>` | maître + tous les livrables + `encode_commands.sh` |
 | `python mograph.py qc <scène>` | QC automatique, code 1 si NON CONFORME |
-| `python mograph.py all <scène> [--detach]` | plaques → web → déterminisme → maître → encodage → planches → QC |
+| `python mograph.py all <scène> [--detach]` | plaques → web → déterminisme → maître → encodage → planches → QC → **signature C2PA** (si `provenance.c2pa.sign`) |
 | `python mograph.py all <scène> --draft` | **préversion** rapide (1080p, 3D réduite, sans flou, sans QC) → `out/<scène>_draft/` |
 | `python mograph.py validate <scène> --layout` | contrôle des zones sûres en quelques secondes, avant le rendu complet |
 | `python mograph.py preview <scène>` | **aperçu en direct** dans le navigateur, rechargé à chaque sauvegarde |
@@ -115,6 +115,7 @@ build que la machine de rendu) ; chaque job vérifie d'abord les versions (`scri
 | `python mograph.py sheets <scène>` | planches contact (`out/<scène>/planche_contact.png`, `planche_alpha.png`) |
 | `python mograph.py sheets <scène> [--draft] --vision` | + **relecture visuelle** par Claude (abonnement) : avertissements seulement, jamais bloquants |
 | `python mograph.py brief "<idée>" [--preset P] [--aspect A] [--id ID] [--draft]` | **une idée → une scène VALIDE** écrite par Claude (`claude -p`, abonnement ; 3 essais au plus) |
+| `python mograph.py c2pa init` / `c2pa sign <scène>` / `c2pa verify <fichier>` | **provenance C2PA** : certificat local, signature des livrables (dernière étape), vérification |
 | `python mograph.py mcp` | serveur MCP local « mograph » (stdio) : piloter le pipeline depuis Claude Code ou Claude Desktop |
 | `python mograph.py assets add <fichier> --tool … --model … --prompt … --license …` | **geler** une sortie d'IA (copie sous `assets/ai/`, SHA-256 + provenance dans `assets.lock.json`) |
 | `python mograph.py assets verify` / `assets list` | assets IA présents et intacts / provenance |
@@ -334,10 +335,27 @@ intact : sinon la compilation, le rendu, l'encodage et le QC (`scene.ai_lock`, b
 La provenance de chaque asset figure dans `qc_report.md`. Seul le verrou est versionné : les médias
 de `assets/ai/` ne le sont pas (dépôt public, licences) — voir `assets/ai/README.md`.
 
+**Manifeste C2PA** (phase 7) : `"provenance": {"c2pa": {"sign": true}}` fait signer chaque livrable à la
+fin de `all`, APRÈS le QC (seulement s'il est CONFORME), avec un certificat local créé une fois par
+`python mograph.py c2pa init` (`.c2pa/`, jamais versionné ; signataire « non reconnu » par les lecteurs,
+signature intègre). Le manifeste déclare le type de source IPTC (`compositeSynthetic` avec un asset IA,
+`algorithmicMedia` sinon ; `digital_source_type` pour l'imposer), la déclaration d'IA et les assets IA
+gelés (empreintes, outils, modèles — jamais les prompts). **Tout réencodage, et même un remux
+`-c copy`, supprime le manifeste** : ne plus toucher aux fichiers signés ; `c2pa sign <scène>` resigne
+sans réencoder. Vérification : `c2pa verify <fichier>` (SDK + c2patool, installé par
+`python scripts/install_c2patool.py`). MP4 (HEVC, AV1) et MOV (ProRes) testés.
+**Mention visible** : `"visible_label": {"text": "Contenu créé avec l'aide de l'IA", "corner":
+"bottom-right"}` l'ajoute à chaque plan, dans la zone sûre. Rappel AI Act (art. 50, applicable depuis
+le 02/08/2026) : le marquage lisible par machine est une obligation des FOURNISSEURS d'IA générative ;
+l'utilisateur doit déclarer un hypertrucage (forme allégée pour une œuvre manifestement créative).
+Détail et sources : `docs/CONTRACT.md` §11.8 (information, pas un conseil juridique).
+
 ### Livrables
 `hevc_main10` (.mp4, `hvc1`, yuv420p10le), `prores_422hq` (.mov, timecode 01:00:00:00),
-`prores_4444` (.mov, alpha 16 bits, **obligatoire** si `format.alpha`). Une sortie opaque d'une
-scène alpha est aplatie sur noir.
+`prores_4444` (.mov, alpha 16 bits, **obligatoire** si `format.alpha`), `av1_nvenc` (.mp4, AV1 Main
+10 bits par le GPU NVIDIA — Ada ou plus récent —, `cq` 1–63, défaut 30 ; ses octets dépendent du GPU et
+du pilote : le déterminisme se vérifie sur le maître). Une sortie opaque d'une scène alpha est aplatie
+sur noir.
 
 ---------------------------------------------------------------------------------------------------
 ## 4. Presets (`presets/`, `schema/preset.schema.json`)

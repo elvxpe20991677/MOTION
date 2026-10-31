@@ -997,3 +997,138 @@ des scènes (tests isolés).
 
 Tests : `tests/verify_step60_agent.py` (faux exécutable `claude` désigné par `MOGRAPH_CLAUDE` : aucun
 appel réel ; préversion complète lancée par le serveur MCP).
+
+### 11.8 Phase 7 — provenance C2PA et profil AV1 NVENC
+Sources vérifiées le 31/10/2026 :
+- **AI Act** : règlement (UE) 2024/1689, texte officiel EUR-Lex (eur-lex.europa.eu, OJ L 2024/1689), articles
+  3(3), 3(4), 3(60), 50 et 113 ;
+- **omnibus numérique IA** : règlement (UE) 2026/1744 (eur-lex.europa.eu/eli/reg/2026/1744/oj) ;
+- **IPTC Digital Source Type** : cv.iptc.org/newscodes/digitalsourcetype/ ;
+- **spécification C2PA 2.2** §18.14 (spec.c2pa.org) ;
+- **c2pa-python** : github.com/contentauth/c2pa-python et pypi.org/project/c2pa-python ;
+- **c2pa-rs** : liste des formats pris en charge (*supported-formats*) ;
+- **c2patool** : github.com/contentauth/c2patool/releases.
+
+**Droit applicable (information, pas un conseil juridique).**
+- **Art. 50(2)** : l'obligation de marquer les sorties « dans un format lisible par machine et détectables
+  comme générées ou manipulées artificiellement » pèse sur les FOURNISSEURS de systèmes d'IA générant du
+  son, de l'image, de la vidéo ou du texte (ElevenLabs, Google…), pas sur celui qui les utilise.
+- **Art. 50(4)** : le DÉPLOYEUR (« personne… utilisant un système d'IA sous sa propre autorité », hors usage
+  personnel non professionnel, art. 3(4)) d'un système produisant un **hypertrucage** (art. 3(60) :
+  contenu qui ressemble à des personnes, objets, lieux, entités ou événements existants et
+  paraîtrait faussement authentique) doit déclarer que le contenu est artificiel.
+  - Exception : pour une œuvre ou un programme « manifestement artistique, créatif, satirique, fictif ou
+    analogue », l'obligation se limite à signaler l'existence de ce contenu « de manière appropriée qui
+    n'entrave pas l'affichage ou la jouissance de l'œuvre ».
+  - Un texte publié pour informer le public sur des questions d'intérêt public doit aussi être déclaré,
+    sauf relecture humaine et responsabilité éditoriale.
+- **Art. 50(5)** : l'information doit être claire et distinguable, au plus tard à la première exposition.
+- **Dates (art. 113)** : application le 2 août 2026. Le règlement 2026/1744 laisse l'article 50
+  applicable à cette date, avec une période transitoire pour l'art. 50(2) seulement : un fournisseur dont
+  le système était déjà sur le marché avant le 2 août 2026 doit s'y conformer au plus tard le
+  2 décembre 2026.
+- **Conséquence pour mograph** (lecture du texte, à faire confirmer par un juriste pour un cas réel) :
+  - le manifeste C2PA d'une vidéo n'est pas une obligation de l'utilisateur au titre de l'art. 50(2) ;
+    c'est une bonne pratique qui documente la provenance ;
+  - la mention visible (`provenance.visible_label`) est l'outil de l'art. 50(4) quand la vidéo contient
+    un hypertrucage (forme allégée pour une œuvre manifestement créative) ;
+  - la déclaration `ai_disclosure` reste exigée par le contrat dès qu'un asset IA est utilisé (§11.2).
+
+**Signature C2PA** (`pipeline/c2pa_sign.py`, c2pa-python **0.38.0**, MIT OU Apache-2.0).
+
+*Version et certificat*
+- 0.38.0 est la dernière version qui fournit des paquets Windows et Linux au 31/10/2026 : 0.38.1 et
+  0.38.2 ne publient que des paquets macOS.
+- Certificat : `python mograph.py c2pa init` crée dans `config.C2PA_DIR` (`MOGRAPH_C2PA_DIR`, défaut
+  `.c2pa/`, ignoré par git) une autorité locale « mograph CA locale » (clé jetée après usage) et un
+  certificat de signature ES256 (P-256, `digitalSignature`, EKU `emailProtection`, 825 jours).
+  - fichiers : `signer_chain.pem` et `signer.key` (PKCS#8, droits restreints) ;
+  - un second `init` est refusé sans `--force`.
+- Aucun horodatage tiers (aucun appel réseau).
+- Les lecteurs C2PA signalent `signingCredential.untrusted` (certificat absent des listes de confiance) :
+  la signature est intègre, mais le signataire n'est pas reconnu. Pour une chaîne reconnue, il faut un
+  certificat d'une autorité de la liste de confiance C2PA (décision et coût à la charge de l'utilisateur).
+
+*Ordre des étapes* (`all`) :
+plaques → images web → porte de déterminisme → maître → encodage → planches contact → QC → **signature
+C2PA**, si `provenance.c2pa.sign` vaut true ET si le QC est CONFORME. Une scène non conforme n'est pas
+signée et un message l'indique. La signature est la TOUTE DERNIÈRE étape, et un livrable signé ne doit
+plus être modifié :
+- mesuré : un réencodage ET un simple remux `ffmpeg -c copy` produisent un fichier sans manifeste
+  (`c2patool` : « No claim found ») ;
+- la commande `encode` réécrit donc des livrables non signés ;
+- `python mograph.py c2pa sign <scène>` (re)signe les livrables existants sans réencodage, et un fichier
+  déjà signé reçoit un nouveau manifeste.
+
+*Signature d'un fichier*
+- écriture dans un temporaire de même extension, puis remplacement atomique ;
+- le contenu média est inchangé (images décodées identiques) ; les octets du conteneur changent (boîte
+  JUMBF), ce qui est sans effet sur la porte de déterminisme, qui porte sur les images du maître.
+
+*Manifeste*
+- `claim_generator_info [{name mograph, version mograph-c2pa/1}]`, `title` (nom du fichier), `format`
+  (`video/mp4` ou `video/quicktime`) ;
+- assertion `c2pa.actions` : `{action c2pa.created, digitalSourceType, softwareAgent mograph}` ;
+- assertion `org.mograph.provenance` : `{contract, scene_id, title, profile, authors, ai_disclosure,
+  ai_assets: [{path, sha256, kinds, tool, model, date, source, license, digitalSourceType
+  …/trainedAlgorithmicMedia}]}`. Les prompts et les notes du verrou n'y figurent JAMAIS (dépôt public,
+  fichiers diffusés).
+
+*digitalSourceType de la vidéo* : valeur `provenance.c2pa.digital_source_type` si la scène l'impose,
+sinon :
+- `compositeSynthetic` si la vidéo contient un asset IA ou déclare `ai_used` (IPTC : « mélange ou
+  composite de plusieurs éléments, dont au moins un d'IA générative ») ;
+- `algorithmicMedia` sinon (IPTC : « créé purement par un algorithme, sans données d'apprentissage » :
+  le rendu procédural de mograph).
+
+ÉCART avec la feuille de route : celle-ci demandait `trainedAlgorithmicMedia` dès qu'un asset IA est
+présent. Pour l'IPTC, ce terme désigne un média entièrement créé par IA générative ; l'appliquer à la
+vidéo entière la décrirait inexactement. Il est donc porté par chaque asset IA (`ai_assets`), et une
+scène peut l'imposer à la vidéo. La spécification C2PA (§18.14.4.5) n'impose aucune valeur pour un
+composite.
+
+*Conteneurs testés* (manifeste valide au SDK et à c2patool, test négatif de réencodage et de remux,
+altération d'un octet du flux → `assertion.bmffHash.mismatch`) :
+- MP4 HEVC `hvc1` (`hevc_main10`) ;
+- MOV ProRes 422 HQ (`prores_422hq`) ;
+- MP4 AV1 `av01` (`av1_nvenc`).
+
+Non testés : MOV ProRes 4444 (même conteneur que le 422 HQ, attendu identique, non vérifié) et MP4
+fragmenté (pris en charge par le SDK en mode fichier seulement, non produit par mograph).
+
+*Vérification* : `python mograph.py c2pa verify <fichier> [--json]` (code 0 seulement si un manifeste est
+présent, à l'état `Valid` ou `Trusted`, et sans autre statut que `signingCredential.untrusted`).
+- SDK c2pa-python, plus c2patool s'il est installé (**0.28.4**, MIT OU Apache-2.0,
+  `scripts/install_c2patool.py` : archive officielle, SHA-256 de `versions.json` vérifiée AVANT
+  extraction, dans `.tools/`, non versionné ; `MOGRAPH_C2PATOOL` pour un autre chemin).
+- Après signature, `all` et `c2pa sign` vérifient chaque livrable, écrivent `out/<scène>/c2pa_report.json`
+  (+ `.md`) et échouent (code 1) si une vérification échoue.
+
+**Mention visible** `provenance.visible_label = {text (1–80 caractères), corner bottom-right|bottom-left|
+top-right|top-left, size?, color?}` :
+- un calque texte ordinaire `mention-ia` (style body, taille par défaut 2,6 % du petit côté du canevas,
+  couleur fg, z 99) est ajouté à CHAQUE plan, ancré dans le coin choisi de la zone sûre ;
+- il passe par les mêmes polices, glyphes, zones sûres et porte de déterminisme que tout calque ;
+- l'id `mention-ia` est réservé (REFUS s'il est déjà utilisé) ;
+- il change les pixels, mais seulement pour une scène qui le demande.
+
+**Profil `av1_nvenc`** (MP4, `.mp4`) :
+- AV1 Main 10 bits par NVENC : `-c:v av1_nvenc -preset p7 -tune hq -multipass qres -rc vbr -cq <cq> -b:v 0
+  -g 2×fps -pix_fmt p010le`, étiquettes BT.709 plage limitée, `+faststart+write_colr`, audio AAC 320k ;
+- `outputs[].cq` de 1 à 63 (défaut `config.AV1_CQ_DEFAULT` = 30 ; ignoré avec un avertissement par les
+  autres profils ; `crf` ignoré avec un avertissement par av1_nvenc) ;
+- exige un GPU NVIDIA Ada ou plus récent (RTX 4060 Laptop : un seul moteur NVENC ; mesuré avec FFmpeg
+  9.0.2 gyan.dev et le pilote 617.42) ; sans NVENC, l'encodage échoue avec le message de FFmpeg ;
+- QC : codec av1, profil Main, `yuv420p10le`, étiquette `av01` (contrôle `av01`), couleurs, niveaux R103,
+  durée, audio ;
+- **Déterminisme** : le flux NVENC n'entre pas dans le contrat. La porte vérifie les images du maître ;
+  les octets AV1 dépendent du GPU et du pilote. Mesuré, à titre informatif : deux encodages successifs
+  sur la machine de référence donnent les mêmes octets et les mêmes images décodées.
+
+Schéma : `provenance.c2pa {sign, digital_source_type}`, `provenance.visible_label`, profil `av1_nvenc`,
+`outputs[].cq` — tous optionnels ; une scène sans eux compile à l'identique. Dépendances épinglées :
+`c2pa-python==0.38.0` (et `cryptography 50.0.2`, `requests 2.34.2`, `toml 0.10.2`, avec leurs
+dépendances, dans `constraints.txt`) ; c2patool est facultatif et référencé dans `versions.json`.
+
+Tests : `tests/verify_step70_c2pa_av1.py` (rendu complet signé, 3 conteneurs, tests négatifs ; AV1 SKIP
+sans NVENC ; sans c2patool, vérification par le SDK seulement).

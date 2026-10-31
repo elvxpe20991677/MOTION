@@ -87,6 +87,21 @@ VOICE_DUCK_MERGE_S: float = 0.4
 # le contrat ne gère qu'un tempo fixe (beat:, beats:, on_beats).
 TEMPO_DRIFT_WARN_MS: float = 40.0
 
+# Provenance C2PA (phase 7, CONTRACT §11.8). Certificat et clé privée LOCAUX (jamais versionnés) :
+# MOGRAPH_C2PA_DIR, défaut .c2pa/ à la racine (ignoré par git). c2patool (vérification indépendante) :
+# MOGRAPH_C2PATOOL, sinon .tools/c2patool-<version>/c2patool/c2patool(.exe), sinon le PATH.
+C2PA_DIR: Path = Path(os.environ.get("MOGRAPH_C2PA_DIR", ROOT / ".c2pa")).resolve()
+C2PATOOL_VERSION: str = "0.28.4"
+C2PA_IPTC_BASE: str = "http://cv.iptc.org/newscodes/digitalsourcetype/"
+
+
+def c2patool_path() -> str | None:
+    env = os.environ.get("MOGRAPH_C2PATOOL")
+    if env:
+        return env
+    local = ROOT / ".tools" / f"c2patool-{C2PATOOL_VERSION}" / "c2patool" / ("c2patool.exe" if IS_WINDOWS else "c2patool")
+    return str(local) if local.is_file() else shutil.which("c2patool")
+
 # Couche agent (phase 6, CONTRACT §11.7) : appels à Claude par « claude -p » (abonnement, jamais l'API
 # facturée). « mograph brief » : AU PLUS 3 appels (feuille de route), plafond non modifiable.
 BRIEF_MAX_ITERATIONS: int = 3
@@ -387,7 +402,11 @@ PROFILES: dict[str, dict[str, str]] = {
     "hevc_main10": {"ext": ".mp4", "codec": "hevc", "profile": "Main 10", "pix_fmt": "yuv420p10le"},
     "prores_422hq": {"ext": ".mov", "codec": "prores", "profile": "HQ", "pix_fmt": "yuv422p10le"},
     "prores_4444": {"ext": ".mov", "codec": "prores", "profile": "4444", "pix_fmt": "yuva444p10le"},
+    # Phase 7 : AV1 10 bits par NVENC (GPU NVIDIA Ada ou plus récent ; RTX 4060 : un seul moteur NVENC).
+    # Le flux NVENC n'entre pas dans le contrat de déterminisme (porte : images du maître).
+    "av1_nvenc": {"ext": ".mp4", "codec": "av1", "profile": "Main", "pix_fmt": "yuv420p10le"},
 }
+AV1_CQ_DEFAULT: int = 30
 
 HEVC_CRF_DEFAULT: int = 18
 TIMECODE_START: str = "01:00:00:00"

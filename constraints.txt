@@ -3,13 +3,23 @@
 #   pip install -r requirements.txt -c constraints.txt
 # Toute mise à jour peut changer des pixels : refaire la baseline (scripts/baseline.py).
 attrs==26.1.0
+c2pa-python==0.38.0
+certifi==2026.10.23
+cffi==2.1.1
+charset-normalizer==3.5.2
+cryptography==50.0.2
 greenlet==3.5.6
-jsonschema==4.23.0
+idna==3.20
 jsonschema-specifications==2025.9.1
+jsonschema==4.23.0
 numpy==2.2.6
 opencv-python-headless==4.12.0.88
 playwright==1.56.0
+pycparser==3.12
 pyee==13.0.1
 referencing==0.37.0
+requests==2.34.2
 rpds-py==2026.6.3
+toml==0.10.2
 typing_extensions==4.16.0
+urllib3==2.8.0

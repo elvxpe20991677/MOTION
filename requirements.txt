@@ -3,3 +3,5 @@ playwright==1.56.0
 jsonschema==4.23.0
 opencv-python-headless==4.12.0.88
 numpy==2.2.6
+# Phase 7 : signature et lecture C2PA (MIT OU Apache-2.0) ; 0.38.0 = dernière version avec roue Windows au 31/10/2026.
+c2pa-python==0.38.0

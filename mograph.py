@@ -9,7 +9,7 @@ Commandes :
     compose      <scène>   reconstruit la séquence maître
     encode       <scène>   séquence maître puis encodage de tous les livrables
     qc           <scène>   contrôle qualité automatique (code de sortie 1 si NON CONFORME)
-    all          <scène>   plaques -> images web -> déterminisme -> maître -> encodage -> QC
+    all          <scène>   plaques -> images web -> déterminisme -> maître -> encodage -> QC -> signature C2PA (si demandée)
     synth-beat             génère une piste de test déterministe (WAV 48 kHz 24 bits)
     status       <scène>   avancement d'un rendu (y compris détaché)
     versions     <scène>   archive les versions des outils dans out/<scène>/versions.txt
@@ -20,6 +20,7 @@ Commandes :
     sheets       <scène>   planches contact (out/<scène>/planche_contact.png) ; --vision : relecture par Claude
     brief        "<idée>"  une idée -> une scène VALIDE écrite par Claude (claude -p, abonnement, 3 essais au plus)
     mcp                    serveur MCP local « mograph » (stdio) pour piloter le pipeline depuis un agent
+    c2pa         init|sign|verify   provenance C2PA : certificat local, signature des livrables, vérification
     assets       add|verify|list   assets IA gelés : verrou assets.lock.json (empreinte + provenance)
     voice        <scène>   voix off ElevenLabs du bloc voiceover : estimation, garde-fou de quota, cache, gel
 
@@ -665,8 +666,26 @@ def _run_all(compiled: dict, t0: float, *, workers: int | None, count: int | Non
     versions = write_versions(compiled["scene_id"])
     _log(f"Versions archivées : {versions}")
     ok = step_qc(compiled)
+    if ok and ((compiled.get("provenance") or {}).get("c2pa") or {}).get("sign"):
+        # Phase 7 (CONTRACT §11.8) : signature C2PA en TOUTE DERNIÈRE étape, sur les fichiers livrés.
+        ok = step_c2pa(compiled)
+    elif not ok and ((compiled.get("provenance") or {}).get("c2pa") or {}).get("sign"):
+        _log("Livrables NON signés (C2PA) : QC non conforme. Corrigez, puis relancez « all » (ou « c2pa sign »).")
     _log(f"Durée totale : {time.perf_counter() - t0:.1f} s")
     return EXIT_OK if ok else EXIT_FAIL
+
+
+def step_c2pa(compiled: dict) -> bool:
+    from pipeline import c2pa_sign
+
+    _banner("PROVENANCE C2PA (dernière étape)")
+    try:
+        c2pa_sign.sign_outputs(compiled, log=_log)
+    except c2pa_sign.C2paError as exc:
+        _log(f"ÉCHEC C2PA : {exc}")
+        return False
+    _log(f"Manifestes vérifiés : {config.scene_out_dir(compiled['scene_id']) / 'c2pa_report.md'}")
+    return True
 
 
 def cmd_all(args) -> int:
@@ -1182,6 +1201,36 @@ def cmd_brief(args) -> int:
     return code
 
 
+def cmd_c2pa(args) -> int:
+    """Provenance C2PA (CONTRACT §11.8) : init (certificat local), sign <scène> (livrables existants, sans
+    réencodage), verify <fichier> (SDK C2PA + c2patool s'il est installé)."""
+    from pipeline import c2pa_sign
+
+    try:
+        if args.c2pa_cmd == "init":
+            c2pa_sign.init_credentials(force=args.force)
+            return EXIT_OK
+        if args.c2pa_cmd == "sign":
+            compiled = compile_or_exit(args.scene)
+            with _RenderLock(compiled["scene_id"]):
+                c2pa_sign.sign_outputs(compiled, log=_log)
+            return EXIT_OK
+        v = c2pa_sign.verify(Path(args.file))
+        if args.json:
+            print(json.dumps(v, ensure_ascii=False))
+        else:
+            tool = v.get("c2patool") or {}
+            print(f"{v['file']} : " + (f"manifeste {v['state']}" + (f" ({', '.join(v['statuses'])})" if v["statuses"] else "")
+                                         if v["signed"] else "AUCUN manifeste C2PA"))
+            if v["signed"]:
+                print(f"  type de source : {v['digital_source_type']} ; signataire : {v['signer']}")
+            print("  c2patool : " + (f"{tool.get('state') or tool.get('message')}" if tool.get("available") else "absent"))
+        return EXIT_OK if v["valid"] else EXIT_FAIL
+    except c2pa_sign.C2paError as exc:
+        print(f"ÉCHEC : {exc}", file=sys.stderr)
+        return EXIT_FAIL
+
+
 def cmd_mcp(args) -> int:
     """Serveur MCP « mograph » sur stdio (JSON-RPC 2.0) : la sortie standard est réservée au protocole."""
     from pipeline import mcp_server
@@ -1327,6 +1376,17 @@ def build_parser() -> argparse.ArgumentParser:
     mc = sub.add_parser("mcp", help="serveur MCP local « mograph » (stdio) : validate, preview, draft, all, status, "
                                     "beats, sheets")
     mc.set_defaults(func=cmd_mcp)
+
+    cp_ = sub.add_parser("c2pa", help="provenance C2PA : init (certificat local), sign <scène>, verify <fichier>")
+    csub = cp_.add_subparsers(dest="c2pa_cmd", required=True)
+    ci = csub.add_parser("init", help="créer le certificat de signature local (.c2pa/, jamais versionné)")
+    ci.add_argument("--force", action="store_true", help="remplacer un certificat existant")
+    cs = csub.add_parser("sign", help="signer les livrables existants d'une scène (dernière étape, sans réencodage)")
+    cs.add_argument("scene", help="chemin d'un .json ou id de scène (scenes/<id>.json)")
+    cv = csub.add_parser("verify", help="lire et valider le manifeste C2PA d'un fichier")
+    cv.add_argument("file", help="fichier MP4 ou MOV")
+    cv.add_argument("--json", action="store_true", help="un seul objet JSON")
+    cp_.set_defaults(func=cmd_c2pa)
 
     sb = sub.add_parser("synth-beat", help="générer une piste de test déterministe")
     sb.add_argument("--bpm", type=float, required=True)
