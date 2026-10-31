@@ -17,12 +17,15 @@ Commandes :
     new          <id>      nouvelle scène depuis un modèle (templates/) : --template titre
     batch        <scènes>  rend plusieurs scènes, ou une scène modèle × un CSV (--data)
     beats        <audio>   détecte tempo, premier temps, drop et dérive d'une musique (--scene … --write, --json)
-    sheets       <scène>   planches contact (out/<scène>/planche_contact.png)
+    sheets       <scène>   planches contact (out/<scène>/planche_contact.png) ; --vision : relecture par Claude
+    brief        "<idée>"  une idée -> une scène VALIDE écrite par Claude (claude -p, abonnement, 3 essais au plus)
+    mcp                    serveur MCP local « mograph » (stdio) pour piloter le pipeline depuis un agent
     assets       add|verify|list   assets IA gelés : verrou assets.lock.json (empreinte + provenance)
     voice        <scène>   voix off ElevenLabs du bloc voiceover : estimation, garde-fou de quota, cache, gel
 
 Options utiles : validate --layout (zones sûres vérifiées sur quelques images, avant le rendu) ;
-all/render --draft (préversion rapide : 1080p, plaques 3D réduites, sans flou, sans QC).
+all/render --draft (préversion rapide : 1080p, plaques 3D réduites, sans flou, sans QC) ;
+validate/status/sheets/beats --json (un seul objet JSON sur la sortie standard : scripts et agents).
 
 <scène> = chemin d'un fichier JSON, ou id d'une scène de scenes/.
 Option --detach (render, plates, all) : relance la commande dans un processus détaché qui survit
@@ -75,6 +78,11 @@ def resolve_scene_path(arg: str) -> Path:
     )
 
 
+def draft_id(scene_id: str) -> str:
+    """Id de la préversion d'une scène (build/ et out/ séparés du rendu final)."""
+    return f"{scene_id}_draft"[:64]
+
+
 def draft_scene(raw: dict) -> dict:
     """Préversion rapide : id « <id>_draft » (build/ et out/ séparés du rendu final), 1080p, plaques 3D
     à mi-résolution et 16 échantillons, sans flou de mouvement, un seul livrable HEVC (plus le 4444
@@ -82,7 +90,7 @@ def draft_scene(raw: dict) -> dict:
     import copy
 
     d = copy.deepcopy(raw)
-    d["id"] = f"{d['id']}_draft"[:64]
+    d["id"] = draft_id(d["id"])
     d["title"] = f"{d.get('title', d['id'])} (préversion)"
     d.setdefault("format", {})["resolution"] = "1080p"
     q = d.setdefault("quality", {})
@@ -124,6 +132,11 @@ def _scene_id_from_arg(scene_arg: str) -> str:
     path = resolve_scene_path(scene_arg)
     with open(path, encoding="utf-8") as fh:
         return str(json.load(fh).get("id") or path.stem)
+
+
+def _detach_id(args) -> str:
+    sid = _scene_id_from_arg(args.scene)
+    return draft_id(sid) if getattr(args, "draft", False) else sid
 
 
 def _logs_dir(scene_id: str) -> Path:
@@ -379,6 +392,8 @@ def write_versions(scene_id: str) -> Path:
 def cmd_validate(args) -> int:
     from pipeline import scene as scene_mod
 
+    if args.json:
+        return _validate_json(args)
     compiled = compile_or_exit(args.scene)
     print(scene_mod.summary(compiled))
     print(f"\nScène compilée : {config.scene_build_dir(compiled['scene_id']) / 'compiled.json'}")
@@ -387,9 +402,50 @@ def cmd_validate(args) -> int:
     return layout_check(compiled, args.workers)
 
 
-def layout_check(compiled: dict, workers: int | None) -> int:
-    """Rend uniquement les images de relevé (5 par seconde) puis contrôle les zones sûres AVANT le rendu
-    complet. Les images rendues servent ensuite au rendu (reprise) : aucun travail perdu."""
+def _validate_json(args) -> int:
+    """validate --json : UN objet JSON sur la sortie standard (outil MCP « validate »), journaux du rendu
+    des relevés (--layout) sur la sortie d'erreur. Code 1 si la scène est refusée ou la mise en page non
+    conforme."""
+    import contextlib
+
+    from pipeline import scene as scene_mod
+
+    out = {"ok": False, "scene": args.scene}
+
+    def emit(code: int) -> int:
+        print(json.dumps(out, ensure_ascii=False))
+        return code
+
+    try:
+        path = resolve_scene_path(args.scene)
+    except SystemExit as exc:
+        out["errors"] = [str(exc)]
+        return emit(EXIT_FAIL)
+    out["scene"] = str(path)
+    try:
+        compiled = scene_mod.compile_scene(path)
+    except scene_mod.SceneError as exc:
+        out.update(errors=exc.errors, warnings=exc.warnings)
+        return emit(EXIT_FAIL)
+    fps = int(compiled["format"]["fps"])
+    out.update(ok=True, scene_id=compiled["scene_id"], title=compiled.get("title"), preset=compiled.get("preset_id"),
+               format=compiled["format"], frames=compiled["frames"], duration_s=round(compiled["frames"] / fps, 6),
+               shots=[{"id": s["id"], "frames": s["frames"]} for s in compiled["shots"]],
+               outputs=[o.get("profile") for o in compiled.get("outputs") or []],
+               warnings=compiled.get("warnings") or [], compiled=str(scene_mod.write_compiled(compiled)),
+               summary=scene_mod.summary(compiled))
+    if not args.layout:
+        return emit(EXIT_OK)
+    with contextlib.redirect_stdout(sys.stderr):
+        rep = _layout_report(compiled, args.workers)
+    out["layout"] = rep
+    return emit(EXIT_OK if rep["ok"] else EXIT_FAIL)
+
+
+def _layout_report(compiled: dict, workers: int | None) -> dict:
+    """Rend les images de relevé (5 par seconde) puis contrôle les zones sûres ; renvoie le rapport de
+    qc.preflight_layout plus « skipped » (plans non contrôlés : plaque 3D pas encore rendue) ; zone None
+    si aucun plan n'est contrôlable."""
     from pipeline import qc, web_render
 
     _banner("MISE EN PAGE (relevés des zones sûres)")
@@ -405,8 +461,18 @@ def layout_check(compiled: dict, workers: int | None) -> int:
         _log(f"Plans non contrôlés (plaque 3D pas encore rendue) : {', '.join(skipped)} — lancez « plates » d'abord.")
         compiled = dict(compiled, shots=[s for s in compiled["shots"] if s["id"] not in skipped])
         if not compiled["shots"]:
-            return EXIT_OK
+            return {"zone": None, "ok": True, "skipped": skipped, "blocking": [], "excursions": [], "near": []}
     rep = qc.preflight_layout(compiled)
+    rep["skipped"] = skipped
+    return rep
+
+
+def layout_check(compiled: dict, workers: int | None) -> int:
+    """Rend uniquement les images de relevé (5 par seconde) puis contrôle les zones sûres AVANT le rendu
+    complet. Les images rendues servent ensuite au rendu (reprise) : aucun travail perdu."""
+    rep = _layout_report(compiled, workers)
+    if rep["zone"] is None:
+        return EXIT_OK
     if rep["zone"] == "off":
         print("Contrôle des zones sûres désactivé par la scène (qc.safe_zone = off).")
         return EXIT_OK
@@ -435,7 +501,7 @@ def cmd_plates(args) -> int:
 
 def cmd_render(args) -> int:
     if args.detach:
-        return detach(sys.argv[1:], _scene_id_from_arg(args.scene), "render")
+        return detach(sys.argv[1:], _detach_id(args), "render")
     compiled = compile_or_exit(args.scene, draft=args.draft)
     step_audio(compiled)
     step_plates_and_web(compiled, args.workers, plates=not args.no_plates)
@@ -496,20 +562,38 @@ def run_all(scene, *, workers: int | None = None, count: int | None = None, draf
 
 def cmd_all(args) -> int:
     if args.detach:
-        return detach(sys.argv[1:], _scene_id_from_arg(args.scene), "all")
+        return detach(sys.argv[1:], _detach_id(args), "all")
     return run_all(args.scene, workers=args.workers, count=args.count, draft=args.draft)
 
 
 def cmd_sheets(args) -> int:
+    """Planches contact ; --vision : relecture visuelle par Claude (CONTRACT §11.7), avertissements
+    seulement : le code de sortie ne dépend jamais de la relecture."""
     from pipeline import sheets
 
-    compiled = compile_or_exit(args.scene)
+    say = (lambda m: print(m, file=sys.stderr)) if args.json else _log
+    compiled = compile_or_exit(args.scene, draft=args.draft)
     try:
-        for p in sheets.write_contact_sheets(compiled, log=_log):
-            print(p)
+        paths = sheets.write_contact_sheets(compiled, log=say)
     except sheets.SheetError as exc:
-        print(f"ÉCHEC : {exc}", file=sys.stderr)
+        if args.json:
+            print(json.dumps({"ok": False, "scene_id": compiled["scene_id"], "error": str(exc)}, ensure_ascii=False))
+        else:
+            print(f"ÉCHEC : {exc}", file=sys.stderr)
         return EXIT_FAIL
+    vision = None
+    if args.vision:
+        from pipeline import vision_qc
+
+        vision = vision_qc.review(compiled, paths, log=say)
+    if args.json:
+        print(json.dumps({"ok": True, "scene_id": compiled["scene_id"], "sheets": [str(p) for p in paths],
+                          "vision": vision}, ensure_ascii=False))
+        return EXIT_OK
+    for p in paths:
+        print(p)
+    if vision is not None:
+        print(config.scene_out_dir(compiled["scene_id"]) / "vision_qc.md")
     return EXIT_OK
 
 
@@ -713,46 +797,80 @@ def cmd_synth_beat(args) -> int:
     return EXIT_OK
 
 
+def _status_data(scene_id: str, lines: int) -> dict:
+    """Avancement d'un rendu (structure commune au texte et à --json)."""
+    bdir = config.scene_build_dir(scene_id)
+    data = {"scene_id": scene_id, "build_dir": str(bdir), "compiled": False, "shots": [], "master": None,
+            "determinism": None, "qc_verdict": None, "detached": []}
+    compiled_path = bdir / "compiled.json"
+    if compiled_path.exists():
+        compiled = json.loads(compiled_path.read_text(encoding="utf-8"))
+        data["compiled"] = True
+        for shot in compiled["shots"]:
+            plates = []
+            for job in shot.get("plates", []):
+                d = Path(job["out_dir"])
+                n = len(list(d.glob("[0-9][0-9][0-9][0-9][0-9][0-9].png"))) if d.exists() else 0
+                plates.append({"plate": job["plate_id"], "done": n, "total": job["frames"]})
+            mpath = config.shot_frames_dir(scene_id, shot["id"]) / "manifest.json"
+            done = 0
+            if mpath.exists():
+                try:
+                    done = len(json.loads(mpath.read_text(encoding="utf-8")).get("frames_done", {}))
+                except (OSError, json.JSONDecodeError):
+                    done = -1
+            data["shots"].append({"id": shot["id"], "done": done, "total": shot["frames"], "plates": plates})
+        master = config.master_dir(scene_id)
+        data["master"] = {"done": len(list(master.glob("[0-9]*.png"))) if master.exists() else 0,
+                          "total": compiled["frames"]}
+        det = bdir / "determinism.json"
+        if det.exists():
+            r = json.loads(det.read_text(encoding="utf-8"))
+            data["determinism"] = {"matches": r.get("matches"), "total": r.get("total"), "ok": bool(r.get("ok"))}
+        qc_json = config.scene_out_dir(scene_id) / "qc_report.json"
+        if qc_json.exists():
+            data["qc_verdict"] = json.loads(qc_json.read_text(encoding="utf-8")).get("verdict")
+    for pid_file in sorted((bdir / "logs").glob("*.pid")) if (bdir / "logs").exists() else []:
+        pid_lines = pid_file.read_text(encoding="utf-8").splitlines()
+        try:
+            pid = int(pid_lines[0])
+        except (IndexError, ValueError):
+            continue
+        log_path = Path(pid_lines[1]) if len(pid_lines) > 1 else None
+        tail = []
+        if log_path and log_path.exists():
+            tail = log_path.read_text(encoding="utf-8", errors="replace").splitlines()[-lines:]
+        data["detached"].append({"command": pid_file.stem, "pid": pid, "running": _pid_alive(pid),
+                                 "log": str(log_path) if log_path else None, "tail": tail})
+    return data
+
+
 def cmd_status(args) -> int:
     scene_id = _scene_id_from_arg(args.scene)
-    bdir = config.scene_build_dir(scene_id)
-    print(f"Scène {scene_id} — {bdir}")
-    compiled_path = bdir / "compiled.json"
-    if not compiled_path.exists():
-        print("  (pas encore compilée : lancez validate ou render)")
+    if args.draft:
+        scene_id = draft_id(scene_id)
+    data = _status_data(scene_id, args.lines)
+    if args.json:
+        print(json.dumps(data, ensure_ascii=False))
         return EXIT_OK
-    compiled = json.loads(compiled_path.read_text(encoding="utf-8"))
-    for shot in compiled["shots"]:
-        for job in shot.get("plates", []):
-            d = Path(job["out_dir"])
-            n = len(list(d.glob("[0-9][0-9][0-9][0-9][0-9][0-9].png"))) if d.exists() else 0
-            print(f"  plaque {shot['id']}/{job['plate_id']:<12} {n:>5}/{job['frames']}")
-        mpath = config.shot_frames_dir(scene_id, shot["id"]) / "manifest.json"
-        done = 0
-        if mpath.exists():
-            try:
-                done = len(json.loads(mpath.read_text(encoding="utf-8")).get("frames_done", {}))
-            except (OSError, json.JSONDecodeError):
-                done = -1
-        print(f"  plan   {shot['id']:<19} {done:>5}/{shot['frames']}")
-    master = config.master_dir(scene_id)
-    n_master = len(list(master.glob("[0-9]*.png"))) if master.exists() else 0
-    print(f"  maître {'':<19} {n_master:>5}/{compiled['frames']}")
-    det = bdir / "determinism.json"
-    if det.exists():
-        r = json.loads(det.read_text(encoding="utf-8"))
-        print(f"  déterminisme : {r.get('matches')}/{r.get('total')} ({'OK' if r.get('ok') else 'ÉCHEC'})")
-    qc_json = config.scene_out_dir(scene_id) / "qc_report.json"
-    if qc_json.exists():
-        print(f"  QC : {json.loads(qc_json.read_text(encoding='utf-8')).get('verdict')}")
-    for pid_file in sorted((bdir / "logs").glob("*.pid")) if (bdir / "logs").exists() else []:
-        lines = pid_file.read_text(encoding="utf-8").splitlines()
-        pid, log_path = int(lines[0]), Path(lines[1]) if len(lines) > 1 else None
-        state = "EN COURS" if _pid_alive(pid) else "terminé"
-        print(f"  processus détaché {pid_file.stem} PID {pid} : {state}")
-        if log_path and log_path.exists():
-            tail = log_path.read_text(encoding="utf-8", errors="replace").splitlines()[-args.lines:]
-            print("    " + "\n    ".join(tail))
+    print(f"Scène {scene_id} — {data['build_dir']}")
+    if not data["compiled"]:
+        print("  (pas encore compilée : lancez validate ou render)")
+    for shot in data["shots"]:
+        for job in shot["plates"]:
+            print(f"  plaque {shot['id']}/{job['plate']:<12} {job['done']:>5}/{job['total']}")
+        print(f"  plan   {shot['id']:<19} {shot['done']:>5}/{shot['total']}")
+    if data["master"]:
+        print(f"  maître {'':<19} {data['master']['done']:>5}/{data['master']['total']}")
+    det = data["determinism"]
+    if det:
+        print(f"  déterminisme : {det['matches']}/{det['total']} ({'OK' if det['ok'] else 'ÉCHEC'})")
+    if data["qc_verdict"]:
+        print(f"  QC : {data['qc_verdict']}")
+    for d in data["detached"]:
+        print(f"  processus détaché {d['command']} PID {d['pid']} : {'EN COURS' if d['running'] else 'terminé'}")
+        if d["tail"]:
+            print("    " + "\n    ".join(d["tail"]))
     return EXIT_OK
 
 
@@ -864,6 +982,89 @@ def cmd_assets(args) -> int:
         return EXIT_FAIL
 
 
+def cmd_brief(args) -> int:
+    """Idée -> scène VALIDE écrite par Claude (claude -p, abonnement ; CONTRACT §11.7) dans scenes/<id>.json.
+
+    Au plus 3 appels (validation par le compilateur, correction à partir de ses messages). La sortie
+    versionnée est la scène JSON ; le bilan (idée, essais, modèle) reste dans build/_brief/ (non versionné).
+    """
+    import contextlib
+    import re
+
+    from pipeline import brief, claude_cli
+
+    say = (lambda m: print(m, file=sys.stderr)) if args.json else print
+
+    def fail(message: str, **extra) -> int:
+        print(f"ÉCHEC : {message}", file=sys.stderr)
+        if args.json:
+            print(json.dumps({"ok": False, "error": message, **extra}, ensure_ascii=False))
+        return EXIT_FAIL
+
+    if config.CLAUDE_ENV_ERRORS:
+        return fail(" ; ".join(config.CLAUDE_ENV_ERRORS))
+    if args.id and (len(args.id) > 48 or not re.fullmatch(brief.ID_PATTERN, args.id)):
+        return fail(f"id « {args.id} » invalide : minuscules, chiffres, « - » ou « _ », 48 caractères au plus.")
+    # Scène existante : refus AVANT tout appel (aucun quota consommé).
+    if args.id and (config.SCENES_DIR / f"{args.id}.json").exists() and not args.force:
+        return fail(f"la scène {config.SCENES_DIR / (args.id + '.json')} existe déjà : choisissez un autre --id ou "
+                    "ajoutez --force pour la remplacer.")
+    log_dir = config.BUILD_DIR / "_brief"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        scene, report = brief.generate(args.idea, preset_id=args.preset, aspect=args.aspect, scene_id=args.id,
+                                       max_iterations=args.max_iterations, model=args.model, log=say)
+    except brief.BriefError as exc:
+        kept = None
+        if exc.attempt:
+            kept = log_dir / f"{exc.attempt.get('id') or 'brief'}_refusee.json"
+            kept.write_text(json.dumps({"scene": exc.attempt, "errors": exc.errors}, ensure_ascii=False, indent=2)
+                            + "\n", encoding="utf-8")
+        for e in exc.errors[:10]:
+            print(f"  • {e}", file=sys.stderr)
+        if kept:
+            print(f"Dernière proposition refusée : {kept}", file=sys.stderr)
+        return fail(str(exc), errors=exc.errors, attempt=str(kept) if kept else None)
+    except claude_cli.ClaudeError as exc:
+        return fail(str(exc))
+    target = config.SCENES_DIR / f"{scene['id']}.json"
+    text = json.dumps(scene, ensure_ascii=False, indent=2) + "\n"
+    if target.exists() and not args.force:
+        keep = log_dir / f"{scene['id']}.json"
+        keep.write_text(text, encoding="utf-8")
+        return fail(f"la scène {target} existe déjà : scène générée conservée dans {keep} (copiez-la sous un autre id, "
+                    "ou relancez avec --force).", kept=str(keep))
+    tmp = target.with_suffix(".json.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, target)
+    record = {"contract": brief.BRIEF_CONTRACT, "date_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+              "idea": args.idea, "preset": args.preset, "aspect": args.aspect, "scene": str(target), **report}
+    (log_dir / f"{scene['id']}.brief.json").write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n",
+                                                       encoding="utf-8")
+    say(f"Scène écrite : {target} ({report['iterations']} essai(s), modèle {report['model']}).")
+    say(f"Suite : python mograph.py validate {scene['id']} --layout, puis python mograph.py all {scene['id']} --draft")
+    code = EXIT_OK
+    if args.draft:
+        if args.json:
+            with contextlib.redirect_stdout(sys.stderr):
+                code = run_all(str(target), draft=True)
+        else:
+            code = run_all(str(target), draft=True)
+    if args.json:
+        print(json.dumps({"ok": code == EXIT_OK, "scene": str(target), "scene_id": scene["id"],
+                          "iterations": report["iterations"], "model": report["model"], "history": report["history"],
+                          "draft": bool(args.draft)}, ensure_ascii=False))
+    return code
+
+
+def cmd_mcp(args) -> int:
+    """Serveur MCP « mograph » sur stdio (JSON-RPC 2.0) : la sortie standard est réservée au protocole."""
+    from pipeline import mcp_server
+
+    mcp_server.serve()
+    return EXIT_OK
+
+
 # ---------------------------------------------------------------------------------------------
 # Analyse des arguments
 # ---------------------------------------------------------------------------------------------
@@ -891,6 +1092,7 @@ def build_parser() -> argparse.ArgumentParser:
     v = scene_cmd("validate", cmd_validate, "valider et compiler une scène", workers=True)
     v.add_argument("--layout", action="store_true",
                    help="rendre les images de relevé et contrôler les zones sûres avant le rendu complet")
+    v.add_argument("--json", action="store_true", help="un seul objet JSON (scripts, agents, serveur MCP)")
     scene_cmd("plates", cmd_plates, "rendre les plaques 3D (Blender)", detachable=True)
     r = scene_cmd("render", cmd_render, "plaques 3D + images web", detachable=True, workers=True)
     r.add_argument("--no-plates", action="store_true", help="ne pas (re)lancer Blender")
@@ -902,7 +1104,11 @@ def build_parser() -> argparse.ArgumentParser:
     a_ = scene_cmd("all", cmd_all, "pipeline complet", detachable=True, workers=True, count=True)
     a_.add_argument("--draft", action="store_true",
                     help="préversion rapide : 1080p, plaques 3D réduites, sans flou, sans déterminisme ni QC")
-    scene_cmd("sheets", cmd_sheets, "planches contact de la séquence maître")
+    sh = scene_cmd("sheets", cmd_sheets, "planches contact de la séquence maître")
+    sh.add_argument("--draft", action="store_true", help="planches de la préversion (id <scène>_draft)")
+    sh.add_argument("--vision", action="store_true",
+                    help="relecture visuelle par Claude (claude -p, abonnement) : avertissements seulement")
+    sh.add_argument("--json", action="store_true", help="un seul objet JSON (scripts, agents, serveur MCP)")
     pv = scene_cmd("preview", cmd_preview, "aperçu en direct dans le navigateur")
     pv.add_argument("--port", type=int, default=8765, help="port local (défaut 8765 ; 0 = libre)")
     pv.add_argument("--no-open", action="store_true", help="ne pas ouvrir le navigateur")
@@ -935,6 +1141,8 @@ def build_parser() -> argparse.ArgumentParser:
     be.set_defaults(func=cmd_beats)
     s = scene_cmd("status", cmd_status, "avancement d'un rendu")
     s.add_argument("--lines", type=int, default=8, help="lignes de journal affichées")
+    s.add_argument("--draft", action="store_true", help="avancement de la préversion (id <scène>_draft)")
+    s.add_argument("--json", action="store_true", help="un seul objet JSON (scripts, agents, serveur MCP)")
     scene_cmd("versions", cmd_versions, "archiver les versions des outils")
 
     vc = sub.add_parser("voice", help="voix off ElevenLabs du bloc voiceover (garde-fou de quota, cache, gel)")
@@ -975,6 +1183,25 @@ def build_parser() -> argparse.ArgumentParser:
     al = asub.add_parser("list", help="lister les assets IA gelés et leur provenance")
     al.add_argument("--json", action="store_true", help="sortie JSON")
     asp.set_defaults(func=cmd_assets)
+
+    from pipeline import brief as brief_mod
+    bf = sub.add_parser("brief", help="une idée -> une scène VALIDE écrite par Claude (claude -p, abonnement)")
+    bf.add_argument("idea", help="l'idée de la vidéo (sujet, ton, message, durée)")
+    bf.add_argument("--preset", default="flat_riso", choices=brief_mod.PRESETS_2D, help="preset 2D (défaut : flat_riso)")
+    bf.add_argument("--aspect", default="16:9", choices=sorted(config.LOGICAL_CANVAS), help="format (défaut : 16:9)")
+    bf.add_argument("--id", default=None, help="id imposé de la scène (scenes/<id>.json)")
+    bf.add_argument("--max-iterations", type=int, default=None, choices=range(1, config.BRIEF_MAX_ITERATIONS + 1),
+                    metavar=f"1..{config.BRIEF_MAX_ITERATIONS}",
+                    help=f"essais au plus (défaut et maximum : {config.BRIEF_MAX_ITERATIONS})")
+    bf.add_argument("--model", default=None, help="modèle de la CLI (défaut : MOGRAPH_CLAUDE_MODEL, sinon sonnet)")
+    bf.add_argument("--force", action="store_true", help="remplacer une scène existante de même id")
+    bf.add_argument("--draft", action="store_true", help="enchaîner la préversion (all --draft) de la scène écrite")
+    bf.add_argument("--json", action="store_true", help="un seul objet JSON (scripts, agents)")
+    bf.set_defaults(func=cmd_brief)
+
+    mc = sub.add_parser("mcp", help="serveur MCP local « mograph » (stdio) : validate, preview, draft, all, status, "
+                                    "beats, sheets")
+    mc.set_defaults(func=cmd_mcp)
 
     sb = sub.add_parser("synth-beat", help="générer une piste de test déterministe")
     sb.add_argument("--bpm", type=float, required=True)

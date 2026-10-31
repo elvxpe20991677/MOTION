@@ -107,6 +107,8 @@ jobs:
         run: .venv/bin/python tests/verify_step40_voice.py
       - name: Phase 5 — musique gelée et repères (aucune IA appelée)
         run: .venv/bin/python tests/verify_step50_music.py
+      - name: Phase 6 — couche agent (faux « claude », aucun appel réel)
+        run: .venv/bin/python tests/verify_step60_agent.py
       - name: Journaux et images de test (en cas d'échec)
         if: failure()
         uses: actions/upload-artifact@v4

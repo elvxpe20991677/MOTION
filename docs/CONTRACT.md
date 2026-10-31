@@ -872,3 +872,100 @@ par marqueurs (`audio.markers`, `marker:id`).
 
 Tests : `tests/verify_step50_music.py` (aucune IA appelée ; « musique d'IA » simulée par une piste de
 test encodée en MP3 et gelée en import manuel).
+
+### 11.7 Phase 6 — couche agent (serveur MCP, skill, `mograph brief`, relecture visuelle)
+Sources vérifiées : spécification MCP **2025-11-25** (modelcontextprotocol.io/specification/2025-11-25,
+pages *basic/lifecycle* et *server/tools*, lues le 02/10/2026) ; documentation Claude Code
+(code.claude.com/docs/en/skills et /mcp, 02/10/2026 : skills de projet sous `.claude/skills/<nom>/SKILL.md`,
+serveurs de projet dans `.mcp.json` à la racine, approbation demandée en session interactive, pas avec
+`claude -p`) ; options de la CLI relevées par `claude --help` (version 2.1.309, 31/10/2026).
+
+**Principe budgétaire.** Tout appel à Claude depuis le code passe par la CLI `claude -p` de
+l'abonnement de l'utilisateur (`pipeline/claude_cli.py`), JAMAIS par le SDK ni une clé API facturée.
+Garde-fous, dans l'ordre :
+- exécutable : `MOGRAPH_CLAUDE`, sinon le premier candidat qui répond « … (Claude Code) » à `--version`
+  (PATH, `CLAUDE_CODE_EXECPATH` publié par l'application hôte, CLI de l'application de bureau sous
+  `%LOCALAPPDATA%/Claude-Data/*/claude-code/<version>/*/claude.exe` ou `%APPDATA%/Claude/claude-code/…`) ;
+- environnement de l'appel : `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_USE_BEDROCK`,
+  `CLAUDE_CODE_USE_VERTEX`, `CLAUDE_CODE_USE_FOUNDRY` et apparentées RETIRÉES ; variables d'une session
+  Claude Code hôte (jeton de messagerie, identifiants de session) retirées aussi ;
+- `claude auth status` doit répondre `loggedIn: true`, sinon REFUS sans appel (« lancez une fois
+  `claude auth login` ») ;
+- arguments : `-p --output-format stream-json --verbose --json-schema <schéma> --no-session-persistence
+  --setting-sources "" --strict-mcp-config --disable-slash-commands --system-prompt <court> --tools ""
+  --max-budget-usd <MOGRAPH_CLAUDE_MAX_BUDGET_USD, défaut 1> --model <MOGRAPH_CLAUDE_MODEL, défaut sonnet>` ;
+  le prompt passe par l'entrée standard ; dossier de travail temporaire supprimé ensuite ; délai
+  `MOGRAPH_CLAUDE_TIMEOUT` (600 s) puis processus tué ;
+- le message d'initialisation du flux doit déclarer `apiKeySource = "none"` (authentification par
+  l'abonnement claude.ai) et `apiProvider = "firstParty"` ; sinon le processus est TUÉ avant toute
+  requête et l'appel refusé (aucune facturation à l'usage possible par ce chemin) ;
+- résultat : `structured_output` du message `result` (objet validé par la CLI contre le schéma) ; erreur
+  de la CLI, sortie illisible ou délai → `ClaudeError` (message français actionnable). Le coût
+  `total_cost_usd` affiché par la CLI est un coût « liste » indicatif : sur un abonnement, l'appel
+  consomme le quota, il n'est pas facturé à l'usage.
+
+**`mograph brief "<idée>" [--preset P] [--aspect A] [--id ID] [--max-iterations 1..3] [--model M]
+[--force] [--draft] [--json]`** (`pipeline/brief.py`) :
+- Claude remplit le schéma SIMPLIFIÉ `mograph-brief/1` : `{id, title, brief, shots[1..6]: {id, intent,
+  duration, background?, transition?, layers[1..6]: {id, type text|shape, text?, style?, size?, color?,
+  shape?, w?, h?, x, y, anchor?, move, at}}}` où `move` et `color` sont ÉNUMÉRÉS d'après le preset
+  choisi (ses `motion.moves` et sa palette), presets 2D seulement (flat_riso, kinetic_signal,
+  vhs_glitch, handmade_chalk) ; une animation par calque ;
+- conversion DÉTERMINISTE en scène complète (`to_scene`) : durées arrondies à l'image (25 i/s),
+  graine dérivée de l'id (SHA-256), format 1080p, livrable `hevc_main10`, QC standard, storyboard (une
+  intention par plan), transitions d'entrée de 0,4 s, `provenance.ai_disclosure = {ai_used: true, roles
+  [scene, text], date, tools [{name "Claude Code (claude -p)", model, role}]}` ;
+- boucle bornée : appel → conversion → `validate_scene` (compilateur complet) ; refus → nouvel appel
+  avec la proposition, les messages du compilateur (25 au plus) et l'idée d'origine ; AU PLUS
+  `config.BRIEF_MAX_ITERATIONS` = 3 appels (plafond non modifiable : `--max-iterations` ≤ 3, `generate`
+  refuse au-delà) ; une sortie hors schéma compte comme un essai ; une CLI en échec arrête la boucle ;
+- scène existante : avec `--id`, refus AVANT tout appel (aucun quota consommé) sauf `--force` ; sans
+  `--id`, si l'id choisi par Claude existe, la scène générée est gardée dans `build/_brief/<id>.json`
+  et rien n'est remplacé ;
+- sortie VERSIONNÉE : la scène `scenes/<id>.json` (UTF-8, écriture atomique, `$schema`) — pas le
+  prompt. Bilan non versionné `build/_brief/<id>.brief.json` (idée, preset, essais, modèle, historique) ;
+  échec après 3 essais → code 1, dernière proposition et erreurs dans `build/_brief/<id>_refusee.json` ;
+- `--draft` enchaîne `all --draft` ; `--json` : stdout = UN objet JSON, messages sur stderr.
+
+**Serveur MCP `mograph`** (`pipeline/mcp_server.py`, `python mograph.py mcp`, bibliothèque standard
+seule) : JSON-RPC 2.0 sur stdio, un message par ligne ; `initialize` (version demandée si connue parmi
+2025-11-25, 2025-06-18, 2025-03-26, sinon 2025-11-25 ; capacité `tools`, `instructions`), notifications
+sans réponse, `ping`, `tools/list`, `tools/call`. Outils (chacun lance `mograph.py` dans un
+sous-processus ; stdout du serveur réservé au protocole) :
+
+| Outil | Paramètres | Effet |
+|---|---|---|
+| `validate` | scene, layout? | `validate --json` ; scène refusée ou mise en page non conforme → `isError` + messages |
+| `preview` | scene, port? | aperçu détaché (`preview --no-open`), renvoie l'URL ; port occupé → `isError` |
+| `draft` | scene, **confirm** | `all --draft --detach` |
+| `all` | scene, **confirm** | `all --detach` |
+| `status` | scene, draft? | `status --json` (plans, plaques, maître, déterminisme, verdict QC, processus détachés) |
+| `beats` | audio, scene?, write?, confirm? | `beats --json` ; `write: true` exige `confirm: true` |
+| `sheets` | scene, draft?, vision? | `sheets --json [--vision]` |
+
+Résultat d'un outil : `{content: [{type text, text: JSON}], structuredContent, isError}`. Erreurs
+d'exécution (confirmation absente, scène refusée, rendu déjà en cours pour la scène, paramètre inconnu)
+→ `isError: true` et message actionnable ; erreurs de protocole → JSON-RPC (-32700 JSON illisible, -32600
+requête invalide, -32601 méthode inconnue, -32602 outil inconnu ou arguments non objet). Aucune action
+qui remplace des fichiers sans `"confirm": true`. Déclaration projet : `.mcp.json`
+(`{"mcpServers": {"mograph": {"type": "stdio", "command": ".venv/Scripts/python.exe", "args":
+["mograph.py", "mcp"]}}}`, chemin de l'interpréteur Windows).
+
+**Skill Claude Code** `.claude/skills/mograph/SKILL.md` : démarche (brief ou modèle → validate →
+draft → sheets --vision → all), les dix règles de `docs/GUIDE_SCENES.md` §2, outils MCP, garde-fous
+(jamais `all`, `draft` ni `beats --write` sans accord de l'utilisateur).
+
+**Relecture visuelle** (`pipeline/vision_qc.py`, `sheets --vision`) : Claude (CLI, outil `Read` seul,
+dossier de la planche autorisé par `--add-dir`) examine chaque planche contact et rend `{summary,
+issues[≤ 20]: {severity info|attention, where, problem, suggestion}}` ; écrit `out/<scène>/vision_qc.json`
+(`mograph-vision-qc/1`, `blocking: false`) et `vision_qc.md`. AVERTISSEMENTS SEULEMENT : un échec
+(CLI absente, non connectée, refusée par le garde-fou, réponse hors schéma) devient un avertissement
+consigné ; le code de sortie de `sheets` n'en dépend pas ; ni `qc_report`, ni la porte de
+déterminisme, ni `all` ne lisent ou ne lancent la relecture.
+
+CLI : `validate`, `status`, `sheets` gagnent `--json` (UN objet JSON sur stdout) ; `status` et `sheets`
+gagnent `--draft` ; un rendu détaché `--draft` écrit journal et PID sous l'id de la préversion
+(`build/<scène>_draft/logs/`). `MOGRAPH_SCENES_DIR` déplace le dossier des scènes (tests isolés).
+
+Tests : `tests/verify_step60_agent.py` (faux exécutable `claude` désigné par `MOGRAPH_CLAUDE` : aucun
+appel réel ; préversion complète lancée par le serveur MCP).

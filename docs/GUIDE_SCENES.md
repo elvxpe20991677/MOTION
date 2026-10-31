@@ -61,6 +61,12 @@ python mograph.py preview ma_video                 # aperçu en direct, recharg�
   "role": "…"}], "date": "AAAA-MM-JJ"}}` (sinon avertissement à la compilation et au QC).
 
 ## 4. Prompt pour un assistant IA
+**Le plus simple** : `python mograph.py brief "<votre idée>"` fait tout le cycle ci-dessous avec Claude
+(abonnement, `claude -p`) : schéma simplifié, validation, correction automatique, 3 essais au plus,
+scène écrite dans `scenes/`. Dans Claude Code, la skill `mograph` et le serveur MCP `mograph`
+(`.mcp.json`) donnent ces règles et les commandes à l'agent. Le prompt ci-dessous reste utile avec un
+autre assistant.
+
 Copier le bloc ci-dessous, puis ajouter votre brief. Joindre `schema/scene.schema.json` et le preset
 choisi (`presets/<id>.json`) si l'assistant accepte des fichiers. Valider ensuite avec
 `python mograph.py validate <fichier>` et renvoyer les messages d'erreur tels quels à l'assistant :

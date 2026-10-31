@@ -69,7 +69,7 @@ Les scripts `tests/verify_stepNN_*.py` rejouent la vérification de chaque étap
 ```bash
 .venv/bin/python tests/verify_step11_compiler.py      # Windows : .venv/Scripts/python.exe
 ```
-**Baseline** : `scripts/baseline.py run --label <nom>` rejoue les 9 scripts de vérification, rend
+**Baseline** : `scripts/baseline.py run --label <nom>` rejoue tous les scripts de vérification, rend
 `demo_flat_riso` de bout en bout (porte de déterminisme, maître, encodage, QC) et relève toutes les
 empreintes ; `scripts/baseline.py compare docs/baseline/phase-0.json build/_baseline/<nom>/baseline.json`
 signale toute régression (code ≠ 0). Référence : `docs/BASELINE.md`.
@@ -113,12 +113,15 @@ build que la machine de rendu) ; chaque job vérifie d'abord les versions (`scri
 | `python mograph.py batch <modèle> --data lignes.csv` | **déclinaisons** : une vidéo par ligne du CSV |
 | `python mograph.py beats <musique> [--scene <scène> --write] [--json]` | tempo, premier temps fort, drop et dérive détectés ; musique d'IA : gelée d'abord |
 | `python mograph.py sheets <scène>` | planches contact (`out/<scène>/planche_contact.png`, `planche_alpha.png`) |
+| `python mograph.py sheets <scène> [--draft] --vision` | + **relecture visuelle** par Claude (abonnement) : avertissements seulement, jamais bloquants |
+| `python mograph.py brief "<idée>" [--preset P] [--aspect A] [--id ID] [--draft]` | **une idée → une scène VALIDE** écrite par Claude (`claude -p`, abonnement ; 3 essais au plus) |
+| `python mograph.py mcp` | serveur MCP local « mograph » (stdio) : piloter le pipeline depuis Claude Code ou Claude Desktop |
 | `python mograph.py assets add <fichier> --tool … --model … --prompt … --license …` | **geler** une sortie d'IA (copie sous `assets/ai/`, SHA-256 + provenance dans `assets.lock.json`) |
 | `python mograph.py assets verify` / `assets list` | assets IA présents et intacts / provenance |
 | `python mograph.py voice <scène> [--dry-run] [--yes] [--budget N] [--regenerate]` | **voix off** ElevenLabs du bloc `voiceover` : estimation, garde-fou de quota, cache par empreinte (même requête, même dans une autre scène = 0 caractère), gel |
 | `python mograph.py voice --quota` | quota ElevenLabs du compte (lecture seule) |
 | `python mograph.py synth-beat --bpm 120 --duration 5 --out assets/audio/beat.wav` | piste test |
-| `python mograph.py status <scène>` | avancement (y compris d'un rendu détaché) |
+| `python mograph.py status <scène> [--draft]` | avancement (y compris d'un rendu détaché) |
 | `python mograph.py versions <scène>` | archive les versions dans `out/<scène>/versions.txt` |
 
 ### Flux de travail conseillé
@@ -156,6 +159,28 @@ python mograph.py beats assets/ai/audio/musique.mp3 --scene ma_scene --write
 usage commercial autorisé sauf film, TV, radio et jeux « Studio » ; Lyria : vérifiez les conditions
 avant un usage commercial (filigrane SynthID dans le fichier).
 
+### Couche agent (Claude pilote MOTION)
+Aucun appel à l'API facturée : Claude est appelé par la CLI `claude -p` de votre **abonnement**. Une
+fois pour toutes : `claude auth login` (compte claude.ai). mograph retire toute clé API de
+l'environnement de l'appel, ignore les réglages de Claude Code et refuse l'appel (processus arrêté
+avant la requête) si la CLI ne s'authentifie pas par l'abonnement (`apiKeySource` ≠ `none`).
+- `brief "Annonce de l'ouverture d'un café, ton chaleureux, 6 s"` : Claude remplit un schéma de scène
+  simplifié (mouvements et couleurs du preset), le compilateur valide, ses messages de refus sont
+  renvoyés à Claude ; **3 essais au plus**. Résultat versionné : `scenes/<id>.json` (pas le prompt) ;
+  bilan dans `build/_brief/`. `--draft` enchaîne la préversion. Modèle : `MOGRAPH_CLAUDE_MODEL`
+  (défaut `sonnet`, économe en quota).
+- `sheets <scène> --vision` : Claude lit les planches contact et signale texte coupé, contraste,
+  chevauchements… dans `out/<scène>/vision_qc.md`. **Jamais bloquant**, hors QC et hors porte de
+  déterminisme.
+- **Serveur MCP** : `.mcp.json` déclare le serveur `mograph` (outils `validate`, `preview`, `draft`,
+  `all`, `status`, `beats`, `sheets`, sorties JSON structurées). `draft`, `all` et `beats` (écriture)
+  exigent `"confirm": true`. Claude Code demande d'approuver le serveur à la première ouverture du
+  projet. Le chemin `.venv/Scripts/python.exe` est celui de Windows (Linux/macOS : `.venv/bin/python`).
+- **Skill** `.claude/skills/mograph/SKILL.md` : Claude Code y trouve la démarche et les dix règles
+  d'écriture d'une scène (`docs/GUIDE_SCENES.md`).
+- `validate`, `status`, `sheets` et `beats` acceptent `--json` (un seul objet JSON sur la sortie
+  standard) pour les scripts. CLI introuvable : `MOGRAPH_CLAUDE=<chemin de claude>`.
+
 ### Rendu en parallèle
 Les plans sans plaque 3D sont rendus par Chromium **pendant** que Blender calcule les plaques
 (gain total avec un GPU). `MOGRAPH_MAX_WORKERS` (défaut 4) règle le nombre de navigateurs
@@ -175,7 +200,8 @@ existants). Un plan dont la définition compilée change repart de zéro.
 - `build/<scène>/` : `compiled.json`, `shots/<plan>/NNNNNN.png + manifest.json`,
   `plates/<plan>__<plaque>/`, `master/`, `determinism.json`, `logs/`.
 - `out/<scène>/` : `<scène><suffixe>_<profil>.mp4|.mov`, `encode_commands.sh`,
-  `qc_report.json`, `qc_report.md`, `versions.txt`, `planche_contact.png` (+ `planche_alpha.png`).
+  `qc_report.json`, `qc_report.md`, `versions.txt`, `planche_contact.png` (+ `planche_alpha.png`),
+  `vision_qc.json` / `vision_qc.md` (relecture visuelle, si demandée).
 - `MOGRAPH_BUILD_DIR` / `MOGRAPH_OUT_DIR` déplacent `build/` et `out/` (disque plus grand).
 
 ---------------------------------------------------------------------------------------------------

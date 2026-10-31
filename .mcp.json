@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "mograph": {
+      "type": "stdio",
+      "command": ".venv/Scripts/python.exe",
+      "args": ["mograph.py", "mcp"]
+    }
+  }
+}

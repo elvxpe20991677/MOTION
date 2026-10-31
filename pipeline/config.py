@@ -21,7 +21,8 @@ ROOT: Path = Path(__file__).resolve().parent.parent
 
 SCHEMA_DIR: Path = ROOT / "schema"
 PRESETS_DIR: Path = ROOT / "presets"
-SCENES_DIR: Path = ROOT / "scenes"
+# Scènes « par id » (new, brief, résolution d'un id) : déplaçable pour isoler les tests (phase 6).
+SCENES_DIR: Path = Path(os.environ.get("MOGRAPH_SCENES_DIR", ROOT / "scenes")).resolve()
 TEMPLATES_DIR: Path = ROOT / "templates"
 RUNTIME_DIR: Path = ROOT / "runtime"
 NODE_MODULES: Path = ROOT / "node_modules"
@@ -85,6 +86,33 @@ VOICE_DUCK_MERGE_S: float = 0.4
 # « mograph beats » et les attaques du morceau (40 ms = une image à 25 i/s) ; au-delà, avertissement :
 # le contrat ne gère qu'un tempo fixe (beat:, beats:, on_beats).
 TEMPO_DRIFT_WARN_MS: float = 40.0
+
+# Couche agent (phase 6, CONTRACT §11.7) : appels à Claude par « claude -p » (abonnement, jamais l'API
+# facturée). « mograph brief » : AU PLUS 3 appels (feuille de route), plafond non modifiable.
+BRIEF_MAX_ITERATIONS: int = 3
+CLAUDE_ENV_ERRORS: list[str] = []
+
+
+def _env_pos_float(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        value = float(raw)
+        if value > 0 and value != float("inf"):
+            return value
+    except ValueError:
+        pass
+    CLAUDE_ENV_ERRORS.append(f"{name} doit être un nombre > 0 (valeur actuelle « {raw} ») : corrigez-la ou retirez-la.")
+    return default
+
+
+# Modèle demandé à la CLI (alias « sonnet » : économise le quota de l'abonnement ; « opus » possible).
+CLAUDE_MODEL: str = os.environ.get("MOGRAPH_CLAUDE_MODEL", "sonnet").strip() or "sonnet"
+CLAUDE_TIMEOUT_S: float = _env_pos_float("MOGRAPH_CLAUDE_TIMEOUT", 600.0)
+# Plafond par appel passé à --max-budget-usd (coût « liste » indicatif ; un abonnement n'est pas facturé à
+# l'usage) : coupe un appel qui s'emballerait.
+CLAUDE_MAX_BUDGET_USD: float = _env_pos_float("MOGRAPH_CLAUDE_MAX_BUDGET_USD", 1.0)
 
 # Nature d'un asset IA déduite de son extension (verrou, CLI « assets add »).
 AI_ASSET_KINDS: dict[str, tuple[str, ...]] = {
