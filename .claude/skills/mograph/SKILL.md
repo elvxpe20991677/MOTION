@@ -40,7 +40,8 @@ fichiers.
 8. Glyphes : chaque caractère doit exister dans la police du preset.
 9. Médias sous `assets/` (chemins relatifs à la racine) ; sorties d'IA GELÉES sous `assets/ai/`
    (`python mograph.py assets add …`) avec `provenance.ai_disclosure` dans la scène.
-10. Fond transparent (`format.alpha: true`) : pas de `background` sur les plans.
+10. Fond transparent (`format.alpha: true`) : pas de `background` sur les plans, livrable `prores_4444`
+    obligatoire (ajouter un HEVC `"suffix": "_flat"` pour un aperçu aplati).
 
 ## Outils MCP (serveur `mograph`, `.mcp.json`)
 `validate`, `preview`, `draft`, `all`, `status`, `beats`, `sheets` : sorties JSON structurées ; une erreur

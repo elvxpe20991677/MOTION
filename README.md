@@ -161,9 +161,11 @@ avant un usage commercial (filigrane SynthID dans le fichier).
 
 ### Couche agent (Claude pilote MOTION)
 Aucun appel à l'API facturée : Claude est appelé par la CLI `claude -p` de votre **abonnement**. Une
-fois pour toutes : `claude auth login` (compte claude.ai). mograph retire toute clé API de
-l'environnement de l'appel, ignore les réglages de Claude Code et refuse l'appel (processus arrêté
-avant la requête) si la CLI ne s'authentifie pas par l'abonnement (`apiKeySource` ≠ `none`).
+fois pour toutes : `claude auth login` (compte claude.ai). mograph retire toute clé API et tout
+choix de fournisseur de l'environnement de l'appel, ignore les réglages de Claude Code, vérifie AVANT
+l'appel (`claude auth status`) que la CLI est connectée par l'abonnement claude.ai et refuse sinon
+(clé API, assistant de clé, fournisseur cloud) ; un lanceur npm `claude.cmd` n'est jamais exécuté
+(le `claude.exe` qu'il appelle est utilisé).
 - `brief "Annonce de l'ouverture d'un café, ton chaleureux, 6 s"` : Claude remplit un schéma de scène
   simplifié (mouvements et couleurs du preset), le compilateur valide, ses messages de refus sont
   renvoyés à Claude ; **3 essais au plus**. Résultat versionné : `scenes/<id>.json` (pas le prompt) ;

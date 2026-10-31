@@ -883,22 +883,32 @@ serveurs de projet dans `.mcp.json` à la racine, approbation demandée en sessi
 **Principe budgétaire.** Tout appel à Claude depuis le code passe par la CLI `claude -p` de
 l'abonnement de l'utilisateur (`pipeline/claude_cli.py`), JAMAIS par le SDK ni une clé API facturée.
 Garde-fous, dans l'ordre :
-- exécutable : `MOGRAPH_CLAUDE`, sinon le premier candidat qui répond « … (Claude Code) » à `--version`
-  (PATH, `CLAUDE_CODE_EXECPATH` publié par l'application hôte, CLI de l'application de bureau sous
-  `%LOCALAPPDATA%/Claude-Data/*/claude-code/<version>/*/claude.exe` ou `%APPDATA%/Claude/claude-code/…`) ;
-- environnement de l'appel : `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_USE_BEDROCK`,
-  `CLAUDE_CODE_USE_VERTEX`, `CLAUDE_CODE_USE_FOUNDRY` et apparentées RETIRÉES ; variables d'une session
-  Claude Code hôte (jeton de messagerie, identifiants de session) retirées aussi ;
-- `claude auth status` doit répondre `loggedIn: true`, sinon REFUS sans appel (« lancez une fois
-  `claude auth login` ») ;
+- exécutable NATIF : `MOGRAPH_CLAUDE`, sinon le premier candidat qui répond « … (Claude Code) » à
+  `--version` (PATH, `CLAUDE_CODE_EXECPATH` publié par l'application hôte, CLI de l'application de
+  bureau sous `%LOCALAPPDATA%/Claude-Data/*/claude-code/<version>/*/claude.exe` ou
+  `%APPDATA%/Claude/claude-code/…`). Un lanceur `.cmd`/`.bat`/`.ps1` (npm) n'est JAMAIS exécuté :
+  cmd.exe altère les arguments (les `^` du schéma) et son enfant survit à l'arrêt ; le binaire qu'il
+  lance (`node_modules/@anthropic-ai/claude-code/bin/claude.exe`) est pris à sa place, sinon il est
+  écarté (`MOGRAPH_CLAUDE` désignant un lanceur → REFUS) ;
+- environnement de l'appel : TOUTES les variables `ANTHROPIC_*` et `CLAUDE_CODE_USE_*` (clé, jeton,
+  URL de passerelle, Bedrock, Vertex, Foundry, AWS, Google Cloud, Mantle, passerelle) et
+  `AWS_BEARER_TOKEN_BEDROCK` RETIRÉES ; variables d'une session Claude Code hôte (jeton de messagerie,
+  identifiants de session) retirées aussi ;
+- barrière principale, AVANT tout lancement de `claude -p` : `claude auth status` (même environnement)
+  doit répondre `loggedIn: true`, `authMethod` ∈ {`claude.ai`, `oauth_token`} (abonnement),
+  `apiProvider: "firstParty"` et aucune `apiKeySource` ; sinon REFUS sans appel (non connectée :
+  « lancez une fois `claude auth login` » ; clé API, assistant de clé, fournisseur tiers ou cloud :
+  facturation à l'usage interdite) ;
 - arguments : `-p --output-format stream-json --verbose --json-schema <schéma> --no-session-persistence
   --setting-sources "" --strict-mcp-config --disable-slash-commands --system-prompt <court> --tools ""
   --max-budget-usd <MOGRAPH_CLAUDE_MAX_BUDGET_USD, défaut 1> --model <MOGRAPH_CLAUDE_MODEL, défaut sonnet>` ;
   le prompt passe par l'entrée standard ; dossier de travail temporaire supprimé ensuite ; délai
-  `MOGRAPH_CLAUDE_TIMEOUT` (600 s) puis processus tué ;
-- le message d'initialisation du flux doit déclarer `apiKeySource = "none"` (authentification par
-  l'abonnement claude.ai) et `apiProvider = "firstParty"` ; sinon le processus est TUÉ avant toute
-  requête et l'appel refusé (aucune facturation à l'usage possible par ce chemin) ;
+  `MOGRAPH_CLAUDE_TIMEOUT` (600 s) puis ARBRE de processus tué (Windows : `taskkill /T /F` ; ailleurs :
+  groupe de processus) ;
+- seconde barrière : le message d'initialisation du flux doit déclarer `apiKeySource = "none"` ; sinon
+  l'arbre de processus est tué aussitôt et l'appel refusé (la CLI pouvant commencer sa requête dès
+  l'initialisation, c'est la vérification préalable qui empêche la facturation ; celle-ci rattrape un
+  changement de configuration entre les deux). Pas de message d'initialisation → résultat écarté ;
 - résultat : `structured_output` du message `result` (objet validé par la CLI contre le schéma) ; erreur
   de la CLI, sortie illisible ou délai → `ClaudeError` (message français actionnable). Le coût
   `total_cost_usd` affiché par la CLI est un coût « liste » indicatif : sur un abonnement, l'appel
@@ -915,13 +925,18 @@ Garde-fous, dans l'ordre :
   graine dérivée de l'id (SHA-256), format 1080p, livrable `hevc_main10`, QC standard, storyboard (une
   intention par plan), transitions d'entrée de 0,4 s, `provenance.ai_disclosure = {ai_used: true, roles
   [scene, text], date, tools [{name "Claude Code (claude -p)", model, role}]}` ;
-- boucle bornée : appel → conversion → `validate_scene` (compilateur complet) ; refus → nouvel appel
-  avec la proposition, les messages du compilateur (25 au plus) et l'idée d'origine ; AU PLUS
+- couleurs par défaut choisies contre le fond du plan (texte `fg`, ou `bg` sur un fond `fg` ; forme
+  `primary`, ou `secondary` sur un fond `primary`) ;
+- boucle bornée : appel → contrôles du brief (`problems` : plan de moins de 2 images, calque texte sans
+  `text` — l'id serait affiché —, calque de la couleur du fond) → conversion → compilation complète
+  (animation qui finit après son plan, « hors champ », refusée) ; refus → nouvel appel
+  avec la proposition, les messages (25 au plus) et l'idée d'origine ; AU PLUS
   `config.BRIEF_MAX_ITERATIONS` = 3 appels (plafond non modifiable : `--max-iterations` ≤ 3, `generate`
   refuse au-delà) ; une sortie hors schéma compte comme un essai ; une CLI en échec arrête la boucle ;
-- scène existante : avec `--id`, refus AVANT tout appel (aucun quota consommé) sauf `--force` ; sans
-  `--id`, si l'id choisi par Claude existe, la scène générée est gardée dans `build/_brief/<id>.json`
-  et rien n'est remplacé ;
+- scène existante : avec `--id`, refus AVANT tout appel (aucun quota consommé) sauf `--force` ;
+  `--force` exige `--id` ; sans `--id`, si l'id choisi par Claude existe, la scène générée est gardée
+  dans `build/_brief/<id>.json` et rien n'est remplacé ; dossiers créés avant l'appel ; écriture
+  impossible → scène gardée dans `build/_brief/<id>.json` (le quota consommé n'est jamais perdu) ;
 - sortie VERSIONNÉE : la scène `scenes/<id>.json` (UTF-8, écriture atomique, `$schema`) — pas le
   prompt. Bilan non versionné `build/_brief/<id>.brief.json` (idée, preset, essais, modèle, historique) ;
   échec après 3 essais → code 1, dernière proposition et erreurs dans `build/_brief/<id>_refusee.json` ;
@@ -929,16 +944,19 @@ Garde-fous, dans l'ordre :
 
 **Serveur MCP `mograph`** (`pipeline/mcp_server.py`, `python mograph.py mcp`, bibliothèque standard
 seule) : JSON-RPC 2.0 sur stdio, un message par ligne ; `initialize` (version demandée si connue parmi
-2025-11-25, 2025-06-18, 2025-03-26, sinon 2025-11-25 ; capacité `tools`, `instructions`), notifications
-sans réponse, `ping`, `tools/list`, `tools/call`. Outils (chacun lance `mograph.py` dans un
-sous-processus ; stdout du serveur réservé au protocole) :
+2025-11-25 et 2025-06-18, sinon 2025-11-25 ; 2025-03-26 n'est pas proposée car elle impose les lots
+JSON-RPC, refusés ici par -32600 ; capacité `tools`, `instructions`), notifications sans réponse,
+`ping`, `tools/list`, `tools/call` ; `id` chaîne ou entier seulement (sinon -32600). Chaque `tools/call`
+s'exécute dans son propre fil (écritures sérialisées) : `ping` répond pendant un outil long ;
+`notifications/cancelled` tue l'arbre du sous-processus de la requête et sa réponse n'est pas envoyée.
+Outils (chacun lance `mograph.py` dans un sous-processus ; stdout du serveur réservé au protocole) :
 
 | Outil | Paramètres | Effet |
 |---|---|---|
 | `validate` | scene, layout? | `validate --json` ; scène refusée ou mise en page non conforme → `isError` + messages |
 | `preview` | scene, port? | aperçu détaché (`preview --no-open`), renvoie l'URL ; port occupé → `isError` |
-| `draft` | scene, **confirm** | `all --draft --detach` |
-| `all` | scene, **confirm** | `all --detach` |
+| `draft` | scene, **confirm** | `validate --json` (refus → `isError`, rien n'est lancé) puis `all --draft --detach` |
+| `all` | scene, **confirm** | `validate --json` puis `all --detach` |
 | `status` | scene, draft? | `status --json` (plans, plaques, maître, déterminisme, verdict QC, processus détachés) |
 | `beats` | audio, scene?, write?, confirm? | `beats --json` ; `write: true` exige `confirm: true` |
 | `sheets` | scene, draft?, vision? | `sheets --json [--vision]` |
@@ -946,7 +964,8 @@ sous-processus ; stdout du serveur réservé au protocole) :
 Résultat d'un outil : `{content: [{type text, text: JSON}], structuredContent, isError}`. Erreurs
 d'exécution (confirmation absente, scène refusée, rendu déjà en cours pour la scène, paramètre inconnu)
 → `isError: true` et message actionnable ; erreurs de protocole → JSON-RPC (-32700 JSON illisible, -32600
-requête invalide, -32601 méthode inconnue, -32602 outil inconnu ou arguments non objet). Aucune action
+requête invalide, -32601 méthode inconnue, -32602 outil inconnu, `params` ou arguments non objet, -32603
+erreur interne : le serveur ne s'arrête jamais sur un message). Aucune action
 qui remplace des fichiers sans `"confirm": true`. Déclaration projet : `.mcp.json`
 (`{"mcpServers": {"mograph": {"type": "stdio", "command": ".venv/Scripts/python.exe", "args":
 ["mograph.py", "mcp"]}}}`, chemin de l'interpréteur Windows).
@@ -963,9 +982,18 @@ issues[≤ 20]: {severity info|attention, where, problem, suggestion}}` ; écrit
 consigné ; le code de sortie de `sheets` n'en dépend pas ; ni `qc_report`, ni la porte de
 déterminisme, ni `all` ne lisent ou ne lancent la relecture.
 
-CLI : `validate`, `status`, `sheets` gagnent `--json` (UN objet JSON sur stdout) ; `status` et `sheets`
+CLI : `validate`, `status`, `sheets` gagnent `--json` ; avec `--json` (ces commandes, `beats`, `brief`),
+stdout porte TOUJOURS un objet JSON : si la commande échoue sans l'avoir écrit (scène introuvable,
+illisible, refusée, exception), `{"ok": false, "error", "messages"}` (code 1). `status` et `sheets`
 gagnent `--draft` ; un rendu détaché `--draft` écrit journal et PID sous l'id de la préversion
-(`build/<scène>_draft/logs/`). `MOGRAPH_SCENES_DIR` déplace le dossier des scènes (tests isolés).
+(`build/<scène>_draft/logs/`) et affiche la commande de suivi exacte (`status <scène> --draft`) ;
+`status <scène>` signale une préversion en cours. Fichiers PID : `pid`, journal, jeton de démarrage du
+processus (heure de création) — un PID réattribué à un autre processus n'est pas pris pour un rendu
+en cours. Rendu au premier plan (`all`, `render`, `plates` sans `--detach`) : verrou
+`build/<scène>/logs/en_cours.pid`, et refus de démarrer si un autre rendu de la même scène tourne
+(détaché ou au premier plan). L'id d'une scène lu sans compilation (status, détachement) est validé
+contre le motif du schéma (aucun dossier hors de `build/`). `MOGRAPH_SCENES_DIR` déplace le dossier
+des scènes (tests isolés).
 
 Tests : `tests/verify_step60_agent.py` (faux exécutable `claude` désigné par `MOGRAPH_CLAUDE` : aucun
 appel réel ; préversion complète lancée par le serveur MCP).

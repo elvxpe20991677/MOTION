@@ -127,11 +127,29 @@ def compile_or_exit(scene_arg, *, draft: bool = False) -> dict:
     return compiled
 
 
+SCENE_ID_RE = r"[a-z0-9](?:[a-z0-9-]|_(?!_))*"   # motif $defs/id du schéma de scène (64 caractères au plus)
+
+
 def _scene_id_from_arg(scene_arg: str) -> str:
-    # Lecture légère de l'id sans compiler (utile pour status/detach même si la scène est invalide).
+    # Lecture légère de l'id sans compiler (utile pour status/detach même si la scène est invalide) ; un id
+    # hors du motif du schéma est refusé : il sert de nom de dossier sous build/ (journaux, PID).
+    import re
+
     path = resolve_scene_path(scene_arg)
-    with open(path, encoding="utf-8") as fh:
-        return str(json.load(fh).get("id") or path.stem)
+    try:
+        with open(path, encoding="utf-8-sig") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError) as exc:
+        raise SystemExit(f"Scène illisible : {path} ({exc}). Corrigez le JSON (python mograph.py validate {scene_arg}).")
+    sid = str((data.get("id") if isinstance(data, dict) else None) or path.stem)
+    if len(sid) > 64 or not re.fullmatch(SCENE_ID_RE, sid):
+        raise SystemExit(f"id de scène « {sid} » invalide ({path}) : minuscules, chiffres, « - » et « _ » (jamais "
+                         "« __ »), 64 caractères au plus.")
+    return sid
+
+
+def _follow(args) -> str:
+    return f"python mograph.py status {args.scene}" + (" --draft" if getattr(args, "draft", False) else "")
 
 
 def _detach_id(args) -> str:
@@ -149,7 +167,7 @@ def _logs_dir(scene_id: str) -> Path:
 # Processus détaché (équivalent setsid / tmux)
 # ---------------------------------------------------------------------------------------------
 
-def detach(argv: list[str], scene_id: str, command: str) -> int:
+def detach(argv: list[str], scene_id: str, command: str, follow: str | None = None) -> int:
     """Relance `mograph.py <argv sans --detach>` dans un processus indépendant du terminal."""
     logs = _logs_dir(scene_id)
     stamp = time.strftime("%Y%m%d-%H%M%S")
@@ -158,7 +176,9 @@ def detach(argv: list[str], scene_id: str, command: str) -> int:
     child_argv = [str(config.ORCHESTRATOR_PYTHON), "-u", str(Path(__file__).resolve())] + [
         a for a in argv if a != "--detach"
     ]
-    env = dict(os.environ, PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8")
+    # MOGRAPH_DETACHED = fichier PID de ce rendu : l'enfant ne s'y bloque pas lui-même (sous Windows, le python.exe
+    # d'un venv est un lanceur : le PID noté est celui du lanceur, pas celui du processus qui rend).
+    env = dict(os.environ, PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8", MOGRAPH_DETACHED=str(pid_path))
     log_fh = open(log_path, "ab")
     try:
         if config.IS_WINDOWS:
@@ -185,11 +205,93 @@ def detach(argv: list[str], scene_id: str, command: str) -> int:
                                     start_new_session=True, close_fds=True)
     finally:
         log_fh.close()
-    pid_path.write_text(f"{proc.pid}\n{log_path}\n", encoding="utf-8")
+    pid_path.write_text(f"{proc.pid}\n{log_path}\n{_proc_start(proc.pid) or ''}\n", encoding="utf-8")
     print(f"Rendu détaché : PID {proc.pid}")
     print(f"Journal       : {log_path}")
-    print(f"Suivi         : python mograph.py status {scene_id}")
+    print(f"Suivi         : {follow or f'python mograph.py status {scene_id}'}")
     return EXIT_OK
+
+
+def _proc_start(pid: int) -> str | None:
+    """Jeton de démarrage d'un processus (Windows : heure de création ; Linux : /proc/<pid>/stat) : distingue
+    un processus d'un autre qui réutilise le même PID. None si indisponible."""
+    if config.IS_WINDOWS:
+        import ctypes
+
+        k32 = ctypes.windll.kernel32
+        h = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return None
+        try:
+            times = [ctypes.c_ulonglong() for _ in range(4)]
+            if not k32.GetProcessTimes(h, *[ctypes.byref(x) for x in times]):
+                return None
+            return str(times[0].value)
+        finally:
+            k32.CloseHandle(h)
+    try:
+        return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[19]
+    except (OSError, IndexError):
+        return None
+
+
+def _pid_file_running(pid: int, token: str | None) -> bool:
+    """Processus d'un fichier PID encore en vie ET identique (même jeton de démarrage, s'il a été noté)."""
+    if not _pid_alive(pid):
+        return False
+    if not token:
+        return True
+    now = _proc_start(pid)
+    return now is None or now == token
+
+
+def _running_pids(scene_id: str) -> list[dict]:
+    """Rendus en cours d'une scène (fichiers PID de build/<scène>/logs/ vivants), hors processus courant et
+    hors fichier PID du rendu détaché courant (MOGRAPH_DETACHED)."""
+    logs = config.scene_build_dir(scene_id) / "logs"
+    own = os.environ.get("MOGRAPH_DETACHED")
+    out = []
+    for pid_file in sorted(logs.glob("*.pid")) if logs.is_dir() else []:
+        if own and os.path.normcase(os.path.abspath(pid_file)) == os.path.normcase(os.path.abspath(own)):
+            continue
+        lines = pid_file.read_text(encoding="utf-8", errors="replace").splitlines()
+        try:
+            pid = int(lines[0])
+        except (IndexError, ValueError):
+            continue
+        token = lines[2].strip() if len(lines) > 2 else ""
+        if pid != os.getpid() and _pid_file_running(pid, token or None):
+            out.append({"command": pid_file.stem, "pid": pid})
+    return out
+
+
+class _RenderLock:
+    """Verrou d'un rendu au premier plan (all, render, plates sans --detach) : build/<scène>/logs/en_cours.pid.
+    Refuse de démarrer si un autre rendu de la même scène tourne (détaché ou au premier plan) ; un processus
+    détaché par mograph est déjà signalé par son propre fichier PID."""
+
+    def __init__(self, scene_id: str):
+        self.path = _logs_dir(scene_id) / "en_cours.pid"
+        self.scene_id = scene_id
+
+    def __enter__(self):
+        others = _running_pids(self.scene_id)
+        if others:
+            o = others[0]
+            raise SystemExit(f"Un rendu de {self.scene_id} est déjà en cours ({o['command']}, PID {o['pid']}) : attendez "
+                             f"sa fin (python mograph.py status …) avant d'en lancer un autre.")
+        self.mine = not os.environ.get("MOGRAPH_DETACHED")
+        if self.mine:
+            self.path.write_text(f"{os.getpid()}\n\n{_proc_start(os.getpid()) or ''}\n", encoding="utf-8")
+        return self
+
+    def __exit__(self, *exc):
+        if self.mine:
+            try:
+                self.path.unlink()
+            except OSError:
+                pass
+        return False
 
 
 def _pid_alive(pid: int) -> bool:
@@ -495,16 +597,18 @@ def cmd_plates(args) -> int:
     if args.detach:
         return detach(sys.argv[1:], _scene_id_from_arg(args.scene), "plates")
     compiled = compile_or_exit(args.scene)
-    step_plates(compiled)
+    with _RenderLock(compiled["scene_id"]):
+        step_plates(compiled)
     return EXIT_OK
 
 
 def cmd_render(args) -> int:
     if args.detach:
-        return detach(sys.argv[1:], _detach_id(args), "render")
+        return detach(sys.argv[1:], _detach_id(args), "render", _follow(args))
     compiled = compile_or_exit(args.scene, draft=args.draft)
-    step_audio(compiled)
-    step_plates_and_web(compiled, args.workers, plates=not args.no_plates)
+    with _RenderLock(compiled["scene_id"]):
+        step_audio(compiled)
+        step_plates_and_web(compiled, args.workers, plates=not args.no_plates)
     return EXIT_OK
 
 
@@ -537,6 +641,11 @@ def run_all(scene, *, workers: int | None = None, count: int | None = None, draf
     """Pipeline complet d'une scène (chemin, id ou dict) ; renvoie le code de sortie."""
     t0 = time.perf_counter()
     compiled = compile_or_exit(scene, draft=draft)
+    with _RenderLock(compiled["scene_id"]):
+        return _run_all(compiled, t0, workers=workers, count=count, draft=draft)
+
+
+def _run_all(compiled: dict, t0: float, *, workers: int | None, count: int | None, draft: bool) -> int:
     from pipeline import scene as scene_mod
 
     _banner(f"SCÈNE {compiled['scene_id']}" + ("  (PRÉVERSION)" if draft else ""))
@@ -562,7 +671,7 @@ def run_all(scene, *, workers: int | None = None, count: int | None = None, draf
 
 def cmd_all(args) -> int:
     if args.detach:
-        return detach(sys.argv[1:], _detach_id(args), "all")
+        return detach(sys.argv[1:], _detach_id(args), "all", _follow(args))
     return run_all(args.scene, workers=args.workers, count=args.count, draft=args.draft)
 
 
@@ -836,11 +945,13 @@ def _status_data(scene_id: str, lines: int) -> dict:
             pid = int(pid_lines[0])
         except (IndexError, ValueError):
             continue
-        log_path = Path(pid_lines[1]) if len(pid_lines) > 1 else None
+        log_path = Path(pid_lines[1]) if len(pid_lines) > 1 and pid_lines[1].strip() else None
+        token = pid_lines[2].strip() if len(pid_lines) > 2 else ""
         tail = []
         if log_path and log_path.exists():
             tail = log_path.read_text(encoding="utf-8", errors="replace").splitlines()[-lines:]
-        data["detached"].append({"command": pid_file.stem, "pid": pid, "running": _pid_alive(pid),
+        data["detached"].append({"command": pid_file.stem, "pid": pid, "running": _pid_file_running(pid, token or None),
+                                 "foreground": pid_file.stem == "en_cours",
                                  "log": str(log_path) if log_path else None, "tail": tail})
     return data
 
@@ -868,9 +979,12 @@ def cmd_status(args) -> int:
     if data["qc_verdict"]:
         print(f"  QC : {data['qc_verdict']}")
     for d in data["detached"]:
-        print(f"  processus détaché {d['command']} PID {d['pid']} : {'EN COURS' if d['running'] else 'terminé'}")
+        kind = "rendu au premier plan" if d["foreground"] else f"processus détaché {d['command']}"
+        print(f"  {kind} PID {d['pid']} : {'EN COURS' if d['running'] else 'terminé'}")
         if d["tail"]:
             print("    " + "\n    ".join(d["tail"]))
+    if not args.draft and _running_pids(draft_id(scene_id)):
+        print(f"  préversion en cours : python mograph.py status {args.scene} --draft")
     return EXIT_OK
 
 
@@ -1003,6 +1117,8 @@ def cmd_brief(args) -> int:
 
     if config.CLAUDE_ENV_ERRORS:
         return fail(" ; ".join(config.CLAUDE_ENV_ERRORS))
+    if args.force and not args.id:
+        return fail("--force exige --id : sans id imposé, brief ne remplace jamais une scène existante.")
     if args.id and (len(args.id) > 48 or not re.fullmatch(brief.ID_PATTERN, args.id)):
         return fail(f"id « {args.id} » invalide : minuscules, chiffres, « - » ou « _ », 48 caractères au plus.")
     # Scène existante : refus AVANT tout appel (aucun quota consommé).
@@ -1010,7 +1126,11 @@ def cmd_brief(args) -> int:
         return fail(f"la scène {config.SCENES_DIR / (args.id + '.json')} existe déjà : choisissez un autre --id ou "
                     "ajoutez --force pour la remplacer.")
     log_dir = config.BUILD_DIR / "_brief"
-    log_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+        config.SCENES_DIR.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        return fail(f"dossier inaccessible ({exc}) : aucun appel n'a été fait.")
     try:
         scene, report = brief.generate(args.idea, preset_id=args.preset, aspect=args.aspect, scene_id=args.id,
                                        max_iterations=args.max_iterations, model=args.model, log=say)
@@ -1029,14 +1149,19 @@ def cmd_brief(args) -> int:
         return fail(str(exc))
     target = config.SCENES_DIR / f"{scene['id']}.json"
     text = json.dumps(scene, ensure_ascii=False, indent=2) + "\n"
-    if target.exists() and not args.force:
-        keep = log_dir / f"{scene['id']}.json"
+    keep = log_dir / f"{scene['id']}.json"
+    if target.exists() and not (args.force and args.id):
         keep.write_text(text, encoding="utf-8")
-        return fail(f"la scène {target} existe déjà : scène générée conservée dans {keep} (copiez-la sous un autre id, "
-                    "ou relancez avec --force).", kept=str(keep))
-    tmp = target.with_suffix(".json.tmp")
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, target)
+        return fail(f"la scène {target} existe déjà : scène générée conservée dans {keep} (copiez-la sous un autre "
+                    "nom dans scenes/ ; aucun nouvel appel n'est nécessaire).", kept=str(keep))
+    tmp = target.with_name(f"{target.name}.{os.getpid()}.tmp")
+    try:
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, target)
+    except OSError as exc:
+        tmp.unlink(missing_ok=True)
+        keep.write_text(text, encoding="utf-8")
+        return fail(f"écriture de {target} impossible ({exc}) : scène générée conservée dans {keep}.", kept=str(keep))
     record = {"contract": brief.BRIEF_CONTRACT, "date_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
               "idea": args.idea, "preset": args.preset, "aspect": args.aspect, "scene": str(target), **report}
     (log_dir / f"{scene['id']}.brief.json").write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n",
@@ -1214,6 +1339,46 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+class _Tee:
+    """Flux qui retient ce qui y est écrit (garantie « un objet JSON » de --json)."""
+
+    def __init__(self, stream):
+        self.stream, self.text = stream, []
+
+    def write(self, s):
+        self.text.append(s)
+        return self.stream.write(s)
+
+    def __getattr__(self, name):
+        return getattr(self.stream, name)
+
+
+def _main_json(args) -> int:
+    """--json : la commande écrit son objet sur stdout ; si elle échoue sans l'avoir écrit (scène introuvable,
+    illisible ou refusée, exception), un objet {"ok": false, "error", "messages"} le remplace (code 1)."""
+    out, err = _Tee(sys.stdout), _Tee(sys.stderr)
+    sys.stdout, sys.stderr = out, err
+    code, message = EXIT_FAIL, None
+    try:
+        code = int(args.func(args) or EXIT_OK)
+    except SystemExit as exc:
+        code = exc.code if isinstance(exc.code, int) else EXIT_FAIL
+        if isinstance(exc.code, str):
+            message = exc.code
+            print(exc.code, file=sys.stderr)
+    except Exception as exc:  # noqa: BLE001 — frontière du CLI
+        from pipeline.voice import redact
+        message = redact(f"{type(exc).__name__} : {exc}")
+        print(redact(traceback.format_exc()), end="", file=sys.stderr)
+    finally:
+        sys.stdout, sys.stderr = out.stream, err.stream
+    if code != EXIT_OK and not "".join(out.text).strip():
+        lines = [x for x in "".join(err.text).splitlines() if x.strip()][-20:]
+        print(json.dumps({"ok": False, "error": message or (lines[-1] if lines else f"échec (code {code})"),
+                          "messages": lines}, ensure_ascii=False))
+    return code
+
+
 def main(argv: list[str] | None = None) -> int:
     # Sortie console en UTF-8 : accents lisibles même sous la console Windows (cp1252 par défaut).
     for stream in (sys.stdout, sys.stderr):
@@ -1222,6 +1387,8 @@ def main(argv: list[str] | None = None) -> int:
         except (AttributeError, ValueError):
             pass
     args = build_parser().parse_args(argv)
+    if getattr(args, "json", False):
+        return _main_json(args)
     try:
         return int(args.func(args) or EXIT_OK)
     except SystemExit:

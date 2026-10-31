@@ -6,19 +6,26 @@ réponses scriptées et journalise chaque appel (arguments, prompt, variables d'
 Isolé : build/_tests/step60/ (build, out, scènes : MOGRAPH_SCENES_DIR).
 Contrôles :
   A. claude_cli : arguments (stream-json, schéma, réglages/MCP/skills ignorés, aucun outil par défaut,
-     plafond --max-budget-usd, prompt par l'entrée standard) ; variables facturables et de session hôte
-     RETIRÉES ; CLI non connectée -> refus sans appel ; apiKeySource ≠ "none" -> processus tué avant la
-     « requête » ; erreur de la CLI ; délai dépassé ; MOGRAPH_CLAUDE introuvable ;
+     plafond --max-budget-usd, prompt par l'entrée standard) ; variables ANTHROPIC_* / CLAUDE_CODE_USE_* et
+     de session hôte RETIRÉES ; « auth status » : non connectée, clé API, assistant de clé, fournisseur
+     cloud, apiKeySource -> refus SANS appel ; apiKeySource ≠ "none" à l'initialisation -> ARBRE tué (y
+     compris un petit-enfant qui tient la sortie) ; erreur de la CLI ; délai dépassé (petit-enfant
+     compris) ; lanceur .cmd refusé ou résolu vers claude.exe ; MOGRAPH_CLAUDE introuvable ;
   B. brief : valide du premier coup (1 appel, scène écrite et validée, déclaration d'IA) ; refus puis
      correction (2 appels, messages du compilateur renvoyés) ; toujours refusée -> EXACTEMENT 3 appels,
      rien d'écrit, proposition gardée ; sortie hors schéma comptée ; --max-iterations borné ; scène
-     existante refusée AVANT tout appel ; schéma simplifié = mouvements et couleurs du preset ; conversion
-     déterministe ; --json = un seul objet ;
+     existante refusée AVANT tout appel ; --force sans --id refusé ; texte absent, couleur du fond, durée
+     nulle, animation hors champ -> renvoyés à Claude ; couleurs par défaut contrastées ; schéma simplifié
+     = mouvements et couleurs du preset ; conversion déterministe ; --json = un seul objet ;
   C. serveur MCP (stdio) : initialize (négociation de version), notification sans réponse, tools/list
      (7 outils, confirm exigé), validate (valide / refusée -> isError + messages), confirmations
      absentes -> isError sans rien lancer, erreurs de protocole (-32700, -32601, -32602), paramètre
-     inconnu, ping, status ; stdout = uniquement du JSON-RPC ;
-  D. préversion par MCP (draft confirm: true) jusqu'au bout, second lancement refusé pendant le rendu,
+     inconnu, params/nom non conformes (-32602, serveur vivant), id null et lot (-32600), version
+     2025-03-26 non proposée, draft sur scène refusée (rien lancé), ping, status, --json toujours un objet
+     (status/sheets/beats en échec), id de scène hors motif refusé ; stdout = uniquement du JSON-RPC ;
+  D. préversion par MCP (draft confirm: true) jusqu'au bout, commande de suivi exacte, second lancement
+     refusé pendant le rendu, verrou d'un rendu au premier plan, PID réattribué non pris pour un rendu,
+     annulation d'un outil long (ping servi, sous-processus tué, aucune réponse),
      puis sheets draft + vision : relecture écrite (vision_qc.json/.md), jamais bloquante, y compris CLI
      non connectée ; QC et porte de déterminisme ne lisent pas la relecture ;
   E. skill et configuration : SKILL.md (frontmatter, dix règles), .mcp.json ; aucun SDK/clé API Anthropic
@@ -69,15 +76,22 @@ argv = sys.argv[1:]
 if argv[:1] == ["--version"]:
     print("9.9.9 (Claude Code)"); sys.exit(0)
 if argv[:2] == ["auth", "status"]:
-    print(json.dumps({"loggedIn": os.environ.get("FAKE_LOGGED_IN", "1") == "1",
-                      "authMethod": "claude.ai", "apiProvider": "firstParty"})); sys.exit(0)
+    st = {"loggedIn": os.environ.get("FAKE_LOGGED_IN", "1") == "1",
+          "authMethod": os.environ.get("FAKE_AUTH_METHOD", "claude.ai"),
+          "apiProvider": os.environ.get("FAKE_PROVIDER", "firstParty")}
+    if os.environ.get("FAKE_STATUS_KEY"):
+        st["apiKeySource"] = os.environ["FAKE_STATUS_KEY"]
+    print(json.dumps(st)); sys.exit(0)
 prompt = sys.stdin.buffer.read().decode("utf-8")
 log = os.environ["FAKE_LOG"]
 with open(log, "a", encoding="utf-8") as fh:
     fh.write(json.dumps({"argv": argv, "prompt": prompt, "cwd": os.getcwd(),
-                         "seen_env": sorted(k for k in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
-                                                        "CLAUDE_CODE_MESSAGING_TOKEN", "CLAUDECODE",
-                                                        "CLAUDE_CODE_USE_BEDROCK") if k in os.environ)}) + "\n")
+                         "seen_env": sorted(k for k in os.environ if k.startswith(("ANTHROPIC_", "CLAUDE_CODE_USE_"))
+                                            or k in ("CLAUDE_CODE_MESSAGING_TOKEN", "CLAUDECODE"))}) + "\n")
+if os.environ.get("FAKE_GRANDCHILD"):
+    import subprocess
+    # Petit-enfant qui hérite de la sortie standard et écrit la « requête » 4 s plus tard.
+    subprocess.Popen([sys.executable, "-c", "import os,time; time.sleep(4); open(os.environ['FAKE_MARK'] + '.gc', 'w').close()"])
 src = os.environ.get("FAKE_KEY_SOURCE", "none")
 print(json.dumps({"type": "system", "subtype": "init", "apiKeySource": src, "apiProvider": "firstParty",
                   "model": "fake-model", "tools": []}), flush=True)
@@ -226,6 +240,71 @@ def test_cli() -> None:
     check("délai dépassé : processus tué, message actionnable", "n'a pas répondu en 2 s" in msg
           and time.perf_counter() - t0 < 10, msg[:80])
 
+    for label, env in (("clé API (authMethod api_key)", {"FAKE_AUTH_METHOD": "api_key"}),
+                       ("assistant de clé (api_key_helper)", {"FAKE_AUTH_METHOD": "api_key_helper"}),
+                       ("fournisseur cloud (bedrock)", {"FAKE_PROVIDER": "bedrock"}),
+                       ("apiKeySource déclarée par auth status", {"FAKE_STATUS_KEY": "/login managed key"})):
+        script({"out": {"ok": True}})
+        os.environ.update(env)
+        try:
+            claude_cli.run("x", schema, system="s")
+            msg = ""
+        except claude_cli.ClaudeError as exc:
+            msg = str(exc)
+        finally:
+            for k in env:
+                os.environ.pop(k)
+        check(f"auth status : {label} -> REFUS sans aucun appel -p", "REFUSÉ" in msg and calls() == [], msg[:90])
+
+    script({"out": {"ok": True}})
+    os.environ.update({"ANTHROPIC_BASE_URL": "https://passerelle.invalid", "CLAUDE_CODE_USE_MANTLE": "1",
+                       "CLAUDE_CODE_USE_ANTHROPIC_AWS": "1"})
+    try:
+        claude_cli.run("x", schema, system="s")
+    finally:
+        for k in ("ANTHROPIC_BASE_URL", "CLAUDE_CODE_USE_MANTLE", "CLAUDE_CODE_USE_ANTHROPIC_AWS"):
+            os.environ.pop(k)
+    check("variables ANTHROPIC_* et CLAUDE_CODE_USE_* retirées par préfixe (passerelle, Mantle, AWS)",
+          calls() and calls()[0]["seen_env"] == [], str(calls()[0]["seen_env"] if calls() else None))
+
+    gc = Path(str(FAKE_MARK) + ".gc")
+    for case, env, kw in (("apiKeySource ≠ none", {"FAKE_KEY_SOURCE": "ANTHROPIC_API_KEY"}, {}),
+                          ("délai dépassé", {}, {"timeout": 2})):
+        script({"hang": 30, "out": {"ok": True}} if case == "délai dépassé" else {"out": {"ok": True}})
+        if gc.exists():
+            gc.unlink()
+        os.environ.update(dict(env, FAKE_GRANDCHILD="1"))
+        t0 = time.perf_counter()
+        try:
+            claude_cli.run("x", schema, system="s", **kw)
+            msg = ""
+        except claude_cli.ClaudeError as exc:
+            msg = str(exc)
+        finally:
+            for k in list(env) + ["FAKE_GRANDCHILD"]:
+                os.environ.pop(k)
+        dt = time.perf_counter() - t0
+        time.sleep(5)
+        check(f"{case} avec un petit-enfant qui tient la sortie : arbre tué, retour borné, aucune « requête »",
+              msg and dt < 3.9 and not gc.exists(), f"{dt:.1f} s ; {msg[:60]}")
+
+    cmd = TEST / "lanceur" / "claude.cmd"
+    cmd.parent.mkdir(parents=True, exist_ok=True)
+    cmd.write_text("@echo off\r\n", encoding="utf-8")
+    os.environ["MOGRAPH_CLAUDE"], old = str(cmd), os.environ["MOGRAPH_CLAUDE"]
+    try:
+        claude_cli.find_claude()
+        msg = ""
+    except claude_cli.ClaudeError as exc:
+        msg = str(exc)
+    finally:
+        os.environ["MOGRAPH_CLAUDE"] = old
+    native = cmd.parent / "node_modules" / "@anthropic-ai" / "claude-code" / "bin" / "claude.exe"
+    native.parent.mkdir(parents=True, exist_ok=True)
+    native.write_bytes(b"")
+    check("lanceur .cmd : jamais exécuté (MOGRAPH_CLAUDE refusé, sinon résolu vers le claude.exe qu'il appelle)",
+          "lanceur" in msg and claude_cli._native(cmd) == native and claude_cli._native(TEST / "x.bat") is None, msg[:80])
+
     old = os.environ["MOGRAPH_CLAUDE"]
     os.environ["MOGRAPH_CLAUDE"] = str(TEST / "absent.exe")
     try:
@@ -334,6 +413,33 @@ def test_brief() -> Path:
     cp = mograph("brief", "idée", "--id", "Mauvais Id")
     check("--id invalide refusé avant tout appel", cp.returncode == 1 and len(calls()) == 1)
 
+    # B5b. --force sans --id
+    script({"out": good_brief("essai_force")})
+    cp = mograph("brief", "idée", "--force")
+    check("--force sans --id refusé avant tout appel", cp.returncode == 1 and calls() == [], tail(cp, 1))
+
+    # B5c. défauts acceptés par le compilateur mais refusés par brief, puis corrigés
+    for label, mutate, needle in (
+            ("texte absent (l'id serait affiché)", lambda b: b["shots"][0]["layers"][0].pop("text"), "« text » manquant"),
+            ("couleur du calque = fond du plan", lambda b: b["shots"][0]["layers"][0].update(color="bg"), "identique au fond"),
+            ("durée de plan nulle", lambda b: b["shots"][1].update(duration=0), "trop court"),
+            ("animation qui finit après son plan", lambda b: b["shots"][0]["layers"][0].update(at=2.3), "hors champ")):
+        bad = good_brief("essai_defaut")
+        mutate(bad)
+        script({"out": bad}, {"out": good_brief("essai_defaut")})
+        cp = mograph("brief", "idée", "--id", "essai_defaut", "--force")
+        c = calls()
+        check(f"brief : {label} -> renvoyé à Claude, corrigé au 2e essai",
+              cp.returncode == 0 and len(c) == 2 and needle in c[1]["prompt"], tail(cp, 2))
+    b = good_brief()
+    b["shots"][0]["background"] = "fg"
+    del b["shots"][0]["layers"][0]["color"]
+    b["shots"][1]["background"] = "primary"
+    del b["shots"][1]["layers"][1]["color"]
+    sc = brief.to_scene(b, preset_id="flat_riso", aspect="16:9", model="m", date="2026-10-31")
+    check("couleurs par défaut contrastées : texte bg sur fond fg, forme secondary sur fond primary",
+          sc["shots"][0]["layers"][0]["color"] == "bg" and sc["shots"][1]["layers"][1]["fill"] == "secondary")
+
     # B6. CLI non connectée
     script({"out": good_brief("essai_nc")})
     cp = mograph("brief", "idée", "--id", "essai_nc", env={"FAKE_LOGGED_IN": "0"})
@@ -430,6 +536,23 @@ def test_mcp(scene_path: Path) -> None:
                     "params": {"protocolVersion": "1999-01-01", "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}}})
         check("version inconnue demandée : le serveur propose la sienne (2025-11-25)",
               r["result"]["protocolVersion"] == "2025-11-25")
+        r = m.send({"jsonrpc": "2.0", "id": 101, "method": "initialize",
+                    "params": {"protocolVersion": "2025-03-26", "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}}})
+        check("2025-03-26 (lots JSON-RPC obligatoires) non proposée", r["result"]["protocolVersion"] == "2025-11-25")
+        r1 = m.send({"jsonrpc": "2.0", "id": 102, "method": "tools/call", "params": {"name": ["status"]}})
+        r2 = m.send({"jsonrpc": "2.0", "id": 103, "method": "initialize", "params": [1]})
+        r3 = m.send({"jsonrpc": "2.0", "id": 104, "method": "ping"})
+        check("nom d'outil ou params non conformes : -32602, le serveur reste en vie",
+              r1.get("error", {}).get("code") == -32602 and r2.get("error", {}).get("code") == -32602
+              and r3.get("result") == {})
+        r1 = m.send({"jsonrpc": "2.0", "id": None, "method": "ping"})
+        r2 = m.send([{"jsonrpc": "2.0", "id": 105, "method": "ping"}])
+        check("id null et lot JSON-RPC : -32600", r1.get("error", {}).get("code") == -32600
+              and r2.get("error", {}).get("code") == -32600)
+        r = m.call("draft", {"scene": "essai_invalide", "confirm": True})["result"]
+        check("draft confirm: true sur une scène refusée : isError + erreurs, rien n'est lancé",
+              r["isError"] is True and r["structuredContent"].get("errors")
+              and not (TEST / "build" / "essai_invalide_draft").exists())
     finally:
         rest = m.close()
     lines = [x for x in m.raw + rest.splitlines() if x.strip()]
@@ -442,6 +565,22 @@ def test_mcp(scene_path: Path) -> None:
     check("stdout du serveur : uniquement des messages JSON-RPC", ok and len(lines) >= 15, f"{len(lines)} lignes")
 
 
+def test_json_and_ids() -> None:
+    for args in (("status", "nope", "--json"), ("sheets", "nope", "--json"), ("beats", "absent.wav", "--json")):
+        cp = mograph(*args)
+        try:
+            out = json.loads(cp.stdout)
+        except ValueError:
+            out = {}
+        check(f"{args[0]} --json en échec : UN objet JSON {{ok: false, error}} sur stdout, code 1",
+              cp.returncode == 1 and out.get("ok") is False and out.get("error"), cp.stdout[:120])
+    esc = SCENES / "evasion.json"
+    esc.write_text(json.dumps({"id": "../evasion", "version": "1.0"}), encoding="utf-8")
+    cp = mograph("all", str(esc), "--draft", "--detach")
+    check("id de scène hors motif (« ../evasion ») : refusé, aucun dossier hors de build/",
+          cp.returncode == 1 and not (TEST / "evasion_draft").exists() and not (TEST / "evasion").exists(), tail(cp, 1))
+
+
 def test_draft_vision() -> None:
     m = Mcp()
     try:
@@ -451,6 +590,8 @@ def test_draft_vision() -> None:
         r = m.call("draft", {"scene": "essai_agent", "confirm": True})["result"]
         check("draft confirm: true : rendu détaché lancé", r["isError"] is False and r["structuredContent"]["started"],
               str(r["structuredContent"])[:200])
+        check("détachement d'une préversion : commande de suivi exacte (status <scène> --draft)",
+              "status essai_agent --draft" in r["structuredContent"].get("output", ""))
         r2 = m.call("draft", {"scene": "essai_agent", "confirm": True})["result"]
         check("second draft pendant le rendu : refusé (déjà en cours)", r2["isError"] is True
               and "déjà en cours" in r2["structuredContent"]["error"])
@@ -467,6 +608,36 @@ def test_draft_vision() -> None:
               st.get("master") and st["master"]["done"] == st["master"]["total"] and mp4
               and (out / "planche_contact.png").is_file(),
               f"{time.perf_counter() - t0:.0f} s ; {(st.get('detached') or [{}])[0].get('tail', [])[-1:]}")
+
+        import mograph as cli
+        logs = TEST / "build" / "essai_agent" / "logs"
+        logs.mkdir(parents=True, exist_ok=True)
+        lock = logs / "en_cours.pid"
+        lock.write_text(f"{os.getpid()}\n\n{cli._proc_start(os.getpid())}\n", encoding="utf-8")
+        r = m.call("all", {"scene": "essai_agent", "confirm": True})["result"]
+        check("rendu au premier plan en cours (en_cours.pid) : all refusé", r["isError"] is True
+              and "déjà en cours" in r["structuredContent"]["error"])
+        cp = mograph("all", "essai_agent")
+        check("CLI : second rendu de la même scène refusé au démarrage", cp.returncode == 1
+              and "déjà en cours" in cp.stderr, tail(cp, 1))
+        lock.write_text(f"{os.getpid()}\n\n123\n", encoding="utf-8")
+        st = m.call("status", {"scene": "essai_agent"})["result"]["structuredContent"]
+        check("PID réattribué (jeton de démarrage différent) : pas pris pour un rendu en cours",
+              st["detached"] and not any(d["running"] for d in st["detached"]))
+        lock.unlink()
+
+        script({"hang": 60, "out": {"summary": "x", "issues": []}})
+        m.send({"jsonrpc": "2.0", "id": "lent", "method": "tools/call",
+                "params": {"name": "sheets", "arguments": {"scene": "essai_agent", "draft": True, "vision": True}}},
+               expect=False)
+        t1 = time.perf_counter()
+        while not calls() and time.perf_counter() - t1 < 30:
+            time.sleep(0.3)
+        m.send({"jsonrpc": "2.0", "method": "notifications/cancelled", "params": {"requestId": "lent"}}, expect=False)
+        r = m.send({"jsonrpc": "2.0", "id": "p2", "method": "ping"})
+        dt = time.perf_counter() - t1
+        check("annulation d'un outil long : ping servi aussitôt (réponse suivante = ping)",
+              r.get("id") == "p2" and dt < 30, f"{dt:.1f} s")
 
         issues = [{"severity": "attention", "where": "image 12", "problem": "texte proche du bord",
                    "suggestion": "y: safe:45%"}]
@@ -487,7 +658,9 @@ def test_draft_vision() -> None:
         check("vision, CLI non connectée : code 0 (jamais bloquant), avertissement consigné, 0 appel",
               cp.returncode == 0 and rep["warnings"] and calls() == [], tail(cp, 1))
     finally:
-        m.close()
+        rest = m.close()
+    check("requête annulée : aucune réponse envoyée", '"id": "lent"' not in rest and all(
+        '"id": "lent"' not in x for x in m.raw), rest[:120])
     # Seul « sheets --vision » importe vision_qc : ni le QC, ni la porte de déterminisme, ni run_all.
     users = sorted(f.name for f in list((ROOT / "pipeline").glob("*.py")) + [ROOT / "mograph.py"]
                    if re.search(r"vision_qc", f.read_text(encoding="utf-8")) and f.name != "vision_qc.py")
@@ -532,6 +705,7 @@ def main() -> int:
         test_cli()
         target = test_brief()
         test_mcp(target)
+        test_json_and_ids()
         test_draft_vision()
     except Exception as exc:  # noqa: BLE001 — rapporté comme échec, jamais masqué
         import traceback

@@ -47,7 +47,7 @@ def brief_schema(preset_id: str) -> dict:
              "properties": {
                  "id": {"type": "string", "pattern": ID_PATTERN},
                  "type": {"enum": ["text", "shape"]},
-                 "text": {"type": "string", "description": "texte (type text) : 7 mots au plus"},
+                 "text": {"type": "string", "description": "texte affiché, OBLIGATOIRE pour type text : 7 mots au plus"},
                  "style": {"enum": ["display", "body"]},
                  "size": {"type": "number", "description": "taille en px (1080p) : titre ≥ 90, corps ≥ 36"},
                  "color": {"enum": colors},
@@ -61,7 +61,8 @@ def brief_schema(preset_id: str) -> dict:
             "properties": {
                 "id": {"type": "string", "pattern": ID_PATTERN},
                 "intent": {"type": "string", "description": "une seule intention par plan"},
-                "duration": {"type": "number", "description": f"secondes, multiple de {1 / FPS:g} (×{FPS} entier)"},
+                "duration": {"type": "number", "minimum": 1, "maximum": 10,
+                             "description": f"secondes, multiple de {1 / FPS:g} (×{FPS} entier)"},
                 "background": {"enum": colors},
                 "transition": {"enum": ["cut", "crossfade", "wipe", "push"]},
                 "layers": {"type": "array", "minItems": 1, "maxItems": 6, "items": layer}}}
@@ -89,6 +90,28 @@ def _frames(d: float) -> float:
     return max(1, round(float(d) * FPS)) / FPS
 
 
+def problems(b: dict) -> list[str]:
+    """Défauts que le compilateur accepte mais qui gâchent la vidéo (renvoyés à Claude comme des refus) :
+    plan de durée nulle, texte absent (l'id serait affiché), calque de la couleur du fond (invisible)."""
+    out = []
+    for i, s in enumerate(b.get("shots") or []):
+        if not isinstance(s, dict):
+            continue
+        if not isinstance(s.get("duration"), (int, float)) or s["duration"] < 2 / FPS:
+            out.append(f"shots[{i}].duration : {s.get('duration')!r} s trop court ; donnez au moins 1 s (2 à 5 s conseillé).")
+        bg = s.get("background")
+        for j, la in enumerate(s.get("layers") or []):
+            if not isinstance(la, dict):
+                continue
+            where = f"shots[{i}].layers[{j}] ({la.get('id')})"
+            if la.get("type") == "text" and not str(la.get("text") or "").strip():
+                out.append(f"{where} : « text » manquant ou vide pour un calque texte ; écrivez le texte affiché.")
+            if bg and la.get("color") == bg:
+                out.append(f"{where} : couleur « {bg} » identique au fond du plan : calque invisible ; choisissez une "
+                           "couleur contrastée.")
+    return out
+
+
 def to_scene(b: dict, *, preset_id: str, aspect: str, model: str, date: str | None = None) -> dict:
     """Brief structuré -> scène complète du schéma mograph (déterministe : même brief -> même scène)."""
     date = date or _dt.date.today().isoformat()
@@ -100,16 +123,18 @@ def to_scene(b: dict, *, preset_id: str, aspect: str, model: str, date: str | No
             out = {"id": la["id"], "type": la["type"], "x": la["x"], "y": la["y"]}
             if la.get("anchor"):
                 out["anchor"] = la["anchor"]
+            bg = s.get("background")
             if la["type"] == "text":
                 out.update({"text": la.get("text") or la["id"], "style": la.get("style", "display"),
-                            "size": la.get("size", 96), "color": la.get("color", "fg")})
+                            "size": la.get("size", 96), "color": la.get("color") or ("bg" if bg == "fg" else "fg")})
             else:
                 shape = la.get("shape", "rect")
+                color = la.get("color") or ("secondary" if bg == "primary" else "primary")
                 out.update({"shape": shape, "w": la.get("w", 300), "h": la.get("h", 12 if shape == "line" else 300)})
                 if shape == "line":
-                    out.update({"stroke": la.get("color", "primary"), "strokeWidth": 10})
+                    out.update({"stroke": color, "strokeWidth": 10})
                 else:
-                    out["fill"] = la.get("color", "primary")
+                    out["fill"] = color
             out["anim"] = [{"move": la["move"], "at": float(la["at"])}]
             layers.append(out)
         shot = {"id": s["id"], "duration": _frames(s["duration"]), "layers": layers}
@@ -134,8 +159,8 @@ def to_scene(b: dict, *, preset_id: str, aspect: str, model: str, date: str | No
 
 def generate(idea: str, *, preset_id: str = "flat_riso", aspect: str = "16:9", scene_id: str | None = None,
              max_iterations: int | None = None, model: str | None = None, log=print, runner=None) -> tuple[dict, dict]:
-    """Idée -> scène VALIDE. Boucle bornée : appel Claude, conversion, validation par le compilateur,
-    correction à partir des messages de refus. Renvoie (scène, bilan {iterations, model, history}).
+    """Idée -> scène VALIDE. Boucle bornée : appel Claude, contrôles du brief (problems), conversion,
+    compilation complète (animations hors champ refusées), correction à partir des messages de refus. Renvoie (scène, bilan {iterations, model, history}).
     Lève BriefError après max_iterations essais refusés (bilan et dernière scène dans l'exception)."""
     from pipeline import scene as scene_mod
 
@@ -154,14 +179,20 @@ def generate(idea: str, *, preset_id: str = "flat_riso", aspect: str = "16:9", s
     for it in range(1, n_max + 1):
         # Chaque appel compte : une CLI en échec arrête la boucle (ClaudeError), sans nouvel essai.
         obj, meta = runner(prompt, schema, system=system, model=model)
-        scene = None
+        scene, pre = None, []
         try:
             if scene_id:
                 obj["id"] = scene_id
+            pre = problems(obj)
             scene = to_scene(obj, preset_id=preset_id, aspect=aspect, model=meta.get("model", "inconnu"))
-            scene_mod.validate_scene(scene)
+            compiled = scene_mod.compile_scene(scene)
+            # Animation qui finit après son plan : acceptée par le compilateur (avertissement), mais la fin
+            # n'est jamais vue : refusée ici, dans la même limite d'essais.
+            late = [w for w in compiled.get("warnings") or [] if "hors champ" in w]
+            if pre or late:
+                raise scene_mod.SceneError(late)
         except scene_mod.SceneError as exc:
-            errors = list(exc.errors)
+            errors = pre + [e for e in exc.errors if e not in pre]
         except (KeyError, TypeError, ValueError, AttributeError) as exc:
             # Sortie hors du schéma simplifié (la CLI le valide déjà : cas d'une CLI ancienne ou d'un faux).
             errors = [f"sortie non conforme au schéma mograph-brief/1 ({type(exc).__name__} : {exc}) : respecte "

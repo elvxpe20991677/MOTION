@@ -8,7 +8,8 @@ confirmation absente…) sont des résultats isError=true avec un message action
 protocole (outil inconnu, paramètres mal formés) sont des erreurs JSON-RPC. Aucune action qui remplace
 des fichiers (rendus, écriture d'une scène) sans le paramètre « confirm »: true. Spécification MCP
 2025-11-25 (modelcontextprotocol.io) : cycle initialize / notifications/initialized, tools/list,
-tools/call, ping. CONTRACT §11.7.
+tools/call, ping ; chaque tools/call s'exécute dans son propre fil (ping toujours servi) et
+notifications/cancelled arrête son sous-processus (aucune réponse n'est alors envoyée). CONTRACT §11.7.
 """
 
 from __future__ import annotations
@@ -18,12 +19,14 @@ import os
 import socket
 import subprocess
 import sys
+import threading
 import time
-from pathlib import Path
 
 from pipeline import config
+from pipeline.claude_cli import kill_tree
 
-PROTOCOL_VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26")
+# 2025-03-26 n'est pas proposée : elle impose de recevoir des lots JSON-RPC, que ce serveur ne traite pas.
+PROTOCOL_VERSIONS = ("2025-11-25", "2025-06-18")
 SERVER_INFO = {"name": "mograph", "title": "MOTION (mograph)", "version": "1.0.0"}
 INSTRUCTIONS = (
     "Outils du pipeline de motion design déterministe MOTION. Démarche : validate (corriger avec les messages "
@@ -91,14 +94,45 @@ class ToolFailure(Exception):
         self.data = data or {}
 
 
+# Requête traitée par ce fil (annulation) et sous-processus de chaque requête en cours.
+_CTX = threading.local()
+_LOCK = threading.Lock()
+_PROCS: dict = {}
+_CANCELLED: set = set()
+
+
 def _mograph(*args: str, timeout: float = 1800.0) -> subprocess.CompletedProcess:
     env = dict(os.environ, PYTHONIOENCODING="utf-8")
+    rid = getattr(_CTX, "rid", None)
+    proc = subprocess.Popen([sys.executable, str(config.ROOT / "mograph.py"), *args], cwd=config.ROOT, env=env,
+                            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            start_new_session=not config.IS_WINDOWS)
+    with _LOCK:
+        _PROCS.setdefault(rid, []).append(proc)
+        cancelled = rid is not None and rid in _CANCELLED
+    if cancelled:
+        kill_tree(proc)
     try:
-        return subprocess.run([sys.executable, str(config.ROOT / "mograph.py"), *args], cwd=config.ROOT, env=env,
-                              capture_output=True, text=True, encoding="utf-8", errors="replace",
-                              stdin=subprocess.DEVNULL, timeout=timeout)
+        out, err = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
+        kill_tree(proc)
+        proc.communicate()
         raise ToolFailure(f"mograph {args[0]} n'a pas terminé en {timeout:g} s.") from None
+    finally:
+        with _LOCK:
+            if proc in _PROCS.get(rid, []):
+                _PROCS[rid].remove(proc)
+    return subprocess.CompletedProcess(proc.args, proc.returncode, out.decode("utf-8", "replace"),
+                                       err.decode("utf-8", "replace"))
+
+
+def cancel(rid) -> None:
+    """notifications/cancelled : arrête les sous-processus de la requête ; sa réponse ne sera pas envoyée."""
+    with _LOCK:
+        _CANCELLED.add(rid)
+        procs = list(_PROCS.get(rid, []))
+    for proc in procs:
+        kill_tree(proc)
 
 
 def _json_out(cp: subprocess.CompletedProcess, what: str) -> dict:
@@ -175,15 +209,25 @@ def _detached(cmd: list[str], scene: str) -> dict:
             "next": "suivez l'avancement avec l'outil status" + (" (draft: true)" if draft else "")}
 
 
+def _validated(scene: str) -> None:
+    # Scène refusée : erreurs du compilateur tout de suite, plutôt qu'un rendu détaché qui échoue aussitôt.
+    cp = _mograph("validate", scene, "--json", timeout=300)
+    out = _json_out(cp, "validate")
+    if cp.returncode != 0:
+        raise ToolFailure("scène refusée : rendu NON lancé ; corrigez la scène avec les messages joints.", out)
+
+
 def tool_draft(args: dict) -> dict:
     scene = _scene_arg(args)
     _need_confirm(args, "la préversion")
+    _validated(scene)
     return _detached(["all", scene, "--draft"], scene)
 
 
 def tool_all(args: dict) -> dict:
     scene = _scene_arg(args)
     _need_confirm(args, "le rendu complet")
+    _validated(scene)
     return _detached(["all", scene], scene)
 
 
@@ -227,13 +271,22 @@ def _result(data: dict, error: bool = False) -> dict:
             "isError": error}
 
 
+def _valid_id(x) -> bool:
+    return isinstance(x, str) or (isinstance(x, int) and not isinstance(x, bool))
+
+
 def handle(msg: dict) -> dict | None:
     """Traite UN message JSON-RPC ; renvoie la réponse (None pour une notification)."""
-    if not isinstance(msg, dict) or msg.get("jsonrpc") != "2.0" or not isinstance(msg.get("method"), str):
-        return {"jsonrpc": "2.0", "id": msg.get("id") if isinstance(msg, dict) else None,
-                "error": {"code": -32600, "message": "Requête JSON-RPC 2.0 invalide."}}
-    mid, method, params = msg.get("id"), msg["method"], msg.get("params") or {}
+    if not isinstance(msg, dict) or msg.get("jsonrpc") != "2.0" or not isinstance(msg.get("method"), str) \
+            or ("id" in msg and not _valid_id(msg["id"])):
+        rid = msg.get("id") if isinstance(msg, dict) and _valid_id(msg.get("id")) else None
+        return {"jsonrpc": "2.0", "id": rid,
+                "error": {"code": -32600, "message": "Requête JSON-RPC 2.0 invalide (id : chaîne ou entier ; lots non "
+                                                     "pris en charge)."}}
+    mid, method, params = msg.get("id"), msg["method"], msg.get("params")
     if "id" not in msg:
+        if method == "notifications/cancelled" and isinstance(params, dict) and _valid_id(params.get("requestId")):
+            cancel(params["requestId"])
         return None  # notification (notifications/initialized, notifications/cancelled…) : aucune réponse
 
     def ok(result):
@@ -245,6 +298,10 @@ def handle(msg: dict) -> dict | None:
             e["data"] = data
         return {"jsonrpc": "2.0", "id": mid, "error": e}
 
+    if params is None:
+        params = {}
+    if not isinstance(params, dict):
+        return err(-32602, "« params » doit être un objet.")
     if method == "initialize":
         asked = params.get("protocolVersion")
         version = asked if asked in PROTOCOL_VERSIONS else PROTOCOL_VERSIONS[0]
@@ -256,7 +313,7 @@ def handle(msg: dict) -> dict | None:
         return ok({"tools": TOOLS})
     if method == "tools/call":
         name, args = params.get("name"), params.get("arguments") or {}
-        if name not in HANDLERS:
+        if not isinstance(name, str) or name not in HANDLERS:
             return err(-32602, f"Outil inconnu : {name}", {"tools": sorted(HANDLERS)})
         if not isinstance(args, dict):
             return err(-32602, "« arguments » doit être un objet.")
@@ -274,9 +331,37 @@ def handle(msg: dict) -> dict | None:
 
 
 def serve(stdin=None, stdout=None) -> None:
-    """Boucle stdio : un message JSON par ligne (UTF-8), réponses sur stdout, journal sur stderr."""
+    """Boucle stdio : un message JSON par ligne (UTF-8), réponses sur stdout, journal sur stderr. Chaque
+    tools/call s'exécute dans son fil ; les autres messages sont traités tout de suite."""
     inp = stdin or sys.stdin.buffer
     out = stdout or sys.stdout.buffer
+    wlock = threading.Lock()
+    workers = []
+
+    def send(resp):
+        if resp is not None:
+            with wlock:
+                out.write((json.dumps(resp, ensure_ascii=False) + "\n").encode("utf-8"))
+                out.flush()
+
+    def safe(msg):
+        try:
+            return handle(msg)
+        except Exception as exc:  # noqa: BLE001 — le serveur ne s'arrête jamais sur un message
+            mid = msg.get("id") if isinstance(msg, dict) else None
+            return {"jsonrpc": "2.0", "id": mid if _valid_id(mid) else None,
+                    "error": {"code": -32603, "message": f"Erreur interne : {type(exc).__name__} : {exc}"}}
+
+    def work(msg):
+        _CTX.rid = msg["id"]
+        resp = safe(msg)
+        with _LOCK:
+            cancelled = msg["id"] in _CANCELLED
+            _CANCELLED.discard(msg["id"])
+            _PROCS.pop(msg["id"], None)
+        if not cancelled:
+            send(resp)
+
     for raw in inp:
         line = raw.decode("utf-8", errors="replace").strip()
         if not line:
@@ -284,9 +369,14 @@ def serve(stdin=None, stdout=None) -> None:
         try:
             msg = json.loads(line)
         except ValueError:
-            resp = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "JSON illisible."}}
+            send({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "JSON illisible."}})
+            continue
+        if isinstance(msg, dict) and msg.get("jsonrpc") == "2.0" and msg.get("method") == "tools/call" \
+                and _valid_id(msg.get("id")):
+            th = threading.Thread(target=work, args=(msg,), daemon=True)
+            th.start()
+            workers.append(th)
         else:
-            resp = handle(msg)
-        if resp is not None:
-            out.write((json.dumps(resp, ensure_ascii=False) + "\n").encode("utf-8"))
-            out.flush()
+            send(safe(msg))
+    for th in workers:
+        th.join()
