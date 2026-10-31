@@ -4,7 +4,7 @@
 #   powershell -ExecutionPolicy Bypass -File .\setup.ps1 -Defender    idem + exclusion Defender de build\ (admin)
 # Prérequis installables par winget (le script indique la commande exacte s'il en manque un) :
 #   winget install Git.Git Python.Python.3.12 OpenJS.NodeJS.LTS astral-sh.uv Gyan.FFmpeg
-# Versions figées : requirements.txt + constraints.txt (pip), package-lock.json (npm), bpy==5.0.1 +
+# Versions figées : requirements.txt + constraints.txt (pip), package-lock.json (npm), bpy==5.2.3 +
 # constraints-blender.txt ; références dans versions.json (contrôle : scripts/check_versions.py).
 param([switch]$Tests, [switch]$Defender)
 
@@ -69,10 +69,10 @@ Run "npm ci" { & npm ci --silent --no-audit --no-fund }
 if (-not (Test-Path "node_modules\gsap\dist\gsap.min.js")) { Fail "gsap absent après npm ci" }
 Ok "gsap 3.15.0 + polices @fontsource"
 
-Step "Blender bpy 5.0.1 (.venv-blender, CPython 3.11.15)"
+Step "Blender bpy 5.2.3 LTS (.venv-blender, CPython 3.13.13)"
 $bpyPy = Join-Path $PSScriptRoot ".venv-blender\Scripts\python.exe"
-if (-not (Test-Path $bpyPy)) { Run "uv venv .venv-blender" { & uv venv --quiet --python 3.11.15 .venv-blender } }
-Run "uv pip install bpy==5.0.1 -c constraints-blender.txt" { & uv pip install --quiet --python $bpyPy bpy==5.0.1 -c constraints-blender.txt }
+if (-not (Test-Path $bpyPy)) { Run "uv venv .venv-blender" { & uv venv --quiet --python 3.13.13 .venv-blender } }
+Run "uv pip install bpy==5.2.3 -c constraints-blender.txt" { & uv pip install --quiet --python $bpyPy bpy==5.2.3 -c constraints-blender.txt }
 $bpyVer = & $bpyPy -c "import bpy; print(bpy.app.version_string)" 2>$null | Select-Object -Last 1
 Ok "bpy $bpyVer"
 # OptiX : le backend choisit OPTIX si une carte NVIDIA est détectée (device « auto »).

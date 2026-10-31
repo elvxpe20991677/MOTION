@@ -1,4 +1,4 @@
-"""Vérification de l'étape 13 : backend Blender (bpy 5.0.1) + lanceur pipeline/blender_render.py.
+"""Vérification de l'étape 13 : backend Blender (bpy 5.2.3 LTS) + lanceur pipeline/blender_render.py.
 
 Lancement depuis la racine :  .venv/Scripts/python.exe tests/verify_step13_blender.py
 Affiche une ligne PASS/FAIL par contrôle (INFO/SKIP pour les mesures), code de sortie ≠ 0 si un FAIL.

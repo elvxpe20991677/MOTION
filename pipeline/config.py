@@ -157,8 +157,8 @@ IS_WINDOWS: bool = sys.platform == "win32"
 # L'interpréteur de l'orchestrateur est celui qui exécute ce code (venv Python 3.12).
 ORCHESTRATOR_PYTHON: Path = Path(sys.executable)
 
-# bpy 5.0.1 n'existe que pour CPython 3.11 : il vit dans un venv séparé créé par uv. MOGRAPH_BLENDER_VENV
-# désigne un autre venv pour un ESSAI (phase 2 : bpy 5.2 LTS sous CPython 3.13) sans toucher à la référence.
+# bpy 5.2.3 LTS n'existe que pour CPython 3.13 : il vit dans un venv séparé créé par uv. MOGRAPH_BLENDER_VENV
+# désigne un autre venv pour un ESSAI d'une autre version de bpy sans toucher à la référence.
 # Valeur vide = absente ; valeur relative = relative à la RACINE du projet (pas au dossier courant).
 BLENDER_VENV_OVERRIDE: str | None = (os.environ.get("MOGRAPH_BLENDER_VENV") or "").strip() or None
 BLENDER_VENV: Path = (ROOT / BLENDER_VENV_OVERRIDE).resolve() if BLENDER_VENV_OVERRIDE else ROOT / ".venv-blender"

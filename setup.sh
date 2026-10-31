@@ -2,7 +2,7 @@
 # Installation reproductible de mograph (Linux / macOS / WSL2), idempotente : relancer ne casse rien.
 #   ./setup.sh            installe (ou complète) puis vérifie
 #   ./setup.sh --tests    idem, puis rejoue les tests rapides des étapes 9, 11, 14, 15, 16
-# Versions figées : requirements.txt + constraints.txt (pip), package-lock.json (npm), bpy==5.0.1 +
+# Versions figées : requirements.txt + constraints.txt (pip), package-lock.json (npm), bpy==5.2.3 +
 # constraints-blender.txt ; références dans versions.json (contrôle : scripts/check_versions.py).
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -51,9 +51,9 @@ npm ci --silent --no-audit --no-fund
 [ -f node_modules/gsap/dist/gsap.min.js ] || fail "gsap absent après npm ci"
 ok "gsap 3.15.0 + polices @fontsource"
 
-step "Blender bpy 5.0.1 (.venv-blender, CPython 3.11.15)"
-[ -x .venv-blender/bin/python ] || uv venv --quiet --python 3.11.15 .venv-blender
-uv pip install --quiet --python .venv-blender/bin/python bpy==5.0.1 -c constraints-blender.txt
+step "Blender bpy 5.2.3 LTS (.venv-blender, CPython 3.13.13)"
+[ -x .venv-blender/bin/python ] || uv venv --quiet --python 3.13.13 .venv-blender
+uv pip install --quiet --python .venv-blender/bin/python bpy==5.2.3 -c constraints-blender.txt
 ok "bpy $(.venv-blender/bin/python -c 'import bpy; print(bpy.app.version_string)' 2>/dev/null | tail -1)"
 
 step "Versions de référence (versions.json)"

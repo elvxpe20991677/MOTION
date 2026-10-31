@@ -20,7 +20,7 @@ après les installations pour que le PATH soit à jour.
 | 7 | uv (Astral) | fournit Python 3.11 pour Blender (bpy) | oui | `winget install astral-sh.uv` |
 | 8 | FFmpeg « full » (gyan.dev, avec zscale) | encodage, QC | oui | `winget install Gyan.FFmpeg` |
 | 9 | Chromium (Playwright) | rendu des images | oui | installé par `setup.ps1` (pas à la main) |
-| 10 | bpy 5.0.1 (Blender en module) | rendu 3D Cycles | oui | installé par `setup.ps1` |
+| 10 | bpy 5.2.3 LTS (Blender en module, CPython 3.13) | rendu 3D Cycles | oui | installé par `setup.ps1` |
 | 11 | Claude Code | exécuter le prompt ci-dessous | pour le prompt | `npm install -g @anthropic-ai/claude-code` |
 | 12 | VS Code | écrire les scènes (autocomplétion par le schéma) | conseillé | `winget install Microsoft.VisualStudioCode` |
 | 13 | VLC (ou mpv) | lecture image par image | conseillé | `winget install VideoLAN.VLC` |
@@ -48,7 +48,7 @@ C:\Users\perro\Desktop\MOTION, le rendre 100 % opérationnel, puis générer les
 Dépôt : https://github.com/elvxpe20991677/MOTION . Branche : main si la PR #1 est fusionnée, sinon
 claude/eloquent-hypatia-p581pj. Travaille étape par étape ; après chaque étape, montre la sortie réelle ;
 ne passe à la suivante que si elle est verte. N'affirme jamais qu'une chose marche sans l'avoir exécutée.
-Ne modifie aucune version figée (requirements.txt, package-lock.json, bpy==5.0.1). En cas d'échec :
+Ne modifie aucune version figée (requirements.txt, package-lock.json, bpy==5.2.3). En cas d'échec :
 arrête-toi, montre le journal, propose une correction, attends mon accord.
 
 1. SAUVEGARDE : si C:\Users\perro\Desktop\MOTION existe, copie-le (robocopy, en excluant .venv,

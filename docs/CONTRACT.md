@@ -19,7 +19,7 @@ Les schémas JSON dans `schema/` et `schema/internal/` sont normatifs.
 | Chromium | Chromium Headless Shell 141.0.7390.37 (playwright build v1194) |
 | Node / npm | 24.19.0 / 12.0.2 (sert uniquement à récupérer des fichiers figés : sans effet sur les pixels) |
 | npm | gsap 3.15.0, @fontsource/* 5.3.0 (`package.json` + `package-lock.json`) |
-| Blender | bpy 5.0.1 sous CPython 3.11.15 (uv 0.11.7) — venv `.venv-blender` → **`.venv-blender/Scripts/python.exe`** |
+| Blender | bpy 5.2.3 LTS sous CPython 3.13.13 (uv 0.11.7) — venv `.venv-blender` → **`.venv-blender/Scripts/python.exe`** (bpy 5.0.1 / CPython 3.11.15 jusqu'au 31/10/2026, §11.9) |
 | Référence Cycles | cube 540², 16 éch., OIDN : **1,09 s/image CPU (24 threads)**, 2,10 s OptiX (surcoût d'init sur scène triviale) |
 | Baseline | `docs/BASELINE.md` + `docs/baseline/phase-0.json` (versions exactes, tests, empreintes de `demo_flat_riso`), rejouable par `scripts/baseline.py` |
 
@@ -31,7 +31,7 @@ Les schémas JSON dans `schema/` et `schema/internal/` sont normatifs.
 | FFmpeg | **6.1.1** (paquet Ubuntu), libzimg 3.0.5 : défauts d'alpha contournés (§7), plage ProRes lue sur l'image (§8) |
 | Python / Node | 3.12.3 (`.venv/bin/python`) / Node 22.22.2, npm 10.9.7 ; mêmes versions pip/npm figées |
 | Chromium | 141.0.7390.37 (playwright build v1194, identique à la machine 1) |
-| Blender | bpy 5.0.1 sous CPython 3.11 (`.venv-blender/bin/python`), Cycles CPU |
+| Blender | bpy 5.2.3 LTS sous CPython 3.13 (`.venv-blender/bin/python`), Cycles CPU |
 | Référence Cycles | scène clay 540², 24 éch., flou 0,5 : **~5 s/image (4 threads)** ; web 1080p : 0,37 s/image (4 navigateurs) ; plaque 1080², 96 éch. : ~56 s/image |
 
 Le déterminisme est garanti PAR machine (§6) : la porte de l'étape 19 est rejouée ici.
@@ -584,11 +584,11 @@ porte `provenance` et `ai_assets` (JSON) et une section « Provenance » (Markdo
 
 ### 11.3 Phase 1 — versions de référence et CI
 - `versions.json` : versions de référence (FFmpeg 9.0.2 gyan.dev « full » + filtres et encodeurs
-  requis, Python 3.12.10, CPython 3.11.15 + bpy 5.0.1, Chromium 141.0.7390.37, Node 24.19.0,
+  requis, Python 3.12.10, CPython 3.13.13 + bpy 5.2.3 (depuis le 31/10/2026 ; avant : 3.11.15 + 5.0.1), Chromium 141.0.7390.37, Node 24.19.0,
   uv 0.11.7). C'est **le fichier de versions** : toute nouvelle dépendance y est ajoutée, épinglée.
 - `constraints.txt` / `constraints-blender.txt` : TOUTES les versions installées (dépendances
   indirectes comprises), relevées le 30/09/2026 ; installation : `pip install -r requirements.txt -c
-  constraints.txt`, `uv pip install bpy==5.0.1 -c constraints-blender.txt` (setup.ps1, setup.sh, CI).
+  constraints.txt`, `uv pip install bpy==5.2.3 -c constraints-blender.txt` (setup.ps1, setup.sh, CI).
 - `scripts/check_versions.py [--profile reference|ci-linux] [--no-blender] [--no-chromium] [--strict]` :
   PASS/FAIL/NOTE, code ≠ 0 si un écart. FFmpeg ET ffprobe comparés à la chaîne de version complète
   (profil `reference` : `9.0.2-full_build-www.gyan.dev` ; `ci-linux` : `6.1.1-3ubuntu5`), plus les
@@ -1170,17 +1170,20 @@ dépendances, dans `constraints.txt`) ; c2patool est facultatif et référencé 
 Tests : `tests/verify_step70_c2pa_av1.py` (rendu complet signé, 3 conteneurs, tests négatifs ; AV1 SKIP
 sans NVENC ; sans c2patool, vérification par le SDK seulement).
 
-### 11.9 Phase 2 (optionnelle) — essai Blender 5.2 LTS, sans bascule
-La référence reste **bpy 5.0.1 / CPython 3.11.15** (§0, `versions.json`). `MOGRAPH_BLENDER_VENV`
-(défaut `.venv-blender`) fait utiliser un autre venv Blender pour un ESSAI. Défaut inchangé : aucun effet
-sur les pixels ni sur les empreintes.
+### 11.9 Phase 2 — Blender 5.2 LTS : essai, puis bascule de la référence (31/10/2026)
+**Référence depuis le 31/10/2026 : bpy 5.2.3 LTS / CPython 3.13.13** (§0, `versions.json`,
+`constraints-blender.txt`), à la demande de l'utilisateur après l'essai ci-dessous. Avant : bpy 5.0.1 /
+CPython 3.11.15 ; l'ancien venv est gardé localement sous `.venv-blender-5.0.1/` (ignoré par git) pour
+revenir en arrière. `MOGRAPH_BLENDER_VENV` (défaut `.venv-blender`) fait utiliser un autre venv Blender
+pour un ESSAI ; défaut = référence.
 - Valeur vide = absente ; valeur relative = relative à la racine du projet.
 - `check_versions` échoue tant que la variable est définie.
 - Venv d'essai absent : message qui nomme la variable.
-- Moteur dans la clé de purge des plaques : `engine.txt`, avec l'interpréteur résolu, est écrit à côté de
-  `job.json`. Un changement de venv supprime les images de la plaque, qui sont refaites : jamais d'images
-  d'une version de bpy sous l'étiquette d'une autre. Une plaque sans ce fichier est réputée rendue par le
-  venv de référence.
+- Moteur dans la clé de purge des plaques : `engine.txt` (interpréteur résolu ET version de bpy, lue dans
+  `bpy-<version>.dist-info` du venv) est écrit à côté de `job.json`. Un changement de venv, ou du bpy
+  d'un même venv, supprime les images de la plaque, qui sont refaites : jamais d'images d'une version de
+  bpy sous l'étiquette d'une autre. Une plaque sans ce fichier est réputée rendue par bpy 5.0.1 (la
+  référence d'avant le marquage).
 
 Essai du 31/10/2026 avec bpy 5.2.3 LTS sous CPython 3.13.13 (`.venv-blender52`, ignoré par git) :
 - `verify_step13_blender` : 37 PASS ;
@@ -1189,8 +1192,8 @@ Essai du 31/10/2026 avec bpy 5.2.3 LTS sous CPython 3.13.13 (`.venv-blender52`, 
 - plaques de `demo_clay_3d` NON identiques à celles de 5.0.1 : 0 image sur 72 identique, PSNR médian
   63 dB, écarts sur les bords des objets.
 
-Basculer change donc les empreintes des scènes 3D et deux versions épinglées : c'est une décision de
-l'utilisateur, qui exige une nouvelle baseline. Détail : `docs/ESSAI_BLENDER_52.md`.
+La bascule change les empreintes des plaques 3D (pas celles des scènes 2D, dont la scène de référence de la
+baseline) ; nouvelle baseline : `docs/baseline/blender-52.json`. Détail : `docs/ESSAI_BLENDER_52.md`.
 
 ### 11.10 Phase 9 (optionnelle) — finition DaVinci Resolve : aller-retour d'un maître
 **MCP natif de Resolve 21.1 : NON utilisé.** La presse spécialisée l'annonce (« File > Setup AI

@@ -45,8 +45,8 @@ Architecture imposée (validée) : HYBRIDE.
 | Node.js + npm | 22 LTS | Récupération des bibliothèques navigateur | oui |
 | gsap (+ CustomEase) | 3.15.0 | Timeline d'animation | oui |
 | @fontsource : bricolage-grotesque, dm-sans, anton, space-grotesk, vt323, space-mono, caveat, patrick-hand, fraunces, inter-tight | 5.3.0 | Polices embarquées | oui |
-| uv (Astral) | récent | Fournit CPython 3.11 pour bpy | oui |
-| Python (via uv) + bpy | 3.11 + 5.0.1 | Backend 3D | oui |
+| uv (Astral) | récent | Fournit CPython 3.13 pour bpy | oui |
+| Python (via uv) + bpy | 3.13 + 5.2.3 LTS (3.11 + 5.0.1 jusqu'au 31/10/2026) | Backend 3D | oui |
 | Bibliothèques Linux pour bpy : libxrender1 libxxf86vm1 libxfixes3 libxi6 libxkbcommon0 libsm6 libgl1 libegl1 | système | Dépendances de bpy | oui (Linux) |
 | mediainfo | système | Contrôle humain des fichiers | recommandé |
 | mpv ou VLC | récent | Lecture image par image | recommandé |
@@ -99,10 +99,10 @@ VÉRIFIER :
 ## Étape 5 — Blender (bpy)
 FAIRE :
   curl -LsSf https://astral.sh/uv/install.sh | sh
-  uv venv --python 3.11 .venv-blender
-  uv pip install --python .venv-blender/bin/python bpy==5.0.1
+  uv venv --python 3.13 .venv-blender
+  uv pip install --python .venv-blender/bin/python bpy==5.2.3 -c constraints-blender.txt
 VÉRIFIER :
-  .venv-blender/bin/python -c "import bpy; print(bpy.app.version_string)"   # 5.0.1
+  .venv-blender/bin/python -c "import bpy; print(bpy.app.version_string)"   # 5.2.3 LTS
   Rendre un cube en Cycles CPU, 540x540, 16 échantillons, débruitage OIDN : noter le temps
   par image (référence mesurée sur 1 cœur : 5,5 s ; scène clay réelle avec flou : ~21 s).
 RÈGLE : toujours importer bpy AVANT bmesh et mathutils (sinon ModuleNotFoundError).

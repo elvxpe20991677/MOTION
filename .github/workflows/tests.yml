@@ -24,7 +24,7 @@ env:
   PYTHON_VERSION: "3.12.10"
   NODE_VERSION: "24.19.0"
   UV_VERSION: "0.11.7"
-  BLENDER_PYTHON_VERSION: "3.11.15"
+  BLENDER_PYTHON_VERSION: "3.13.13"
   FFMPEG_WINDOWS_VERSION: "9.0.2"
 
 jobs:
@@ -92,7 +92,7 @@ jobs:
           .venv/bin/python -m playwright install --with-deps chromium
           npm ci
           uv venv --python ${{ env.BLENDER_PYTHON_VERSION }} .venv-blender
-          uv pip install --python .venv-blender/bin/python bpy==5.0.1 -c constraints-blender.txt
+          uv pip install --python .venv-blender/bin/python bpy==5.2.3 -c constraints-blender.txt
       - name: Versions (profil ci-linux)
         run: .venv/bin/python scripts/check_versions.py --profile ci-linux --strict
       - name: Étape 12 — pilote web (déterminisme, 4K, alpha, reprise)
@@ -157,7 +157,7 @@ jobs:
           .venv/Scripts/python.exe -m playwright install chromium
           npm ci
           uv venv --python ${{ env.BLENDER_PYTHON_VERSION }} .venv-blender
-          uv pip install --python .venv-blender/Scripts/python.exe bpy==5.0.1 -c constraints-blender.txt
+          uv pip install --python .venv-blender/Scripts/python.exe bpy==5.2.3 -c constraints-blender.txt
       - name: Versions (profil reference)
         run: .venv/Scripts/python.exe scripts/check_versions.py --profile reference --strict
       - name: Étapes 9 à 17 et nouveautés

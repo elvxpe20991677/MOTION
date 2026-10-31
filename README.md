@@ -14,7 +14,7 @@ scène.json ──► compilateur ──► plans compilés ──► Chromium h
 ```
 
 - **Web natif (Chromium + GSAP)** : colonne vertébrale 2D **et** compositeur final.
-- **Blender (bpy 5.0.1, Cycles)** : plaques 3D intégrées comme calques de la page.
+- **Blender (bpy 5.2.3 LTS, Cycles)** : plaques 3D intégrées comme calques de la page.
 - **FFmpeg** : seul maillon de sortie (conversion couleur, encodage, contrôle).
 - **Un seul format de scène JSON.** DaVinci Resolve : finition et scopes, hors boucle.
 
@@ -44,8 +44,8 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt -c constraints.txt
 .\.venv\Scripts\python.exe -m playwright install chromium
 npm ci
-uv venv --python 3.11.15 .venv-blender
-uv pip install --python .venv-blender\Scripts\python.exe bpy==5.0.1 -c constraints-blender.txt
+uv venv --python 3.13.13 .venv-blender
+uv pip install --python .venv-blender\Scripts\python.exe bpy==5.2.3 -c constraints-blender.txt
 ```
 
 ### Ubuntu 24.04 / WSL2 / macOS
@@ -56,14 +56,14 @@ python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt -c constra
 .venv/bin/python -m playwright install --with-deps chromium
 npm ci
 curl -LsSf https://astral.sh/uv/install.sh | sh
-uv venv --python 3.11.15 .venv-blender && uv pip install --python .venv-blender/bin/python bpy==5.0.1 -c constraints-blender.txt
+uv venv --python 3.13.13 .venv-blender && uv pip install --python .venv-blender/bin/python bpy==5.2.3 -c constraints-blender.txt
 ```
 (macOS : `brew install git tmux mediainfo mpv ffmpeg node uv python@3.12`.)
 
 ### Vérifications rapides
 ```bash
 ffmpeg -hide_banner -filters | grep -E " zscale | premultiply | alphaextract | blackdetect | ebur128 "
-.venv-blender/bin/python -c "import bpy; print(bpy.app.version_string)"   # 5.0.1 (Windows : .venv-blender/Scripts/python.exe)
+.venv-blender/bin/python -c "import bpy; print(bpy.app.version_string)"   # 5.2.3 LTS (Windows : .venv-blender/Scripts/python.exe)
 ```
 Les scripts `tests/verify_stepNN_*.py` rejouent la vérification de chaque étape :
 ```bash
@@ -78,7 +78,7 @@ FFmpeg 6.1.1 (Ubuntu 24.04) convient : ses conversions d'alpha inexactes (swscal
 contournées par l'encodeur (voir `docs/CONTRACT.md` §7), vérifié par `tests/verify_step15_encode.py`.
 
 Versions figées : `versions.json` (références), `requirements.txt` + `constraints.txt` (pip, dépendances
-indirectes comprises), `package.json` + `package-lock.json` (npm), `bpy==5.0.1` + `constraints-blender.txt`.
+indirectes comprises), `package.json` + `package-lock.json` (npm), `bpy==5.2.3` + `constraints-blender.txt`.
 `scripts/check_versions.py` vérifie l'installation (FFmpeg 9.0.2 gyan.dev « full » sur la machine de
 référence ; `--profile ci-linux` sous Ubuntu, où FFmpeg est la 6.1.1 du paquet). Toute mise à jour peut
 changer des pixels : refaire la porte de déterminisme et la baseline.

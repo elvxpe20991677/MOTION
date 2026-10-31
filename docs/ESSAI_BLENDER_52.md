@@ -1,8 +1,10 @@
-# Essai Blender 5.2 LTS (phase 2, optionnelle) — 31/10/2026
+# Blender 5.2 LTS (phase 2) — essai puis bascule, 31/10/2026
 
-**Statut : essai seulement. La référence reste bpy 5.0.1 sous CPython 3.11.15** (`.venv-blender`,
-`versions.json`, `constraints-blender.txt` inchangés). Basculer change des pixels et deux versions
-épinglées : décision de l'utilisateur.
+**Statut : BASCULE FAITE le 31/10/2026, à la demande de l'utilisateur.** La référence est désormais
+bpy 5.2.3 LTS sous CPython 3.13.13 (`.venv-blender`, `versions.json`, `constraints-blender.txt`, setup,
+CI). L'ancien venv bpy 5.0.1 / CPython 3.11.15 reste en local sous `.venv-blender-5.0.1/`. Pour revenir en
+arrière, le renommer en `.venv-blender` et revenir au commit précédant la bascule (versions et
+contraintes). L'essai qui a motivé la bascule est décrit ci-dessous.
 
 ## Sources vérifiées
 - **Blender 5.2 LTS** : sortie le 14/07/2026, support jusqu'en juillet 2028
@@ -50,7 +52,7 @@ Changer de venv sur le MÊME build/ est sans danger : chaque plaque note le mote
 (`engine.txt`, interpréteur résolu), et ses images sont supprimées puis refaites si le moteur change.
 Une plaque sans ce fichier est réputée rendue par le venv de référence.
 
-## Ce qu'impliquerait une bascule (non faite)
+## Ce que la bascule a impliqué (faite le 31/10/2026)
 1. `versions.json` : `blender_python` 3.11.15 → 3.13.13, `bpy` 5.0.1 → 5.2.3 ; nouveau
    `constraints-blender.txt` ; `setup.ps1` / CI (venv Blender en 3.13).
 2. Les empreintes des plaques 3D (et donc des maîtres et livrables des scènes 3D) changent : nouvelle

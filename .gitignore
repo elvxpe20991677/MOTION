@@ -43,3 +43,4 @@ out/**/encode_record.json
 out/**/c2pa_report.json
 out/**/c2pa_report.md
 .venv-blender52/
+.venv-blender-5.0.1/

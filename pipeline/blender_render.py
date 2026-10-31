@@ -144,10 +144,19 @@ def _canonical(job: dict) -> str:
 ENGINE_FILENAME = "engine.txt"
 
 
+def _bpy_version(venv: Path) -> str:
+    """Version de bpy installée dans un venv, lue dans ses métadonnées (bpy-<version>.dist-info), sans lancer
+    l'interpréteur ; « ? » si introuvable."""
+    for d in sorted(Path(venv).glob("[Ll]ib/**/site-packages/bpy-*.dist-info")):
+        return d.name[len("bpy-"):-len(".dist-info")]
+    return "?"
+
+
 def _engine() -> str:
-    """Identité du moteur Blender : interpréteur résolu (un autre venv = une autre version de bpy, d'autres
-    pixels ; phase 2, MOGRAPH_BLENDER_VENV). Comparée à chaque rendu comme la tâche elle-même."""
-    return os.path.normcase(str(Path(config.BLENDER_PYTHON).resolve()))
+    """Identité du moteur Blender : interpréteur résolu ET version de bpy (un autre venv, ou le même venv
+    réinstallé avec une autre version, donne d'autres pixels ; phase 2). Comparée à chaque rendu comme la
+    tâche elle-même."""
+    return f"{os.path.normcase(str(Path(config.BLENDER_PYTHON).resolve()))} | bpy {_bpy_version(config.BLENDER_VENV)}"
 
 
 def _purge_if_job_changed(job: dict, job_path: Path, log: Callable[[str], None], tag: str) -> None:
@@ -157,7 +166,7 @@ def _purge_if_job_changed(job: dict, job_path: Path, log: Callable[[str], None],
     Le backend saute les images présentes (reprise) : sans cette purge, une plaque modifiée à taille égale
     mélangerait images périmées et nouvelles, et un changement de venv réutiliserait les images de l'autre
     version de bpy. job.json précédent illisible = traité comme différent. Plaque sans engine.txt (rendue
-    avant la phase 2, quand seul le venv de référence existait) = rendue par le venv de référence.
+    avant le marquage) = rendue par la référence d'alors : bpy 5.0.1 dans .venv-blender.
     """
     if not job_path.exists():
         return
@@ -169,8 +178,9 @@ def _purge_if_job_changed(job: dict, job_path: Path, log: Callable[[str], None],
     try:
         engine_before = stamp.read_text(encoding="utf-8").strip()
     except OSError:
+        # Plaque antérieure au marquage (phase 2) : rendue par la référence d'alors, bpy 5.0.1 dans .venv-blender.
         ref = config.ROOT / ".venv-blender" / ("Scripts/python.exe" if config.IS_WINDOWS else "bin/python")
-        engine_before = os.path.normcase(str(ref.resolve()))
+        engine_before = f"{os.path.normcase(str(ref.resolve()))} | bpy 5.0.1"
     same_job = previous is not None and _canonical(previous) == _canonical(job)
     if same_job and engine_before == _engine():
         return
@@ -190,8 +200,8 @@ def _check_installation() -> None:
                 "ou retirez la variable pour revenir au venv de référence.")
         raise BlenderRenderError(
             f"interpréteur Blender introuvable : {config.BLENDER_PYTHON}. Installez-le depuis la racine du projet : "
-            f"« uv venv --python 3.11 .venv-blender » puis « uv pip install --python "
-            f"{Path(config.BLENDER_PYTHON).relative_to(config.ROOT).as_posix()} bpy==5.0.1 »."
+            f"« uv venv --python 3.13.13 .venv-blender » puis « uv pip install --python "
+            f"{Path(config.BLENDER_PYTHON).relative_to(config.ROOT).as_posix()} bpy==5.2.3 -c constraints-blender.txt »."
         )
     if not Path(config.BLENDER_BACKEND).is_file():
         raise BlenderRenderError(f"backend introuvable : {config.BLENDER_BACKEND}. Restaurez backends/blender_backend.py.")

@@ -1,6 +1,6 @@
 """Backend Blender de mograph : rend une plaque 3D (tâche « mograph-blender-job/1 ») image par image.
 
-Exécuté par l'interpréteur du venv Blender (CPython 3.11 + bpy 5.0.1), jamais par l'orchestrateur :
+Exécuté par l'interpréteur du venv Blender (CPython 3.13 + bpy 5.2.3 LTS), jamais par l'orchestrateur :
 
     .venv-blender/bin/python backends/blender_backend.py <job.json> [--frames 0,12,40] [--print-values]
     (Windows : .venv-blender/Scripts/python.exe)
