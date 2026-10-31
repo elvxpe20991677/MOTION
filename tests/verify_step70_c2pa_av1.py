@@ -42,7 +42,9 @@ SCENES = TEST / "scenes"
 os.environ.update({
     "MOGRAPH_BUILD_DIR": str(TEST / "build"), "MOGRAPH_OUT_DIR": str(TEST / "out"), "MOGRAPH_SCENES_DIR": str(SCENES),
     "MOGRAPH_AI_ASSETS_DIR": str(AI), "MOGRAPH_ASSETS_LOCK": str(TEST / "assets.lock.json"),
-    "MOGRAPH_C2PA_DIR": str(TEST / "c2pa"), "PYTHONIOENCODING": "utf-8"})
+    "MOGRAPH_C2PA_DIR": str(TEST / "c2pa"), "PYTHONIOENCODING": "utf-8",
+    # Hors ligne par défaut : l'horodatage (réseau) n'est essayé que par test_timestamp.
+    "MOGRAPH_C2PA_TSA": "off"})
 sys.path.insert(0, str(ROOT))
 
 from pipeline import assets, c2pa_sign, config  # noqa: E402  (après l'environnement)
@@ -73,8 +75,9 @@ def skip(label: str, why: str) -> None:
     print(f"SKIP {label} -- {why}", flush=True)
 
 
-def mograph(*args: str, timeout: float = 1800) -> subprocess.CompletedProcess:
-    return subprocess.run([PY, str(ROOT / "mograph.py"), *args], cwd=ROOT, env=dict(os.environ), capture_output=True,
+def mograph(*args: str, timeout: float = 1800, env: dict | None = None) -> subprocess.CompletedProcess:
+    return subprocess.run([PY, str(ROOT / "mograph.py"), *args], cwd=ROOT, env=dict(os.environ, **(env or {})),
+                          capture_output=True,
                           stdin=subprocess.DEVNULL, text=True, encoding="utf-8", errors="replace", timeout=timeout)
 
 
@@ -344,6 +347,35 @@ def test_alpha() -> None:
           cp.returncode == 0 and qc.get("verdict") == "CONFORME" and by.get("prores_4444.alpha") == "PASS", str(by.get("prores_4444.alpha")))
 
 
+def test_timestamp() -> None:
+    """Horodatage RFC 3161 : autorité par défaut (réseau, SKIP si injoignable), autorité injoignable (repli
+    signalé), certificat local valable 10 ans."""
+    from cryptography import x509
+
+    leaf = x509.load_pem_x509_certificates((TEST / "c2pa" / "signer_chain.pem").read_bytes())[0]
+    days = (leaf.not_valid_after_utc - leaf.not_valid_before_utc).days
+    check("certificat de signature local valable 10 ans (3650 jours + 1)", 3650 <= days <= 3652, f"{days} jours")
+    sc = str(SCENES / "c70_sansia.json")
+    out = TEST / "out" / "c70_sansia"
+    f = out / "c70_sansia_hevc_main10.mp4"
+    cp = mograph("c2pa", "sign", sc, env={"MOGRAPH_C2PA_TSA": "http://127.0.0.1:9/"})
+    rep = json.loads((out / "c2pa_report.json").read_text(encoding="utf-8")) if (out / "c2pa_report.json").is_file() else {}
+    o = (rep.get("outputs") or [{}])[0]
+    check("autorité d'horodatage injoignable : signature faite SANS horodatage, signalée (journal + rapport)",
+          cp.returncode == 0 and c2pa_sign.verify(f)["valid"] and o.get("timestamped") is False
+          and "injoignable" in (o.get("timestamp_note") or "") and "SANS horodatage" in cp.stdout, tail(cp, 2))
+    cp = mograph("c2pa", "sign", sc, env={"MOGRAPH_C2PA_TSA": config.C2PA_TSA_DEFAULT})
+    rep = json.loads((out / "c2pa_report.json").read_text(encoding="utf-8")) if (out / "c2pa_report.json").is_file() else {}
+    o = (rep.get("outputs") or [{}])[0]
+    if o.get("timestamped"):
+        v = c2pa_sign.verify(f)
+        check("horodatage DigiCert : date certifiée dans le manifeste, manifeste valide (SDK et c2patool)",
+              v["valid"] and v["signed_at"] and rep.get("timestamp_authority") == config.C2PA_TSA_DEFAULT
+              and (not HAVE_TOOL or (v.get("c2patool") or {}).get("state") == "Valid"), str(v["signed_at"]))
+    else:
+        print(f"SKIP horodatage DigiCert -- autorité injoignable (réseau ?) : {o.get('timestamp_note')}", flush=True)
+
+
 def test_no_ai() -> None:
     p = scene("c70_sansia", outputs=[{"profile": "hevc_main10"}], provenance={"c2pa": {"sign": True}}, shots=1)
     cp = mograph("all", str(p))
@@ -393,6 +425,7 @@ def main() -> int:
             test_negative(out, av1)
         test_alpha()
         test_no_ai()
+        test_timestamp()
     except Exception as exc:  # noqa: BLE001 — rapporté comme échec, jamais masqué
         import traceback
         traceback.print_exc()

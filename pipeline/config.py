@@ -93,9 +93,13 @@ TEMPO_DRIFT_WARN_MS: float = 40.0
 C2PA_DIR: Path = Path(os.environ.get("MOGRAPH_C2PA_DIR", ROOT / ".c2pa")).resolve()
 C2PATOOL_VERSION: str = "0.28.4"
 C2PA_IPTC_BASE: str = "http://cv.iptc.org/newscodes/digitalsourcetype/"
-# Horodatage RFC 3161 facultatif (URL d'une autorité d'horodatage) : appel RÉSEAU à chaque signature ;
-# sans lui, un manifeste devient « Invalid » à l'expiration du certificat local (825 jours).
-C2PA_TSA_URL: str | None = os.environ.get("MOGRAPH_C2PA_TSA") or None
+# Horodatage RFC 3161 des signatures, ACTIF par défaut : autorité publique gratuite de DigiCert (celle des
+# exemples officiels de c2pa-python) ; un appel RÉSEAU par livrable signé. MOGRAPH_C2PA_TSA=<URL> pour une
+# autre autorité, « off » pour signer sans horodatage (hors ligne).
+C2PA_TSA_DEFAULT: str = "http://timestamp.digicert.com"
+_tsa_env = os.environ.get("MOGRAPH_C2PA_TSA")
+C2PA_TSA_URL: str | None = (C2PA_TSA_DEFAULT if _tsa_env is None else
+                            None if _tsa_env.strip().lower() in ("", "off", "none", "0", "non") else _tsa_env.strip())
 
 
 def c2patool_path() -> str | None:

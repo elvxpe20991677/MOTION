@@ -8,10 +8,15 @@ l'encodage et après le QC, sur le fichier livré tel quel ; on ne modifie plus 
 Certificat : chaîne LOCALE (autorité « mograph CA locale » + certificat de signature ES256, EKU
 emailProtection), créée par « python mograph.py c2pa init » dans config.C2PA_DIR (jamais versionnée).
 Elle n'est reconnue par aucune liste de confiance : les lecteurs affichent « signingCredential.untrusted »
-(signature intègre, signataire non reconnu). Pas d'horodatage tiers par défaut (aucun appel réseau) :
-à l'expiration du certificat (825 jours), les manifestes deviennent « Invalid » (signingCredential.expired)
-— resigner avant (c2pa init --force puis c2pa sign) ou activer un horodatage RFC 3161
-(MOGRAPH_C2PA_TSA, appel réseau à l'autorité choisie).
+(signature intègre, signataire non reconnu). Certificat de signature valable 10 ans.
+
+Horodatage RFC 3161 ACTIF par défaut (config.C2PA_TSA_URL, DigiCert ; « MOGRAPH_C2PA_TSA=off » pour
+signer hors ligne) : le manifeste porte une date de signature certifiée par un tiers. Autorité injoignable
+-> signature SANS horodatage, signalée (journal et rapport « timestamped »: false), jamais silencieuse.
+Mesuré (SDK 0.38.0, c2patool 0.28.4, réglages par défaut) : un manifeste horodaté devient lui aussi
+« Invalid » (signingCredential.expired) après l'expiration du certificat, l'autorité d'horodatage n'étant
+pas dans une liste de confiance configurée ; l'horodatage sert de preuve de date pour un validateur qui
+fait confiance à DigiCert.
 
 Préconditions de signature (jamais de manifeste sur un fichier que mograph n'a pas produit et contrôlé) :
 fiche d'encodage out/<scène>/encode_record.json dont l'empreinte de scène est celle de la scène
@@ -77,7 +82,7 @@ def init_credentials(*, force: bool = False, log=print) -> dict[str, Path]:
                       x509.NameAttribute(NameOID.ORGANIZATION_NAME, "mograph")])
     leaf = (x509.CertificateBuilder().subject_name(name).issuer_name(ca_name).public_key(key.public_key())
             .serial_number(x509.random_serial_number()).not_valid_before(now - _dt.timedelta(days=1))
-            .not_valid_after(now + _dt.timedelta(days=825))
+            .not_valid_after(now + _dt.timedelta(days=3650))
             .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
             .add_extension(x509.KeyUsage(True, False, False, False, False, False, False, False, False), critical=True)
             .add_extension(x509.ExtendedKeyUsage([ExtendedKeyUsageOID.EMAIL_PROTECTION]), critical=False)
@@ -100,15 +105,14 @@ def init_credentials(*, force: bool = False, log=print) -> dict[str, Path]:
     return p
 
 
-def _signer():
+def _signer(tsa: str | None = None):
     import c2pa
 
     p = _paths()
     if not (p["chain"].is_file() and p["key"].is_file()):
         raise C2paError(f"certificat de signature absent ({p['dir']}) : lancez une fois « python mograph.py c2pa init ».")
-    tsa = config.C2PA_TSA_URL.encode("utf-8") if config.C2PA_TSA_URL else None
     info = c2pa.C2paSignerInfo(alg=c2pa.C2paSigningAlg.ES256, sign_cert=p["chain"].read_bytes(),
-                               private_key=p["key"].read_bytes(), ta_url=tsa)
+                               private_key=p["key"].read_bytes(), ta_url=tsa.encode("utf-8") if tsa else None)
     return c2pa.Signer.from_info(info)
 
 
@@ -157,26 +161,42 @@ def manifest_for(compiled: dict, output: dict) -> dict:
     }
 
 
-def _signed_copy(path: Path, manifest: dict) -> Path:
-    """Copie signée de `path` (même dossier, même extension) ; le livrable n'est pas encore touché."""
+def _signed_copy(path: Path, manifest: dict, log=print) -> tuple[Path, str | None]:
+    """Copie signée de `path` (même dossier, même extension) ; le livrable n'est pas encore touché.
+
+    Renvoie (copie, None) si horodatée (ou horodatage désactivé), (copie, raison) si l'autorité
+    d'horodatage n'a pas répondu et que la signature a été faite sans."""
     import c2pa
 
     path = Path(path)
     if path.suffix.lower() not in MIME:
         raise C2paError(f"{path.name} : conteneur non pris en charge pour la signature (MP4 ou MOV).")
     tmp = path.with_name(f"{path.stem}.c2pa-{os.getpid()}{path.suffix.lower()}")
-    try:
-        with _signer() as signer, c2pa.Builder(json.dumps(manifest, ensure_ascii=False)) as builder:
+
+    def attempt(tsa):
+        tmp.unlink(missing_ok=True)
+        with _signer(tsa) as signer, c2pa.Builder(json.dumps(manifest, ensure_ascii=False)) as builder:
             builder.sign_file(str(path), str(tmp), signer)
+
+    note = None
+    try:
+        try:
+            attempt(config.C2PA_TSA_URL)
+        except (c2pa.C2paError, OSError) as exc:
+            if not config.C2PA_TSA_URL:
+                raise
+            note = f"autorité d'horodatage {config.C2PA_TSA_URL} injoignable ({str(exc)[:160]})"
+            log(f"[c2pa] AVERTISSEMENT {path.name} : {note} ; signature SANS horodatage.")
+            attempt(None)
     except (c2pa.C2paError, OSError) as exc:
         tmp.unlink(missing_ok=True)
         raise C2paError(f"signature de {path.name} impossible : {exc}") from None
-    return tmp
+    return tmp, note
 
 
 def sign_file(path: Path, manifest: dict) -> None:
     """Signe `path` sur place (copie signée puis remplacement atomique)."""
-    tmp = _signed_copy(path, manifest)
+    tmp, _note = _signed_copy(path, manifest)
     try:
         os.replace(tmp, path)
     except OSError as exc:
@@ -194,7 +214,7 @@ def verify(path: Path) -> dict:
 
     path = Path(path)
     out = {"file": str(path), "signed": False, "valid": False, "state": None, "statuses": [],
-           "digital_source_type": None, "signer": None, "c2patool": None}
+           "digital_source_type": None, "signer": None, "signed_at": None, "c2patool": None}
     try:
         with c2pa.Reader(str(path)) as r:
             store = json.loads(r.json())
@@ -211,6 +231,8 @@ def verify(path: Path) -> dict:
                 if act.get("action") == "c2pa.created":
                     out["digital_source_type"] = act.get("digitalSourceType")
     out["signer"] = (m.get("signature_info") or {}).get("common_name")
+    # Date certifiée par l'autorité d'horodatage (absente d'une signature non horodatée).
+    out["signed_at"] = (m.get("signature_info") or {}).get("time")
     out["valid"] = out["state"] in ("Valid", "Trusted") and set(out["statuses"]) <= UNTRUSTED_OK
     return _with_c2patool(out, path)
 
@@ -286,12 +308,13 @@ def sign_outputs(compiled: dict, *, log=print) -> dict:
     out_dir = config.scene_out_dir(compiled["scene_id"])
     report = {"contract": C2PA_CONTRACT, "scene_id": compiled["scene_id"],
               "date_utc": _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-              "digital_source_type": digital_source_type(compiled), "outputs": []}
+              "digital_source_type": digital_source_type(compiled), "timestamp_authority": config.C2PA_TSA_URL,
+              "outputs": []}
     failures, temps = [], []
     try:
         for o in compiled["outputs"]:
             path = Path(o["path"])
-            tmp = _signed_copy(path, manifest_for(compiled, o))
+            tmp, note = _signed_copy(path, manifest_for(compiled, o), log=log)
             temps.append((tmp, path, o))
             v = verify(tmp)
             tool = v.get("c2patool") or {}
@@ -299,7 +322,8 @@ def sign_outputs(compiled: dict, *, log=print) -> dict:
                                                      and set(tool.get("statuses") or []) <= UNTRUSTED_OK)
             if not (v["valid"] and tool_ok):
                 failures.append(f"{path.name} ({v['state']}, {', '.join(v['statuses'])})")
-            report["outputs"].append({"profile": o["profile"], **v, "file": str(path)})
+            report["outputs"].append({"profile": o["profile"], **v, "file": str(path),
+                                      "timestamped": bool(v.get("signed_at")), "timestamp_note": note})
         if failures:
             raise C2paError(f"vérification C2PA en échec : {', '.join(failures)} ; aucun livrable n'a été modifié.")
         for (tmp, path, o), entry in zip(temps, report["outputs"]):
