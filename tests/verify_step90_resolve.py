@@ -1,8 +1,11 @@
 """Vérification de la phase 9 : aller-retour d'un maître ProRes par DaVinci Resolve (API de scripting officielle).
 
 Lancement depuis la racine :  .venv/Scripts/python.exe tests/verify_step90_resolve.py
-SKIP si DaVinci Resolve Studio n'est pas lancé avec « External scripting using » = Local : le test ne
-lance jamais Resolve et ne modifie aucun réglage (la baseline et la CI ne l'ouvrent donc pas).
+Partie 0 (toujours, ffmpeg seul) : le critère de plage de scripts/resolve_roundtrip.py détecte une expansion
+vidéo -> pleine et une compression pleine -> vidéo, y compris sur une image grise peu contrastée (point fixe
+vers Y ≈ 445), et accepte un retour identique ; une source non 422 HQ est refusée.
+Parties A et B : SKIP si DaVinci Resolve Studio n'est pas lancé avec « External scripting using » = Local :
+le test ne lance jamais Resolve et ne modifie aucun réglage (la baseline et la CI ne l'ouvrent donc pas).
 Isolé : build/_tests/step90/ ; projets Resolve temporaires créés puis supprimés par le script.
 Contrôles (scène 2D de 2 s rendue en ProRes 422 HQ par mograph) :
   A. aller-retour sans étalonnage : flux vidéo identique au bit près (Resolve recopie le ProRes),
@@ -51,15 +54,55 @@ def roundtrip_module():
     return mod
 
 
+def test_offline() -> None:
+    """Critère de plage et refus des sources non 422 HQ, sans Resolve."""
+    import subprocess as sp
+
+    from pipeline import config
+
+    mod = roundtrip_module()
+    d = TEST / "offline"
+    d.mkdir(parents=True, exist_ok=True)
+    cases = {"contraste": "testsrc2=s=320x180:d=1:r=25",
+             "gris": "color=c=0x6c6c6c:s=320x180:d=1:r=25,noise=alls=6:allf=t"}
+    for name, src in cases.items():
+        s = d / f"{name}.mov"
+        sp.run([config.FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i", src, "-c:v", "prores_ks", "-profile:v", "3",
+                "-pix_fmt", "yuv422p10le", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709",
+                "-color_trc", "bt709", str(s)], check=True)
+        for label, flt in mod.RANGE_HYPOTHESES.items():
+            o = d / f"{name}_{label}.mov"
+            sp.run([config.FFMPEG, "-v", "error", "-y", "-i", str(s), "-vf", flt, "-c:v", "prores_ks", "-profile:v",
+                    "3", "-pix_fmt", "yuv422p10le", "-color_range", "tv", "-colorspace", "bt709", "-color_primaries",
+                    "bt709", "-color_trc", "bt709", str(o)], check=True)
+            c = mod.compare(s, o)
+            check(f"0. {name} : {label} détectée (plage NON conservée, étiquette tv pourtant intacte)",
+                  c["range_kept"] is False and c["color_tags_kept"], str(c["psnr_range_hypotheses_db"]))
+        c = mod.compare(s, s)
+        check(f"0. {name} : retour identique accepté (plage conservée)", c["range_kept"] is True)
+    q = d / "q4444.mov"
+    sp.run([config.FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=320x180:d=0.4:r=25", "-c:v",
+            "prores_ks", "-profile:v", "4", "-pix_fmt", "yuva444p10le", str(q)], check=True)
+    r = sp.run([PY, str(ROOT / "scripts" / "resolve_roundtrip.py"), str(q)], cwd=ROOT, capture_output=True, text=True,
+               encoding="utf-8", errors="replace")
+    check("0. source ProRes 4444 refusée (seul un maître 422 HQ est vérifié)", r.returncode != 0
+          and "422 HQ" in (r.stderr + r.stdout))
+
+
 def main() -> int:
     assert TEST.parent.name == "_tests"
+    if TEST.exists():
+        shutil.rmtree(TEST)
+    TEST.mkdir(parents=True)
+    test_offline()
     try:
         roundtrip_module().connect()
     except SystemExit as exc:
         print(f"SKIP aller-retour DaVinci Resolve -- {str(exc)[:160]}", flush=True)
+        if FAILS:
+            print(f"ÉCHEC : {len(FAILS)} contrôle(s) : {FAILS}")
+            return 1
         return 0
-    if TEST.exists():
-        shutil.rmtree(TEST)
     (TEST / "scenes").mkdir(parents=True)
     scene = {"version": "1.0", "id": "rr90", "title": "rr90", "brief": "test phase 9", "seed": 3, "preset": "flat_riso",
              "format": {"aspect": "16:9", "resolution": "1080p", "fps": 25, "alpha": False},
@@ -79,13 +122,18 @@ def main() -> int:
                  (cp.stdout + cp.stderr).strip().splitlines()[-1:] and (cp.stdout + cp.stderr).strip().splitlines()[-1]):
         return 1
     for label, extra in (("A. sans étalonnage", []), ("B. étalonnage CDL neutre", ["--force-reencode"])):
-        r = subprocess.run([PY, str(ROOT / "scripts" / "resolve_roundtrip.py"), str(master), *extra], cwd=ROOT,
-                           env=dict(os.environ), capture_output=True, text=True, encoding="utf-8", errors="replace",
-                           timeout=1200)
+        try:
+            r = subprocess.run([PY, str(ROOT / "scripts" / "resolve_roundtrip.py"), str(master), *extra], cwd=ROOT,
+                               env=dict(os.environ), capture_output=True, text=True, encoding="utf-8",
+                               errors="replace", timeout=1200)
+        except subprocess.TimeoutExpired:
+            check(f"{label} : aller-retour terminé en moins de 20 min", False)
+            continue
         rep_line = next((x for x in r.stdout.splitlines() if x.startswith("Rapport : ")), "")
         rep = json.loads(Path(rep_line[len("Rapport : "):]).read_text(encoding="utf-8")) if rep_line else {}
         base = (r.returncode == 0 and rep.get("render_status", {}).get("JobStatus") == "Complete"
                 and rep.get("color_tags_kept") and rep.get("frames_kept") and rep.get("timecode_kept")
+                and rep.get("format_kept")
                 and rep.get("range_kept") and rep.get("probe_returned", {}).get("color_range") == "tv"
                 and rep.get("probe_returned", {}).get("timecode") == "01:00:00:00")
         check(f"{label} : étiquettes BT.709 tv, images, timecode et plage conservés", bool(base),
@@ -101,7 +149,8 @@ def main() -> int:
                   and abs(rep["levels_source"]["YAVG"] - rep["levels_returned"]["YAVG"]) <= 2,
                   f"PSNR {rep.get('psnr_db')} ; YAVG {rep.get('levels_source', {}).get('YAVG')} -> "
                   f"{rep.get('levels_returned', {}).get('YAVG')}")
-        check(f"{label} : projet Resolve temporaire supprimé", rep.get("kept") is False)
+        check(f"{label} : projet Resolve temporaire réellement supprimé (fermé, supprimé, absent de la liste)",
+              rep.get("deleted") is True)
     if FAILS:
         print(f"ÉCHEC : {len(FAILS)} contrôle(s) : {FAILS}")
         return 1

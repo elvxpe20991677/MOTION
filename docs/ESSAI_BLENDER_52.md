@@ -22,8 +22,10 @@ Paquets relevés dans ce venv :
 - attrs 26.1.0, cattrs 26.2.1, certifi 2026.10.23, charset-normalizer 3.5.2, idna 3.20 ;
 - typing-extensions 4.16.0, urllib3 2.8.0.
 
-`MOGRAPH_BLENDER_VENV` (nouvelle variable, défaut `.venv-blender`) fait utiliser ce venv par le
-pipeline, sans rien modifier d'autre.
+`MOGRAPH_BLENDER_VENV` (nouvelle variable, défaut `.venv-blender` ; valeur relative = relative à la racine
+du projet ; valeur vide = défaut) fait utiliser ce venv par le pipeline, sans rien modifier d'autre.
+`scripts/check_versions.py` échoue tant que la variable est définie : la conformité ne se juge que sur le
+venv de référence.
 
 ## Mesures (machine de référence : Ryzen 24 threads, RTX 4060 Laptop, pilote 617.42)
 
@@ -32,14 +34,21 @@ pipeline, sans rien modifier d'autre.
 | `tests/verify_step13_blender.py` avec bpy 5.2.3 | **37 PASS, 0 FAIL** (backend compatible sans modification) |
 | Reproductibilité CPU 5.2.3 (même image, deux rendus) | bit-exact |
 | OptiX 5.2.3 | non bit-exact (écart max 52/65535), comme avec 5.0.1 : le contrat n'utilise que le CPU |
-| Plaque `bounce__set` de `demo_clay_3d` (72 images RGBA 16 bits 1080²), 5.0.1 vs 5.2.3 | **0/72 images identiques** ; PSNR min 62,3 dB, médian 63,0 dB (échelle 16 bits) ; écart moyen 0,06 niveau 8 bits ; 0,5 % des pixels à plus d'un niveau 8 bits ; écart max 6038/65535, sur les bords des objets (anticrénelage, échantillonnage) |
+| Plaque `bounce__set` de `demo_clay_3d` (72 images RGBA 16 bits 1080²), 5.0.1 vs 5.2.3 | **0/72 images identiques** ; PSNR min 62,3 dB, médian 63,0 dB (échelle 16 bits) ; sur les 72 images : écart moyen 0,08 niveau 8 bits, 0,51 % des pixels à plus d'un niveau 8 bits, écart max 6219/65535 (image 57), sur les bords des objets (anticrénelage, échantillonnage) |
 | Temps de rendu de la plaque | 1,72 s/image (5.0.1) contre 1,77 s/image (5.2.3) |
 | Pipeline complet `all demo_clay_3d` avec 5.2.3 | porte de déterminisme 8/8, QC **CONFORME** |
 
 Visuellement, aucune différence n'est perceptible. Image de comparaison, avec l'écart amplifié ×16 :
 `build/_essai_blender52/comparaison_image67.png`. Mesures détaillées :
-`build/_essai_blender52/comparaison_demo_clay_3d.json` (fichiers non versionnés, régénérables avec le
-script de comparaison décrit ci-dessus).
+`build/_essai_blender52/comparaison_demo_clay_3d.json` (non versionnés).
+
+Pour les régénérer : rendre la plaque avec chaque version dans un build/ SÉPARÉ, puis comparer avec
+`scripts/compare_plates.py` (commandes exactes dans son en-tête). Le script calcule les statistiques sur
+toutes les images.
+
+Changer de venv sur le MÊME build/ est sans danger : chaque plaque note le moteur qui l'a rendue
+(`engine.txt`, interpréteur résolu), et ses images sont supprimées puis refaites si le moteur change.
+Une plaque sans ce fichier est réputée rendue par le venv de référence.
 
 ## Ce qu'impliquerait une bascule (non faite)
 1. `versions.json` : `blender_python` 3.11.15 → 3.13.13, `bpy` 5.0.1 → 5.2.3 ; nouveau

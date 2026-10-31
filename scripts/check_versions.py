@@ -128,6 +128,11 @@ def check_npm() -> None:
 
 
 def check_blender(want_py: str, want_bpy: str, constraints: Path) -> None:
+    if config.BLENDER_VENV_OVERRIDE:
+        # Venv d'essai (phase 2) : la conformité ne se juge que sur le venv de référence.
+        report("FAIL", "venv Blender", f"MOGRAPH_BLENDER_VENV={config.BLENDER_VENV_OVERRIDE} désigne un venv d'essai : "
+               "retirez la variable pour vérifier la référence")
+        return
     if not config.BLENDER_PYTHON.is_file():
         report("FAIL", "venv Blender", f"{config.BLENDER_PYTHON} absent : uv venv --python {want_py} .venv-blender")
         return

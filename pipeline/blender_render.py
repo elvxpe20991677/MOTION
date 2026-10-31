@@ -141,11 +141,23 @@ def _canonical(job: dict) -> str:
     return json.dumps(job, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
+ENGINE_FILENAME = "engine.txt"
+
+
+def _engine() -> str:
+    """Identité du moteur Blender : interpréteur résolu (un autre venv = une autre version de bpy, d'autres
+    pixels ; phase 2, MOGRAPH_BLENDER_VENV). Comparée à chaque rendu comme la tâche elle-même."""
+    return os.path.normcase(str(Path(config.BLENDER_PYTHON).resolve()))
+
+
 def _purge_if_job_changed(job: dict, job_path: Path, log: Callable[[str], None], tag: str) -> None:
-    """Supprime les images d'une plaque rendue avec une AUTRE tâche (échantillons, matériau, animation...).
+    """Supprime les images d'une plaque rendue avec une AUTRE tâche (échantillons, matériau, animation...) ou
+    par un AUTRE moteur Blender (venv différent).
 
     Le backend saute les images présentes (reprise) : sans cette purge, une plaque modifiée à taille égale
-    mélangerait images périmées et nouvelles. job.json précédent illisible = traité comme différent.
+    mélangerait images périmées et nouvelles, et un changement de venv réutiliserait les images de l'autre
+    version de bpy. job.json précédent illisible = traité comme différent. Plaque sans engine.txt (rendue
+    avant la phase 2, quand seul le venv de référence existait) = rendue par le venv de référence.
     """
     if not job_path.exists():
         return
@@ -153,16 +165,29 @@ def _purge_if_job_changed(job: dict, job_path: Path, log: Callable[[str], None],
         previous = json.loads(job_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         previous = None
-    if previous is not None and _canonical(previous) == _canonical(job):
+    stamp = job_path.parent / ENGINE_FILENAME
+    try:
+        engine_before = stamp.read_text(encoding="utf-8").strip()
+    except OSError:
+        ref = config.ROOT / ".venv-blender" / ("Scripts/python.exe" if config.IS_WINDOWS else "bin/python")
+        engine_before = os.path.normcase(str(ref.resolve()))
+    same_job = previous is not None and _canonical(previous) == _canonical(job)
+    if same_job and engine_before == _engine():
         return
     stale = sorted(job_path.parent.glob("[0-9][0-9][0-9][0-9][0-9][0-9]*.png"))
     for p in stale:
         p.unlink()
-    log(f"[{tag}] tâche modifiée depuis le dernier rendu : {len(stale)} image(s) périmée(s) supprimée(s)")
+    why = "tâche modifiée" if not same_job else "moteur Blender différent (autre venv)"
+    log(f"[{tag}] {why} depuis le dernier rendu : {len(stale)} image(s) périmée(s) supprimée(s)")
 
 
 def _check_installation() -> None:
     if not Path(config.BLENDER_PYTHON).is_file():
+        if config.BLENDER_VENV_OVERRIDE:
+            raise BlenderRenderError(
+                f"venv Blender d'essai introuvable : MOGRAPH_BLENDER_VENV={config.BLENDER_VENV_OVERRIDE} désigne "
+                f"{config.BLENDER_VENV} (sans {Path(config.BLENDER_PYTHON).name}). Créez-le (docs/ESSAI_BLENDER_52.md) "
+                "ou retirez la variable pour revenir au venv de référence.")
         raise BlenderRenderError(
             f"interpréteur Blender introuvable : {config.BLENDER_PYTHON}. Installez-le depuis la racine du projet : "
             f"« uv venv --python 3.11 .venv-blender » puis « uv pip install --python "
@@ -190,6 +215,7 @@ def render_plate(job: dict, *, log: Callable[[str], None] = print, frames: list[
     job_path = out_dir / JOB_FILENAME
     _purge_if_job_changed(job, job_path, log, tag)
     _write_atomic(job_path, json.dumps(job, ensure_ascii=False, indent=2) + "\n")
+    _write_atomic(out_dir / ENGINE_FILENAME, _engine() + "\n")
 
     cmd = [str(config.BLENDER_PYTHON), str(config.BLENDER_BACKEND), str(job_path)]
     if frames is not None:

@@ -155,7 +155,9 @@ ORCHESTRATOR_PYTHON: Path = Path(sys.executable)
 
 # bpy 5.0.1 n'existe que pour CPython 3.11 : il vit dans un venv séparé créé par uv. MOGRAPH_BLENDER_VENV
 # désigne un autre venv pour un ESSAI (phase 2 : bpy 5.2 LTS sous CPython 3.13) sans toucher à la référence.
-BLENDER_VENV: Path = Path(os.environ.get("MOGRAPH_BLENDER_VENV", ROOT / ".venv-blender")).resolve()
+# Valeur vide = absente ; valeur relative = relative à la RACINE du projet (pas au dossier courant).
+BLENDER_VENV_OVERRIDE: str | None = (os.environ.get("MOGRAPH_BLENDER_VENV") or "").strip() or None
+BLENDER_VENV: Path = (ROOT / BLENDER_VENV_OVERRIDE).resolve() if BLENDER_VENV_OVERRIDE else ROOT / ".venv-blender"
 BLENDER_PYTHON: Path = BLENDER_VENV / ("Scripts/python.exe" if IS_WINDOWS else "bin/python")
 BLENDER_BACKEND: Path = BACKENDS_DIR / "blender_backend.py"
 

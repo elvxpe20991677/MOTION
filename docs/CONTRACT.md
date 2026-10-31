@@ -1165,6 +1165,13 @@ sans NVENC ; sans c2patool, vérification par le SDK seulement).
 La référence reste **bpy 5.0.1 / CPython 3.11.15** (§0, `versions.json`). `MOGRAPH_BLENDER_VENV`
 (défaut `.venv-blender`) fait utiliser un autre venv Blender pour un ESSAI. Défaut inchangé : aucun effet
 sur les pixels ni sur les empreintes.
+- Valeur vide = absente ; valeur relative = relative à la racine du projet.
+- `check_versions` échoue tant que la variable est définie.
+- Venv d'essai absent : message qui nomme la variable.
+- Moteur dans la clé de purge des plaques : `engine.txt`, avec l'interpréteur résolu, est écrit à côté de
+  `job.json`. Un changement de venv supprime les images de la plaque, qui sont refaites : jamais d'images
+  d'une version de bpy sous l'étiquette d'une autre. Une plaque sans ce fichier est réputée rendue par le
+  venv de référence.
 
 Essai du 31/10/2026 avec bpy 5.2.3 LTS sous CPython 3.13.13 (`.venv-blender52`, ignoré par git) :
 - `verify_step13_blender` : 37 PASS ;
@@ -1191,16 +1198,29 @@ On passe donc par l'**API de scripting officielle** de Blackmagic (`README.md` e
 - Ce réglage de sécurité relève de l'utilisateur : mograph ne le modifie jamais.
 
 `scripts/resolve_roundtrip.py <maître.mov> [--force-reencode] [--keep]` :
-- crée un projet DÉDIÉ `mograph_aller_retour_<date>` (aucun projet existant touché), supprimé à la fin
-  sauf `--keep` ;
+- source : un maître ProRes 422 HQ seulement (un 4444 avec alpha est refusé : le retour serait un 422 HQ
+  sans alpha) ;
+- crée un projet DÉDIÉ `mograph_aller_retour_<date>` (aucun projet existant touché). Sauf `--keep`, il est
+  fermé, supprimé, puis son absence est vérifiée dans la liste des projets ; si la suppression échoue :
+  code 1 et avertissement ;
 - réglages : cadence et résolution du fichier, `videoDataLevelsRetainSubblockAndSuperWhiteData` = 1,
   timecode de départ de la timeline = celui de la source (`Timeline.SetStartTimecode`) ;
 - rend un ProRes 422 HQ « Same as Project » dans `build/_resolve/<date>/` ;
+- attente du rendu bornée à 60 s + 2 s par image, puis `StopRendering` et échec ;
 - compare source et retour : ffprobe, signalstats (min et max de Y, U, V, moyenne de Y), PSNR et MD5 du
-  flux vidéo ; écrit `aller_retour.json` ;
-- code 0 si étiquettes couleur, nombre d'images, timecode et plage sont conservés. Plage conservée =
-  même étiquette, luminance moyenne à ±2 codes 10 bits (une confusion vidéo/pleine la décalerait de
-  dizaines de codes) et extrêmes à ±12 codes.
+  flux vidéo ;
+- écrit TOUJOURS `aller_retour.json`, même en cas d'échec : erreur et diagnostics déjà recueillis ;
+- code 0 si étiquettes couleur, format (codec, profil, format de pixel, taille), nombre d'images, timecode
+  et plage sont conservés, et si le projet est supprimé.
+
+*Plage conservée* : même étiquette ET l'hypothèse « niveaux conservés » explique le mieux le retour, avec
+au moins 3 dB d'avance de PSNR sur les deux hypothèses de conversion (expansion vidéo → pleine,
+compression pleine → vidéo), appliquées à la source par formule explicite sur les codes 10 bits.
+- Les filtres `scale` et `zscale` de FFmpeg ne convertissent pas une source déjà en yuv422p10le (mesuré).
+- Une statistique globale (moyenne, extrêmes) ne suffit pas : une conversion de plage a un point fixe
+  vers Y ≈ 445, et passerait inaperçue sur une image grise peu contrastée.
+- Contrôlé sans Resolve (`verify_step90`, partie 0) : expansion et compression détectées sur une mire et
+  sur une image grise bruitée ; retour identique accepté.
 
 Mesuré le 31/10/2026 (Resolve Studio 21.1.1.10, maître `demo_flat_riso` ProRes 422 HQ, 165 images) :
 - **Sans étalonnage** : flux vidéo identique au bit près (Resolve recopie le ProRes sans réencoder) ;
@@ -1218,6 +1238,8 @@ Livrable conseillé pour Resolve : `prores_422hq` (MOV, étiquettes `colr` BT.70
 01:00:00:00, audio PCM 24 bits). Le script ne s'occupe pas de l'audio (`ExportAudio` désactivé). Aucun
 LUT/DCTL n'est nécessaire : l'aller-retour conserve la colorimétrie. Non testé : ProRes 4444 avec alpha.
 
-Tests : `tests/verify_step90_resolve.py` (SKIP si Resolve n'est pas lancé ou si le scripting externe est
-fermé : ni la baseline ni la CI n'ouvrent Resolve).
+Tests : `tests/verify_step90_resolve.py`.
+- Partie 0 (critère de plage, refus d'un 4444) : toujours exécutée, ffmpeg seul.
+- Parties A et B : SKIP si Resolve n'est pas lancé ou si le scripting externe est fermé ; ni la baseline
+  ni la CI n'ouvrent Resolve.
 
