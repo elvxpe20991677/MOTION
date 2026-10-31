@@ -1111,10 +1111,11 @@ composite.
 altération d'un octet du flux → `assertion.bmffHash.mismatch`) :
 - MP4 HEVC `hvc1` (`hevc_main10`) ;
 - MOV ProRes 422 HQ (`prores_422hq`) ;
-- MP4 AV1 `av01` (`av1_nvenc`).
+- MP4 AV1 `av01` (`av1_nvenc`) ;
+- MOV ProRes 4444 avec alpha (`prores_4444`, vérifié le 31/10/2026 : QC relancé sur le fichier signé
+  CONFORME, contrôle `alpha` PASS).
 
-Non testés : MOV ProRes 4444 (même conteneur que le 422 HQ, attendu identique, non vérifié) et MP4
-fragmenté (pris en charge par le SDK en mode fichier seulement, non produit par mograph).
+Non testé : MP4 fragmenté (pris en charge par le SDK en mode fichier seulement, non produit par mograph).
 
 *Vérification* : `python mograph.py c2pa verify <fichier> [--json]` (code 0 seulement si un manifeste est
 présent, à l'état `Valid` ou `Trusted`, et sans autre statut que `signingCredential.untrusted`).

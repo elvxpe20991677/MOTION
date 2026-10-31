@@ -358,7 +358,7 @@ gelés (empreintes, outils, modèles — jamais les prompts). **Tout réencodage
 sans réencoder, mais seulement des livrables produits par mograph pour la scène actuelle et passés au QC
 CONFORME (après un `encode` : lancer `qc` puis `c2pa sign`). Sans horodatage (`MOGRAPH_C2PA_TSA`, appel
 réseau), les manifestes deviennent invalides à l'expiration du certificat local (825 jours). Vérification : `c2pa verify <fichier>` (SDK + c2patool, installé par
-`python scripts/install_c2patool.py`). MP4 (HEVC, AV1) et MOV (ProRes) testés.
+`python scripts/install_c2patool.py`). MP4 (HEVC, AV1) et MOV (ProRes 422 HQ, 4444 avec alpha) testés.
 **Mention visible** : `"visible_label": {"text": "Contenu créé avec l'aide de l'IA", "corner":
 "bottom-right"}` l'ajoute à chaque plan, dans la zone sûre. Rappel AI Act (art. 50, applicable depuis
 le 02/08/2026) : le marquage lisible par machine est une obligation des FOURNISSEURS d'IA générative ;

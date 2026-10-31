@@ -18,7 +18,8 @@ Contrôles :
      (INFO, hors contrat) ;
   D. tests négatifs : réencodage et remux (-c copy) -> plus de manifeste ; octet du flux modifié ->
      manifeste invalide ; verify d'un fichier non signé -> code 1 ;
-  E. scène sans IA : algorithmicMedia ; valeur imposée par la scène respectée ; c2pa sign autonome ;
+  E. scène à fond transparent : MOV ProRes 4444 (alpha) signé, QC relancé sur le fichier signé conforme ;
+     scène sans IA : algorithmicMedia ; valeur imposée par la scène respectée ; c2pa sign autonome ;
      QC non conforme -> livrables non signés.
 """
 
@@ -319,6 +320,30 @@ def test_negative(out: Path, av1: bool) -> None:
               and c2pa_sign.verify(a1)["valid"], tail(cp, 1))
 
 
+def test_alpha() -> None:
+    """Scène à fond transparent : MOV ProRes 4444 (alpha) et HEVC aplati signés ; QC relancé sur les fichiers signés."""
+    d = {"version": "1.0", "id": "c70_alpha", "title": "c70_alpha", "brief": "test phase 7 alpha", "seed": 2,
+         "preset": "flat_riso", "format": {"aspect": "16:9", "resolution": "1080p", "fps": 25, "alpha": True},
+         "outputs": [{"profile": "prores_4444"}, {"profile": "hevc_main10", "suffix": "_flat"}],
+         "qc": dict(QC, allow_black_s=2), "provenance": {"c2pa": {"sign": True}},
+         "shots": [{"id": "a", "duration": 1.2, "layers": [{"id": "t", "type": "text", "text": "Bandeau",
+                                                            "x": "safe:50%", "y": "safe:80%",
+                                                            "anim": [{"move": "rise", "at": 0.1}]}]}]}
+    p = SCENES / "c70_alpha.json"
+    p.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+    cp = mograph("all", str(p))
+    out = TEST / "out" / "c70_alpha"
+    mov = out / "c70_alpha_prores_4444.mov"
+    v = c2pa_sign.verify(mov) if mov.is_file() else {"valid": False, "statuses": []}
+    check("alpha : MOV ProRes 4444 et HEVC aplati signés, manifestes valides", cp.returncode == 0 and v["valid"]
+          and c2pa_sign.verify(out / "c70_alpha_flat_hevc_main10.mp4")["valid"], tail(cp, 1))
+    cp = mograph("qc", str(p))
+    qc = json.loads((out / "qc_report.json").read_text(encoding="utf-8")) if (out / "qc_report.json").is_file() else {}
+    by = {c["id"]: c["status"] for c in qc.get("checks", [])}
+    check("alpha : QC relancé sur les fichiers SIGNÉS CONFORME, couche alpha intacte (prores_4444.alpha)",
+          cp.returncode == 0 and qc.get("verdict") == "CONFORME" and by.get("prores_4444.alpha") == "PASS", str(by.get("prores_4444.alpha")))
+
+
 def test_no_ai() -> None:
     p = scene("c70_sansia", outputs=[{"profile": "hevc_main10"}], provenance={"c2pa": {"sign": True}}, shots=1)
     cp = mograph("all", str(p))
@@ -366,6 +391,7 @@ def main() -> int:
         out = test_render(av1)
         if out:
             test_negative(out, av1)
+        test_alpha()
         test_no_ai()
     except Exception as exc:  # noqa: BLE001 — rapporté comme échec, jamais masqué
         import traceback
